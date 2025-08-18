@@ -1,0 +1,226 @@
+// converter.go: Binary to JSON conversion logic
+//
+// Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
+// SPDX-License-Identifier: MPL-2.0
+
+package main
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"io"
+	"time"
+	"unsafe"
+)
+
+// BinaryToJSONConverter handles conversion from Iris binary format to JSON
+type BinaryToJSONConverter struct {
+	pretty bool
+}
+
+// NewBinaryToJSONConverter creates a new converter
+func NewBinaryToJSONConverter(pretty bool) *BinaryToJSONConverter {
+	return &BinaryToJSONConverter{
+		pretty: pretty,
+	}
+}
+
+// LogEntry represents a single log entry for JSON output
+type LogEntry struct {
+	Timestamp string                 `json:"timestamp"`
+	Level     string                 `json:"level"`
+	Message   string                 `json:"message"`
+	Caller    *CallerInfo            `json:"caller,omitempty"`
+	Fields    map[string]interface{} `json:",inline,omitempty"`
+}
+
+// CallerInfo represents caller information
+type CallerInfo struct {
+	File     string `json:"file"`
+	Line     int    `json:"line"`
+	Function string `json:"function,omitempty"`
+}
+
+// BinaryEntry represents the binary log entry structure (must match iris binary_logger.go)
+type BinaryEntry struct {
+	Timestamp uint64 // Unix nanoseconds
+	Level     uint8  // Log level
+	MsgPtr    uintptr
+	MsgLen    uint32
+	FieldPtr  uintptr
+	FieldCnt  uint16
+}
+
+// BinaryField represents a binary field (must match iris binary_logger.go)
+type BinaryField struct {
+	KeyPtr   uintptr
+	KeyLen   uint16
+	ValuePtr uintptr
+	ValueLen uint32
+	Type     uint8 // Field type
+}
+
+// Field types (must match iris field types)
+const (
+	FieldTypeString = iota
+	FieldTypeInt
+	FieldTypeFloat64
+	FieldTypeBool
+	FieldTypeTime
+	FieldTypeError
+	FieldTypeAny
+)
+
+// Level constants (must match iris levels)
+const (
+	DebugLevel = iota
+	InfoLevel
+	WarnLevel
+	ErrorLevel
+	DPanicLevel
+	PanicLevel
+	FatalLevel
+)
+
+var levelNames = map[uint8]string{
+	DebugLevel:  "debug",
+	InfoLevel:   "info",
+	WarnLevel:   "warn",
+	ErrorLevel:  "error",
+	DPanicLevel: "dpanic",
+	PanicLevel:  "panic",
+	FatalLevel:  "fatal",
+}
+
+// Convert reads binary log entries and writes JSON
+func (c *BinaryToJSONConverter) Convert(input io.Reader, output io.Writer) error {
+	scanner := bufio.NewScanner(input)
+	encoder := json.NewEncoder(output)
+
+	if c.pretty {
+		encoder.SetIndent("", "  ")
+	}
+
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Bytes()
+
+		// Skip empty lines
+		if len(line) == 0 {
+			continue
+		}
+
+		// For now, we'll handle the case where the binary logger is actually
+		// writing JSON (as we saw in tests). Later we'll implement true binary parsing.
+		entry, err := c.parseLineAsBinary(line)
+		if err != nil {
+			// If binary parsing fails, try JSON passthrough
+			entry, err = c.parseLineAsJSON(line)
+			if err != nil {
+				return fmt.Errorf("line %d: failed to parse as binary or JSON: %v", lineNum, err)
+			}
+		}
+
+		if err := encoder.Encode(entry); err != nil {
+			return fmt.Errorf("line %d: failed to encode JSON: %v", lineNum, err)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("failed to read input: %v", err)
+	}
+
+	return nil
+}
+
+// parseLineAsBinary parses a true binary log entry
+func (c *BinaryToJSONConverter) parseLineAsBinary(data []byte) (*LogEntry, error) {
+	// TODO: Implement true binary parsing when iris binary format is finalized
+	// For now, this is a placeholder that will return an error to fall back to JSON
+	return nil, fmt.Errorf("binary parsing not yet implemented")
+}
+
+// parseLineAsJSON parses JSON log entries (fallback/current format)
+func (c *BinaryToJSONConverter) parseLineAsJSON(data []byte) (*LogEntry, error) {
+	var rawEntry map[string]interface{}
+	if err := json.Unmarshal(data, &rawEntry); err != nil {
+		return nil, err
+	}
+
+	entry := &LogEntry{
+		Fields: make(map[string]interface{}),
+	}
+
+	// Extract standard fields
+	if ts, ok := rawEntry["timestamp"].(string); ok {
+		entry.Timestamp = ts
+		delete(rawEntry, "timestamp")
+	}
+
+	if level, ok := rawEntry["level"].(string); ok {
+		entry.Level = level
+		delete(rawEntry, "level")
+	}
+
+	if msg, ok := rawEntry["message"].(string); ok {
+		entry.Message = msg
+		delete(rawEntry, "message")
+	}
+
+	// Handle caller info if present
+	if caller, ok := rawEntry["caller"]; ok {
+		if callerMap, ok := caller.(map[string]interface{}); ok {
+			entry.Caller = &CallerInfo{}
+			if file, ok := callerMap["file"].(string); ok {
+				entry.Caller.File = file
+			}
+			if line, ok := callerMap["line"].(float64); ok {
+				entry.Caller.Line = int(line)
+			}
+			if function, ok := callerMap["function"].(string); ok {
+				entry.Caller.Function = function
+			}
+		}
+		delete(rawEntry, "caller")
+	}
+
+	// Add remaining fields
+	for k, v := range rawEntry {
+		entry.Fields[k] = v
+	}
+
+	// If no extra fields, remove the empty map
+	if len(entry.Fields) == 0 {
+		entry.Fields = nil
+	}
+
+	return entry, nil
+}
+
+// Helper functions for binary parsing (when implemented)
+
+func getLevelName(level uint8) string {
+	if name, ok := levelNames[level]; ok {
+		return name
+	}
+	return fmt.Sprintf("level_%d", level)
+}
+
+func formatTimestamp(nanos uint64) string {
+	t := time.Unix(0, int64(nanos))
+	return t.Format(time.RFC3339Nano)
+}
+
+// unsafeString converts a pointer and length to string (DANGEROUS - use carefully)
+func unsafeString(ptr uintptr, length uint32) string {
+	if ptr == 0 || length == 0 {
+		return ""
+	}
+	return *(*string)(unsafe.Pointer(&struct {
+		data uintptr
+		len  int
+	}{ptr, int(length)}))
+}

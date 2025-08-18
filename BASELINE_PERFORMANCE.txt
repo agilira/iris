@@ -1,0 +1,11 @@
+=== BASELINE PERFORMANCE (Pre-Phase 1) ===
+goos: linux
+goarch: amd64
+pkg: github.com/agilira/xantos/iris
+cpu: AMD Ryzen 5 7520U with Radeon Graphics         
+BenchmarkIris_SimpleLog-8               	88146440	        11.63 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIris_StructuredLog_3Fields-8   	28211790	        40.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIris_StructuredLog_5Fields-8   	24248044	        49.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIris_ZeroFieldsComparison-8    	98328811	        11.20 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/agilira/xantos/iris	4.779s
