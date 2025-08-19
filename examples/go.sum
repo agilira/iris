@@ -1,8 +1,0 @@
-github.com/agilira/go-errors v1.0.0 h1:7/+n6jr5PV56t82P8N2MzHBLm41BPy2zwpJ6jYC6/to=
-github.com/agilira/go-errors v1.0.0/go.mod h1:YEeM2sVXg2w/GmDVZ2m2nH2kJ2Aa34OvbTA6w3JzVbY=
-github.com/agilira/xantos v1.0.0 h1:BPXROhvkV/zV/EM0nUlTV7XcHnxhW+9Anzq1nsAaHS0=
-github.com/agilira/xantos v1.0.0/go.mod h1:SHYN4HdOWwe8YSvQUPbFYxC+k9s21j0MsFWG3E7xp1k=
-go.uber.org/multierr v1.10.0 h1:S0h4aNzvfcFsC3dRF1jLoaov7oRaKqRGC/pUEJ2yvPQ=
-go.uber.org/multierr v1.10.0/go.mod h1:20+QtiLqy0Nd6FdQB9TLXag12DsQkrbs3htMFfDN80Y=
-go.uber.org/zap v1.27.0 h1:aJMhYGrd5QSmlpLMr2MftRKl7t8J8PTZPA732ud/XR8=
-go.uber.org/zap v1.27.0/go.mod h1:GB2qFLM7cTU87MWRP2mPIjqfIDnGu+VIO4V/SdhGo2E=
