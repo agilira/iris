@@ -105,6 +105,10 @@ func (e *JSONEncoder) encodeField(field Field) {
 	case Float32Type:
 		e.buf = strconv.AppendFloat(e.buf, field.Float, 'f', -1, 32)
 
+	case SecretType:
+		// SECURITY: Automatically redact sensitive data
+		e.buf = append(e.buf, '"', '[', 'R', 'E', 'D', 'A', 'C', 'T', 'E', 'D', ']', '"')
+
 	default:
 		// COLD PATH: Handle less common types
 		e.encodeFieldColdPath(field)

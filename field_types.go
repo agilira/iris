@@ -31,6 +31,7 @@ const (
 	ByteStringType
 	BinaryType
 	AnyType
+	SecretType // SECURITY: For sensitive data that should be redacted
 )
 
 // Field represents a structured log field (memory-optimized layout)

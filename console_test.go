@@ -119,7 +119,7 @@ func TestConsoleEncoderQuoting(t *testing.T) {
 	if !strings.Contains(result, `spaced="value with spaces"`) {
 		t.Error("Values with spaces should be quoted")
 	}
-	if !strings.Contains(result, `quoted="value"with"quotes"`) {
+	if !strings.Contains(result, `quoted="value\"with\"quotes"`) {
 		t.Error("Values with quotes should be quoted")
 	}
 }

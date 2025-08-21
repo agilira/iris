@@ -297,6 +297,9 @@ func (e *ConsoleEncoder) appendFieldValue(buf []byte, field Field) []byte {
 		return e.appendTimeTypeValue(buf, field)
 	case ErrorType, BinaryType, AnyType:
 		return e.appendSpecialTypeValue(buf, field)
+	case SecretType:
+		// SECURITY: Redact sensitive data in console output
+		return append(buf, "[REDACTED]"...)
 	default:
 		return append(buf, field.String...)
 	}
@@ -332,11 +335,13 @@ func (e *ConsoleEncoder) appendSpecialTypeValue(buf []byte, field Field) []byte 
 	}
 }
 
-// appendStringValue appends string value with quoting if needed
+// appendStringValue appends string value with security-aware quoting and sanitization
 func (e *ConsoleEncoder) appendStringValue(buf []byte, s string) []byte {
-	if needsQuotingFast(s) {
+	// SECURITY: Enhanced protection against log injection
+	if needsQuotingFastSecure(s) {
+		sanitized := sanitizeForLogSafety(s)
 		buf = append(buf, '"')
-		buf = append(buf, s...)
+		buf = append(buf, sanitized...)
 		buf = append(buf, '"')
 	} else {
 		buf = append(buf, s...)
@@ -420,22 +425,6 @@ func (e *ConsoleEncoder) appendAnyValue(buf []byte, value interface{}) []byte {
 // needsQuoting returns true if a string needs to be quoted
 func needsQuoting(s string) bool {
 	return strings.ContainsAny(s, " \t\n\r\"\\=")
-}
-
-// needsQuotingFast is an optimized version of needsQuoting for hot paths.
-// Uses manual scanning instead of ContainsAny for better performance.
-//
-//go:inline
-func needsQuotingFast(s string) bool {
-	// Hot path: most strings don't need quoting
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		// Check for characters that require quoting
-		if c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '"' || c == '\\' || c == '=' {
-			return true
-		}
-	}
-	return false
 }
 
 // lastIndex returns the last index of substr in s, or -1 if not found

@@ -235,6 +235,9 @@ func (e *FastTextEncoder) appendFieldValueFast(field BinaryField) {
 		e.appendUintValue(field.GetInt())
 	case uint8(DurationType), uint8(TimeType):
 		e.appendTimeValueFromBinary(field)
+	case uint8(SecretType):
+		// SECURITY: Redact sensitive data in text format
+		e.buf = append(e.buf, "[REDACTED]"...)
 	default:
 		// Fallback for unknown types
 		e.buf = append(e.buf, "<?>"...)
@@ -279,6 +282,9 @@ func (e *FastTextEncoder) appendFieldValueFastMigration(field Field) {
 		e.appendByteStringValue(field.Bytes)
 	case ErrorType:
 		e.appendErrorValue(field.Err)
+	case SecretType:
+		// SECURITY: Redact sensitive data in text format (migration path)
+		e.buf = append(e.buf, "[REDACTED]"...)
 	default:
 		e.appendUnknownValue()
 	}
@@ -302,9 +308,15 @@ func (e *FastTextEncoder) appendTimeValueFromField(field Field) {
 	}
 }
 
-// appendStringValue appends string value
+// appendStringValue appends string value with security sanitization
 func (e *FastTextEncoder) appendStringValue(s string) {
-	e.buf = append(e.buf, s...)
+	// SECURITY: Sanitize potentially dangerous input to prevent log injection
+	if needsLogSafetySanitization(s) {
+		sanitized := sanitizeForLogSafety(s)
+		e.buf = append(e.buf, sanitized...)
+	} else {
+		e.buf = append(e.buf, s...)
+	}
 }
 
 // appendIntValue appends integer value

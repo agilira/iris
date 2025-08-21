@@ -140,7 +140,7 @@ func TestConsoleEncoderStringQuoting(t *testing.T) {
 	}{
 		{"simple", "simple", "value=simple"},
 		{"with_space", "hello world", `value="hello world"`},
-		{"with_quotes", `hello "world"`, `value="hello "world""`},
+		{"with_quotes", `hello "world"`, `value="hello \"world\""`},
 		{"with_equals", "key=value", `value="key=value"`},
 		{"with_newline", "hello\nworld", `value="hello`},
 	}

@@ -140,6 +140,14 @@ func (e *BinaryEncoder) encodeBinaryFieldFast(field BinaryField) {
 		e.encodeBinaryInt64Value(field.GetInt())
 	case uint8(DurationType), uint8(TimeType):
 		e.encodeBinaryInt64Value(field.GetInt())
+	case uint8(SecretType):
+		// SECURITY: Store redacted marker in binary format
+		redactedField := BinaryField{
+			Key:   field.GetKey(),
+			Value: "[REDACTED]",
+			Type:  uint8(StringType),
+		}
+		e.encodeBinaryStringValue(redactedField)
 	default:
 		// Fallback for unknown types - encode as empty
 		e.buf = append(e.buf, 0, 0) // zero-length value
@@ -250,6 +258,13 @@ func (e *BinaryEncoder) encodeBinaryFieldFastMigration(field Field) {
 		e.encodeBinaryFloatValueFromField(field)
 	case DurationType, TimeType:
 		e.encodeBinaryInt64Value(field.Int)
+	case SecretType:
+		// SECURITY: Store redacted marker in binary format (migration path)
+		redacted := "[REDACTED]"
+		redactedLen := len(redacted)
+		strHeader := [2]byte{byte(redactedLen >> 8), byte(redactedLen)}
+		e.buf = append(e.buf, strHeader[:]...)
+		e.buf = append(e.buf, redacted...)
 	default:
 		// Fallback for unknown types - encode as empty
 		e.buf = append(e.buf, 0, 0) // zero-length value

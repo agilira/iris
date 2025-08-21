@@ -1,6 +1,6 @@
 // multiwriter_race_test.go: Intensive race condition tests for MultiWriter
 // Copyright (c) 2025 AGILira
-// Series: an AGILira fragment  
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -20,13 +20,13 @@ func TestMultiWriterIntensiveRace(t *testing.T) {
 	}
 
 	const (
-		numWorkers     = 100
-		numOperations  = 1000
-		testDuration   = 5 * time.Second
+		numWorkers    = 100
+		numOperations = 1000
+		testDuration  = 5 * time.Second
 	)
 
 	mw := NewMultiWriter()
-	
+
 	// Add initial writers - each with separate buffer
 	for i := 0; i < 10; i++ {
 		mw.AddWriter(WrapWriter(&bytes.Buffer{}))
@@ -41,7 +41,7 @@ func TestMultiWriterIntensiveRace(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			data := []byte("intensive race test data")
-			
+
 			for j := 0; j < numOperations; j++ {
 				select {
 				case <-stop:
@@ -51,7 +51,7 @@ func TestMultiWriterIntensiveRace(t *testing.T) {
 					mw.Write(data)
 					mw.Sync()
 				}
-				
+
 				if j%100 == 0 {
 					runtime.Gosched()
 				}
@@ -64,7 +64,7 @@ func TestMultiWriterIntensiveRace(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
+
 			for j := 0; j < numOperations/10; j++ {
 				select {
 				case <-stop:
@@ -73,14 +73,14 @@ func TestMultiWriterIntensiveRace(t *testing.T) {
 					// Add writer - each goroutine gets its OWN buffer to avoid races
 					buf := WrapWriter(&bytes.Buffer{})
 					mw.AddWriter(buf)
-					
+
 					// Immediately try to write (potential race)
 					mw.Write([]byte("race test"))
-					
+
 					// Remove writer
 					mw.RemoveWriter(buf)
 				}
-				
+
 				if j%10 == 0 {
 					runtime.Gosched()
 				}
@@ -93,7 +93,7 @@ func TestMultiWriterIntensiveRace(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
+
 			for j := 0; j < numOperations; j++ {
 				select {
 				case <-stop:
@@ -103,7 +103,7 @@ func TestMultiWriterIntensiveRace(t *testing.T) {
 					_ = mw.Count()
 					_ = mw.Writers()
 				}
-				
+
 				if j%100 == 0 {
 					runtime.Gosched()
 				}
@@ -116,7 +116,7 @@ func TestMultiWriterIntensiveRace(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
+
 			for j := 0; j < numOperations; j++ {
 				select {
 				case <-stop:
@@ -137,7 +137,7 @@ func TestMultiWriterIntensiveRace(t *testing.T) {
 						}
 					}
 				}
-				
+
 				if j%50 == 0 {
 					runtime.Gosched()
 				}
@@ -168,40 +168,40 @@ func TestMultiWriterIntensiveRace(t *testing.T) {
 // TestMultiWriterAtomicPointerRace specifically tests the unsafe.Pointer race
 func TestMultiWriterAtomicPointerRace(t *testing.T) {
 	const iterations = 10000
-	
+
 	for iteration := 0; iteration < 100; iteration++ {
 		mw := NewMultiWriter()
-		
+
 		var wg sync.WaitGroup
-		
+
 		// Writer goroutine - constantly writing
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			data := []byte("atomic pointer race test")
-			
+
 			for i := 0; i < iterations; i++ {
 				// This calls getWriters() which does atomic.LoadPointer
 				mw.Write(data)
 			}
 		}()
-		
+
 		// Modifier goroutine - constantly changing writers
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			
+
 			for i := 0; i < iterations/10; i++ {
 				buf := WrapWriter(&bytes.Buffer{})
-				
+
 				// This calls setWriters() which does atomic.StorePointer
 				mw.AddWriter(buf)
-				
+
 				// This could create a race with the Write() above
 				mw.RemoveWriter(buf)
 			}
 		}()
-		
+
 		wg.Wait()
 	}
 }
@@ -209,20 +209,20 @@ func TestMultiWriterAtomicPointerRace(t *testing.T) {
 // TestMultiWriterSliceValidityRace tests if slice remains valid during pointer updates
 func TestMultiWriterSliceValidityRace(t *testing.T) {
 	mw := NewMultiWriter()
-	
+
 	// Add some initial writers
 	for i := 0; i < 5; i++ {
 		mw.AddWriter(WrapWriter(&bytes.Buffer{}))
 	}
-	
+
 	var wg sync.WaitGroup
 	var raceDetected bool
-	
+
 	// Goroutine that gets slice and tries to use it
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		
+
 		for i := 0; i < 50000; i++ {
 			func() {
 				defer func() {
@@ -232,10 +232,10 @@ func TestMultiWriterSliceValidityRace(t *testing.T) {
 						t.Logf("Panic detected (possible race): %v", r)
 					}
 				}()
-				
+
 				// Get the slice
 				writers := mw.getWriters()
-				
+
 				// Try to use it - this could panic if the slice was invalidated
 				// by concurrent modification
 				for _, w := range writers {
@@ -244,33 +244,33 @@ func TestMultiWriterSliceValidityRace(t *testing.T) {
 					}
 				}
 			}()
-			
+
 			if i%1000 == 0 {
 				runtime.Gosched()
 			}
 		}
 	}()
-	
+
 	// Goroutine that constantly modifies the writers
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		
+
 		for i := 0; i < 5000; i++ {
 			buf := WrapWriter(&bytes.Buffer{})
-			
+
 			// Add and immediately remove - this updates the atomic pointer
 			mw.AddWriter(buf)
 			mw.RemoveWriter(buf)
-			
+
 			if i%100 == 0 {
 				runtime.Gosched()
 			}
 		}
 	}()
-	
+
 	wg.Wait()
-	
+
 	if raceDetected {
 		t.Log("Race condition detected - this is expected and shows the issue")
 	}

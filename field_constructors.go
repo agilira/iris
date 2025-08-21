@@ -185,3 +185,22 @@ func Binary(key string, value []byte) Field {
 func Any(key string, value interface{}) Field {
 	return Field{Key: key, Type: AnyType, Any: value}
 }
+
+// Secret creates a field for sensitive data that will be automatically redacted
+// This is a CRITICAL SECURITY feature for preventing data leakage in logs
+func Secret(key, value string) Field {
+	return Field{
+		Key:    key,
+		Type:   SecretType,
+		String: value, // Store the actual value internally
+	}
+}
+
+// SecretAny creates a secret field for any sensitive data type
+func SecretAny(key string, value interface{}) Field {
+	return Field{
+		Key:  key,
+		Type: SecretType,
+		Any:  value, // Store the actual value internally
+	}
+}

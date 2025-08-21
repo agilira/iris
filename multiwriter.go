@@ -73,10 +73,10 @@ func (mw *MultiWriter) Write(p []byte) (n int, err error) {
 	// each complete Write() operation is atomic across all writers
 	mw.mu.Lock()
 	defer mw.mu.Unlock()
-	
+
 	// Re-get writers inside lock to ensure consistency
 	writers = mw.getWriters()
-	
+
 	var firstErr error
 	for i, w := range writers {
 		nn, werr := w.Write(p)

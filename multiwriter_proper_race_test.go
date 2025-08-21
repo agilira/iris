@@ -1,6 +1,6 @@
 // multiwriter_proper_race_test.go: Fixed race condition tests for MultiWriter
 // Copyright (c) 2025 AGILira
-// Series: an AGILira fragment  
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -19,13 +19,13 @@ func TestMultiWriterProperRaceTest(t *testing.T) {
 	}
 
 	const (
-		numWorkers     = 50
-		numOperations  = 500
-		testDuration   = 3 * time.Second
+		numWorkers    = 50
+		numOperations = 500
+		testDuration  = 3 * time.Second
 	)
 
 	mw := NewMultiWriter()
-	
+
 	// NO initial shared writers - each goroutine will create its own
 
 	var wg sync.WaitGroup
@@ -36,14 +36,14 @@ func TestMultiWriterProperRaceTest(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
+
 			// Each worker gets its OWN buffer that NO other goroutine touches
 			myBuffer := WrapWriter(&bytes.Buffer{})
 			mw.AddWriter(myBuffer)
 			defer mw.RemoveWriter(myBuffer) // Clean up our own buffer
-			
+
 			data := []byte("worker exclusive buffer test data")
-			
+
 			for j := 0; j < numOperations; j++ {
 				select {
 				case <-stop:
@@ -63,7 +63,7 @@ func TestMultiWriterProperRaceTest(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
+
 			for j := 0; j < numOperations/10; j++ {
 				select {
 				case <-stop:
@@ -72,10 +72,10 @@ func TestMultiWriterProperRaceTest(t *testing.T) {
 					// Create temporary buffer just for this operation
 					tempBuf := WrapWriter(&bytes.Buffer{})
 					mw.AddWriter(tempBuf)
-					
+
 					// Write to all writers (including the temporary one)
 					mw.Write([]byte("temp buffer test"))
-					
+
 					// Remove the temporary buffer
 					mw.RemoveWriter(tempBuf)
 				}
@@ -88,7 +88,7 @@ func TestMultiWriterProperRaceTest(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
+
 			for j := 0; j < numOperations; j++ {
 				select {
 				case <-stop:
@@ -107,12 +107,12 @@ func TestMultiWriterProperRaceTest(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
+
 			// Each mixed worker also gets its own permanent buffer
 			myBuffer := WrapWriter(&bytes.Buffer{})
 			mw.AddWriter(myBuffer)
 			defer mw.RemoveWriter(myBuffer)
-			
+
 			for j := 0; j < numOperations; j++ {
 				select {
 				case <-stop:
@@ -159,47 +159,47 @@ func TestMultiWriterProperRaceTest(t *testing.T) {
 // TestMultiWriterAtomicOperationsRace tests atomic pointer operations specifically
 func TestMultiWriterAtomicOperationsRace(t *testing.T) {
 	const iterations = 5000
-	
+
 	for iteration := 0; iteration < 50; iteration++ {
 		mw := NewMultiWriter()
-		
+
 		var wg sync.WaitGroup
-		
+
 		// Writer goroutine - constantly writing with NO shared buffers
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			
+
 			// Create our own buffer that nobody else touches
 			myBuffer := WrapWriter(&bytes.Buffer{})
 			mw.AddWriter(myBuffer)
 			defer mw.RemoveWriter(myBuffer)
-			
+
 			data := []byte("atomic pointer race test")
-			
+
 			for i := 0; i < iterations; i++ {
 				// This calls getWriters() which does atomic.LoadPointer
 				mw.Write(data)
 			}
 		}()
-		
+
 		// Modifier goroutine - constantly changing writers list
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			
+
 			for i := 0; i < iterations/10; i++ {
 				// Each add/remove creates a NEW buffer that's not shared
 				buf := WrapWriter(&bytes.Buffer{})
-				
+
 				// This calls setWriters() which does atomic.StorePointer
 				mw.AddWriter(buf)
-				
+
 				// This could create a race with the Write() above
 				mw.RemoveWriter(buf)
 			}
 		}()
-		
+
 		wg.Wait()
 	}
 }
@@ -211,23 +211,23 @@ func TestMultiWriterHighContentionRace(t *testing.T) {
 	}
 
 	mw := NewMultiWriter()
-	
+
 	const numGoroutines = 100
 	const numIterations = 1000
-	
+
 	var wg sync.WaitGroup
-	
+
 	// Each goroutine performs the same mix of operations but with its own resources
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
+
 			// Each goroutine gets its own buffer
 			myBuffer := WrapWriter(&bytes.Buffer{})
 			mw.AddWriter(myBuffer)
 			defer mw.RemoveWriter(myBuffer)
-			
+
 			for j := 0; j < numIterations; j++ {
 				switch j % 5 {
 				case 0:
@@ -251,9 +251,9 @@ func TestMultiWriterHighContentionRace(t *testing.T) {
 			}
 		}(i)
 	}
-	
+
 	wg.Wait()
-	
+
 	// Verify still functional
 	if mw.Count() < 0 {
 		t.Error("MultiWriter in invalid state after high contention test")
