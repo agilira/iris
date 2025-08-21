@@ -19,7 +19,7 @@ func TestCallerInfo(t *testing.T) {
 		Writer:       writer,
 		Format:       JSONFormat,
 		EnableCaller: true,
-		CallerSkip:   3, // Skip: runtime.Caller, getCaller, log
+		CallerSkip:   4, // Skip: runtime.Caller, getCaller, captureContext, log
 		BufferSize:   1024,
 		BatchSize:    1,
 	}
@@ -105,7 +105,7 @@ func TestConsoleCallerInfo(t *testing.T) {
 		Writer:       writer,
 		Format:       ConsoleFormat,
 		EnableCaller: true,
-		CallerSkip:   3,
+		CallerSkip:   4, // Skip: runtime.Caller, getCaller, captureContext, log
 		BufferSize:   1024,
 		BatchSize:    1,
 	}
