@@ -7,135 +7,22 @@
 package iris
 
 import (
-	"runtime"
 	"sync"
 	"time"
 	"unsafe"
 )
 
-// LazyCaller defers caller computation until needed (like Zap)
-type LazyCaller struct {
-	skip     int
-	computed bool
-	mu       sync.RWMutex
-	file     string
-	line     int
-	function string
-}
+//
+// NOTE: LazyCaller and LazyCallerPool moved to binary_caller.go
+//
 
-// NewLazyCaller creates a lazy caller that computes on demand
-func NewLazyCaller(skip int) *LazyCaller {
-	return &LazyCaller{
-		skip: skip,
-	}
-}
+//
+// NOTE: BinaryField, BinaryEntry, BinaryContext moved to binary_types.go
+//
 
-// File returns the file (computed once)
-func (lc *LazyCaller) File() string {
-	lc.compute()
-	lc.mu.RLock()
-	defer lc.mu.RUnlock()
-	return lc.file
-}
-
-// Line returns the line number (computed once)
-func (lc *LazyCaller) Line() int {
-	lc.compute()
-	lc.mu.RLock()
-	defer lc.mu.RUnlock()
-	return lc.line
-}
-
-// Function returns the function name (computed once)
-func (lc *LazyCaller) Function() string {
-	lc.compute()
-	lc.mu.RLock()
-	defer lc.mu.RUnlock()
-	return lc.function
-}
-
-// compute does the expensive runtime.Caller once and caches
-func (lc *LazyCaller) compute() {
-	lc.mu.RLock()
-	if lc.computed {
-		lc.mu.RUnlock()
-		return
-	}
-	lc.mu.RUnlock()
-
-	lc.mu.Lock()
-	defer lc.mu.Unlock()
-
-	// Double-check pattern
-	if lc.computed {
-		return
-	}
-
-	pc, file, line, ok := runtime.Caller(lc.skip)
-	if ok {
-		lc.file = file
-		lc.line = line
-
-		if fn := runtime.FuncForPC(pc); fn != nil {
-			lc.function = fn.Name()
-		}
-	}
-
-	lc.computed = true
-}
-
-// LazyCallerPool manages lazy caller reuse
-type LazyCallerPool struct {
-	pool sync.Pool
-}
-
-// NewLazyCallerPool creates a pool of lazy callers
-func NewLazyCallerPool() *LazyCallerPool {
-	return &LazyCallerPool{
-		pool: sync.Pool{
-			New: func() interface{} {
-				return &LazyCaller{}
-			},
-		},
-	}
-}
-
-// GetLazyCaller gets a lazy caller from pool
-func (lcp *LazyCallerPool) GetLazyCaller(skip int) *LazyCaller {
-	caller := lcp.pool.Get().(*LazyCaller)
-	caller.skip = skip
-	caller.computed = false
-	caller.file = ""
-	caller.line = 0
-	caller.function = ""
-	return caller
-}
-
-// ReleaseLazyCaller returns lazy caller to pool
-func (lcp *LazyCallerPool) ReleaseLazyCaller(caller *LazyCaller) {
-	lcp.pool.Put(caller)
-}
-
-// BinaryField represents a field in pure binary format (ULTRA-LIGHTWEIGHT)
-type BinaryField struct {
-	KeyPtr uintptr // Key pointer (zero-copy)
-	KeyLen uint16  // Key length
-	Type   uint8   // Field type (1 byte)
-	_      uint8   // Padding for alignment
-	Data   uint64  // Union data: int64, bool, or string ptr+len
-}
-
-// BinaryEntry represents a complete log entry in binary format
-type BinaryEntry struct {
-	Timestamp uint64   // Unix nano timestamp
-	Level     uint8    // Log level (1 byte)
-	_         [3]uint8 // Padding for alignment
-	MsgPtr    uintptr  // Message pointer (zero-copy)
-	MsgLen    uint32   // Message length
-	FieldPtr  uintptr  // Fields array pointer
-	FieldCnt  uint16   // Field count
-	_         uint16   // Padding
-}
+//
+// NOTE: BinaryField helper functions moved to binary_helpers.go
+//
 
 // BinaryLogger with zero-allocation binary format (PERFORMANCE OPTIMIZED)
 type BinaryLogger struct {
@@ -172,46 +59,13 @@ func NewBinaryLogger(level Level) *BinaryLogger {
 	return bl
 }
 
-// BinaryContext represents a binary logging context
-type BinaryContext struct {
-	logger *BinaryLogger
-	fields []BinaryField
-}
+//
+// NOTE: BinaryField, BinaryEntry, BinaryContext moved to binary_types.go
+//
 
-// TASK S1: Direct binary field methods (OPTIMAL VERSION)
-// BinaryStr creates binary string field directly (no Field conversion)
-func BinaryStr(key, value string) BinaryField {
-	strPtr := uintptr(unsafe.Pointer(&value))
-	strLen := uint64(len(value))
-	return BinaryField{
-		KeyPtr: uintptr(unsafe.Pointer(&key)),
-		KeyLen: uint16(len(key)),
-		Type:   uint8(StringType),
-		Data:   (uint64(strPtr) << 32) | strLen,
-	}
-} // BinaryInt creates binary int field directly (no Field conversion)
-func BinaryInt(key string, value int64) BinaryField {
-	return BinaryField{
-		KeyPtr: uintptr(unsafe.Pointer(&key)),
-		KeyLen: uint16(len(key)),
-		Type:   uint8(IntType),
-		Data:   uint64(value),
-	}
-}
-
-// BinaryBool creates binary bool field directly (no Field conversion)
-func BinaryBool(key string, value bool) BinaryField {
-	data := uint64(0)
-	if value {
-		data = 1
-	}
-	return BinaryField{
-		KeyPtr: uintptr(unsafe.Pointer(&key)),
-		KeyLen: uint16(len(key)),
-		Type:   uint8(BoolType),
-		Data:   data,
-	}
-}
+//
+// NOTE: BinaryField helper functions moved to binary_helpers.go
+//
 
 // WithBinaryFields creates context with direct binary fields (S1 OPTIMIZATION - OPTIMAL)
 func (bl *BinaryLogger) WithBinaryFields(fields ...BinaryField) *BinaryContext {
