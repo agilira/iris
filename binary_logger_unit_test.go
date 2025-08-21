@@ -1,4 +1,4 @@
-// binary_logger_unit_test.go: Comprehensive safety net for binary logger optimizations
+// binary_logger_unit_test.go: Comprehensive safety net for binary operations
 //
 // Copyright (c) 2025 AGILira
 // Series: an AGILira fragment
@@ -70,34 +70,32 @@ func TestBinaryFieldCreation(t *testing.T) {
 				t.Errorf("Expected type %d, got %d", test.expected, test.field.Type)
 			}
 
-			// Verify key length
-			if test.field.KeyLen != uint16(len(test.key)) {
-				t.Errorf("Expected key length %d, got %d", len(test.key), test.field.KeyLen)
-			}
-
-			// Verify key pointer is not null
-			if test.field.KeyPtr == 0 {
-				t.Error("Key pointer should not be null")
+			// Verify key is accessible via GC-safe method
+			if test.field.GetKey() != test.key {
+				t.Errorf("Expected key %s, got %s", test.key, test.field.GetKey())
 			}
 		})
 	}
 }
 
-// TestBinaryStringFieldData tests string field data encoding
+// TestBinaryStringFieldData tests string field data encoding (GC-SAFE)
 func TestBinaryStringFieldData(t *testing.T) {
 	value := "test_string"
 	field := BinaryStr("key", value)
 
-	// Extract string pointer and length from Data field
-	strPtr := uintptr(field.Data >> 32)
-	strLen := uint64(field.Data & 0xFFFFFFFF)
-
-	if strLen != uint64(len(value)) {
-		t.Errorf("Expected string length %d, got %d", len(value), strLen)
+	// Verify string value via GC-safe method
+	if field.GetString() != value {
+		t.Errorf("Expected string value %s, got %s", value, field.GetString())
 	}
 
-	if strPtr == 0 {
-		t.Error("String pointer should not be null")
+	// Verify key via GC-safe method
+	if field.GetKey() != "key" {
+		t.Errorf("Expected key 'key', got %s", field.GetKey())
+	}
+
+	// Verify type
+	if field.Type != uint8(StringType) {
+		t.Errorf("Expected type %d, got %d", StringType, field.Type)
 	}
 }
 

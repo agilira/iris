@@ -237,8 +237,13 @@ func TestReverseConversion_Single(t *testing.T) {
 				if bf.Type != uint8(StringType) {
 					t.Errorf("Expected StringType, got %d", bf.Type)
 				}
-				if bf.KeyLen != uint16(len("test_key")) {
-					t.Errorf("Expected KeyLen %d, got %d", len("test_key"), bf.KeyLen)
+				// Verify key via GC-safe method
+				if bf.GetKey() != "test_key" {
+					t.Errorf("Expected key 'test_key', got %s", bf.GetKey())
+				}
+				// Verify value via GC-safe method
+				if bf.GetString() != "test_value" {
+					t.Errorf("Expected value 'test_value', got %s", bf.GetString())
 				}
 			},
 		},

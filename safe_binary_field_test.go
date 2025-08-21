@@ -42,8 +42,14 @@ func TestSafeBinaryField_String(t *testing.T) {
 				t.Errorf("Expected StringType (%d), got %d", StringType, bf.Type)
 			}
 
-			if bf.KeyLen != uint16(len(tt.key)) {
-				t.Errorf("Expected KeyLen %d, got %d", len(tt.key), bf.KeyLen)
+			// Verify key via GC-safe method
+			if bf.GetKey() != tt.key {
+				t.Errorf("Expected key %s, got %s", tt.key, bf.GetKey())
+			}
+
+			// Verify value via GC-safe method
+			if bf.GetString() != tt.value {
+				t.Errorf("Expected value %s, got %s", tt.value, bf.GetString())
 			}
 
 			// Test conversion to legacy
@@ -52,7 +58,7 @@ func TestSafeBinaryField_String(t *testing.T) {
 				t.Errorf("Expected StringType after conversion, got %v", field.Type)
 			}
 
-			t.Logf("✅ String field created: key=%s, value=%s, KeyLen=%d", tt.key, tt.value, bf.KeyLen)
+			t.Logf("✅ String field created: key=%s, value=%s", tt.key, tt.value)
 		})
 	}
 }
@@ -81,8 +87,14 @@ func TestSafeBinaryField_Int(t *testing.T) {
 				t.Errorf("Expected IntType (%d), got %d", IntType, bf.Type)
 			}
 
-			if bf.KeyLen != uint16(len(tt.key)) {
-				t.Errorf("Expected KeyLen %d, got %d", len(tt.key), bf.KeyLen)
+			// Verify key via GC-safe method
+			if bf.GetKey() != tt.key {
+				t.Errorf("Expected key %s, got %s", tt.key, bf.GetKey())
+			}
+
+			// Verify value via GC-safe method
+			if bf.GetInt() != int64(tt.value) {
+				t.Errorf("Expected value %d, got %d", tt.value, bf.GetInt())
 			}
 
 			if bf.Data != uint64(tt.value) && tt.value >= 0 {
@@ -127,8 +139,14 @@ func TestSafeBinaryField_Bool(t *testing.T) {
 				t.Errorf("Expected BoolType (%d), got %d", BoolType, bf.Type)
 			}
 
-			if bf.KeyLen != uint16(len(tt.key)) {
-				t.Errorf("Expected KeyLen %d, got %d", len(tt.key), bf.KeyLen)
+			// Verify key via GC-safe method
+			if bf.GetKey() != tt.key {
+				t.Errorf("Expected key %s, got %s", tt.key, bf.GetKey())
+			}
+
+			// Verify value via GC-safe method
+			if bf.GetBool() != tt.value {
+				t.Errorf("Expected value %t, got %t", tt.value, bf.GetBool())
 			}
 
 			expectedData := uint64(0)

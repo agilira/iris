@@ -18,39 +18,19 @@ import (
 // Next-Generation API - Step 1.1 Minimal Implementation
 // =============================================================================
 
-// NextStr creates a safe string field using BinaryField
-// Step 1.1: Minimal implementation for compilation stability
+// NextStr creates a safe string field using BinaryField (GC-SAFE)
 func NextStr(key, value string) BinaryField {
-	return BinaryField{
-		KeyPtr: 0, // Safe: no pointer for now
-		KeyLen: uint16(len(key)),
-		Type:   uint8(StringType),
-		Data:   uint64(len(value)), // Store just the length for now
-	}
+	return BinaryStr(key, value)
 }
 
-// NextInt creates a safe int field using BinaryField
+// NextInt creates a safe int field using BinaryField (GC-SAFE)
 func NextInt(key string, value int) BinaryField {
-	return BinaryField{
-		KeyPtr: 0, // Safe: no pointer for now
-		KeyLen: uint16(len(key)),
-		Type:   uint8(IntType),
-		Data:   uint64(value),
-	}
+	return BinaryInt(key, int64(value))
 }
 
-// NextBool creates a safe bool field using BinaryField
+// NextBool creates a safe bool field using BinaryField (GC-SAFE)
 func NextBool(key string, value bool) BinaryField {
-	var data uint64
-	if value {
-		data = 1
-	}
-	return BinaryField{
-		KeyPtr: 0, // Safe: no pointer for now
-		KeyLen: uint16(len(key)),
-		Type:   uint8(BoolType),
-		Data:   data,
-	}
+	return BinaryBool(key, value)
 }
 
 // ToLegacyFields converts a slice of BinaryField to legacy Field slice
@@ -113,19 +93,20 @@ func toLegacyField(bf BinaryField) Field {
 // Conversion Functions
 // =============================================================================
 
-// =============================================================================
-// Conversion Functions
-// =============================================================================
-
-// ToBinaryField converts a single Field to BinaryField
+// ToBinaryField converts a single Field to BinaryField (GC-SAFE)
 func ToBinaryField(field Field) BinaryField {
-	// For now, we don't store the actual key pointer to avoid unsafe operations
-	// This is a simplified implementation for testing purposes
-	return BinaryField{
-		KeyPtr: 0, // Safe: no pointer storage in current implementation
-		KeyLen: uint16(len(field.Key)),
-		Type:   uint8(field.Type),
-		Data:   uint64(getFieldDataValue(field)),
+	switch field.Type {
+	case StringType:
+		return BinaryStr(field.Key, field.String)
+	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
+		return BinaryInt(field.Key, field.Int)
+	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
+		return BinaryInt(field.Key, field.Int)
+	case BoolType:
+		return BinaryBool(field.Key, field.Bool)
+	default:
+		// For unsupported types, convert to string
+		return BinaryStr(field.Key, "unsupported_type")
 	}
 }
 
@@ -166,31 +147,6 @@ func ToLegacyFieldsWithCapacity(binaryFields []BinaryField, capacity int) []Fiel
 		legacyFields[i] = toLegacyField(bf)
 	}
 	return legacyFields
-}
-
-// getFieldDataValue extracts the data value from a Field for BinaryField conversion
-func getFieldDataValue(field Field) uint64 {
-	switch field.Type {
-	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
-		return uint64(field.Int)
-	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		return uint64(field.Int)
-	case Float64Type, Float32Type:
-		return *(*uint64)(unsafe.Pointer(&field.Float))
-	case BoolType:
-		if field.Bool {
-			return 1
-		}
-		return 0
-	case TimeType, DurationType:
-		return uint64(field.Int)
-	case StringType:
-		return uint64(len(field.String))
-	case BinaryType, ByteStringType:
-		return uint64(len(field.Bytes))
-	default:
-		return 0
-	}
 }
 
 // =============================================================================
