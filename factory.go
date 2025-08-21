@@ -134,13 +134,15 @@ func New(config Config) (*Logger, error) {
 	case FastTextFormat:
 		logger.textEncoder = NewFastTextEncoder()
 		logger.encodeFunc = func(timestamp time.Time, level Level, message string, fields []Field, caller Caller, stackTrace string) []byte {
-			logger.textEncoder.EncodeLogEntry(timestamp, level, message, fields, caller, stackTrace)
+			// MIGRATION: Use direct Field->BinaryField conversion in encoder
+			logger.textEncoder.EncodeLogEntryMigration(timestamp, level, message, fields, caller, stackTrace)
 			return logger.textEncoder.Bytes()
 		}
 	case BinaryFormat:
 		logger.binaryEncoder = NewBinaryEncoder()
 		logger.encodeFunc = func(timestamp time.Time, level Level, message string, fields []Field, caller Caller, stackTrace string) []byte {
-			logger.binaryEncoder.EncodeLogEntry(timestamp, level, message, fields, caller, stackTrace)
+			// MIGRATION: Use direct Field->BinaryField conversion in encoder
+			logger.binaryEncoder.EncodeLogEntryMigration(timestamp, level, message, fields, caller, stackTrace)
 			return logger.binaryEncoder.Bytes()
 		}
 	}

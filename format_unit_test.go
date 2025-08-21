@@ -11,7 +11,7 @@ func TestFastTextEncoder(t *testing.T) {
 	encoder := NewFastTextEncoder()
 	timestamp := time.Date(2025, 8, 21, 10, 30, 45, 123456789, time.UTC)
 
-	encoder.EncodeLogEntry(
+	encoder.EncodeLogEntryMigration(
 		timestamp,
 		InfoLevel,
 		"test message",
@@ -98,7 +98,7 @@ func TestFastTextEncoderFieldTypes(t *testing.T) {
 		Time("time_field", time.Unix(1627890123, 0)),
 	}
 
-	encoder.EncodeLogEntry(
+	encoder.EncodeLogEntryMigration(
 		time.Time{},
 		InfoLevel,
 		"field test",
@@ -198,11 +198,11 @@ func TestBinaryEncoder(t *testing.T) {
 		timestamp,
 		InfoLevel,
 		"binary test",
-		[]Field{
+		ToBinaryFields([]Field{
 			Str("service", "test"),
 			Int("id", 123),
 			Bool("enabled", true),
-		},
+		}),
 		Caller{Valid: true, File: "test.go", Line: 42},
 		"",
 	)
@@ -252,7 +252,7 @@ func TestBinaryEncoderFieldTypes(t *testing.T) {
 		time.Time{},
 		InfoLevel,
 		"test",
-		fields,
+		ToBinaryFields(fields),
 		Caller{},
 		"",
 	)
@@ -354,7 +354,7 @@ func TestEncoderMemoryUsage(t *testing.T) {
 			time.Now(),
 			InfoLevel,
 			"memory test",
-			[]Field{Int("iteration", i)},
+			ToBinaryFields([]Field{Int("iteration", i)}),
 			Caller{},
 			"",
 		)
@@ -364,7 +364,7 @@ func TestEncoderMemoryUsage(t *testing.T) {
 			time.Now(),
 			InfoLevel,
 			"memory test",
-			[]Field{Int("iteration", i)},
+			ToBinaryFields([]Field{Int("iteration", i)}),
 			Caller{},
 			"",
 		)

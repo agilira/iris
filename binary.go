@@ -347,3 +347,77 @@ func (bc *BinaryContext) MemoryFootprint() int {
 func (bc *BinaryContext) GetBinarySize() int {
 	return bc.MemoryFootprint()
 }
+
+// BinaryField accessor methods for ultra-fast format encoding
+//
+// GetKey returns the field key from optimized storage
+func (bf BinaryField) GetKey() string {
+	// SAFETY: Always use migration context for safe access
+	// This ensures memory safety during migration phase
+	if original := getMigrationContext(&bf); original != nil {
+		return original.Key
+	}
+
+	// For native BinaryField without migration context, return empty for safety
+	// TODO: Implement safe pointer access for native BinaryField in future iteration
+	return ""
+}
+
+// GetString returns string value from optimized storage
+func (bf BinaryField) GetString() string {
+	if bf.Type != uint8(StringType) {
+		return ""
+	}
+
+	// SAFETY: Always use migration context for safe access
+	// This ensures memory safety during migration phase
+	if original := getMigrationContext(&bf); original != nil {
+		return original.String
+	}
+
+	// For native BinaryField without migration context, return empty for safety
+	// TODO: Implement safe pointer access for native BinaryField in future iteration
+	return ""
+}
+
+// GetInt returns integer value from optimized storage
+func (bf BinaryField) GetInt() int64 {
+	// SAFETY: Use migration context first for safe access
+	if original := getMigrationContext(&bf); original != nil {
+		return original.Int
+	}
+
+	// For native BinaryField, use direct data access (safe for integers)
+	if bf.Type >= uint8(IntType) && bf.Type <= uint8(Uint8Type) {
+		return int64(bf.Data)
+	}
+	return 0
+}
+
+// GetBool returns boolean value from optimized storage
+func (bf BinaryField) GetBool() bool {
+	// SAFETY: Use migration context first for safe access
+	if original := getMigrationContext(&bf); original != nil {
+		return original.Bool
+	}
+
+	// For native BinaryField, use direct data access (safe for booleans)
+	if bf.Type == uint8(BoolType) {
+		return bf.Data == 1
+	}
+	return false
+}
+
+// GetFloat returns float value from optimized storage
+func (bf BinaryField) GetFloat() float64 {
+	// SAFETY: Use migration context first for safe access
+	if original := getMigrationContext(&bf); original != nil {
+		return original.Float
+	}
+
+	// For native BinaryField, use direct data access (safe for float stored in Data field)
+	if bf.Type == uint8(Float64Type) || bf.Type == uint8(Float32Type) {
+		return *(*float64)(unsafe.Pointer(&bf.Data))
+	}
+	return 0.0
+}

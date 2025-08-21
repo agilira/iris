@@ -8,6 +8,7 @@ package iris
 
 import (
 	"time"
+	"unsafe"
 )
 
 // FieldType represents the type of a field value (optimized enum)
@@ -312,19 +313,38 @@ func toLegacyField(bf BinaryField) Field {
 // =============================================================================
 
 // ToBinaryField converts a single legacy Field to BinaryField
-// Step 1.3: Reverse conversion for migration scenarios
+// Step 1.3: Reverse conversion for migration scenarios (SAFE VERSION)
 func ToBinaryField(field Field) BinaryField {
+	bf := BinaryField{
+		KeyPtr: 0, // Safe: no pointers during migration
+		KeyLen: uint16(len(field.Key)),
+		Type:   uint8(field.Type),
+		Data:   0,
+	}
+
 	switch field.Type {
 	case StringType:
-		return NextStr(field.Key, field.String)
-	case IntType:
-		return NextInt(field.Key, int(field.Int))
+		bf.Data = uint64(len(field.String))
+	case IntType, Int64Type:
+		bf.Data = uint64(field.Int)
 	case BoolType:
-		return NextBool(field.Key, field.Bool)
+		if field.Bool {
+			bf.Data = 1
+		}
+	case Float64Type:
+		bf.Data = *(*uint64)(unsafe.Pointer(&field.Float))
+	case Float32Type:
+		f32 := float32(field.Float)
+		bf.Data = uint64(*(*uint32)(unsafe.Pointer(&f32)))
+	case DurationType, TimeType:
+		bf.Data = uint64(field.Int)
 	default:
-		// Fallback for unknown types - treat as string
-		return NextStr(field.Key, "")
+		bf.Type = uint8(StringType) // Convert unknown types to string
 	}
+
+	// Store original field for safe access during migration
+	storeMigrationContext(&bf, &field)
+	return bf
 }
 
 // ToBinaryFields converts a slice of legacy Fields to BinaryField slice

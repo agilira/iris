@@ -293,7 +293,8 @@ func TestFieldCompatibility(t *testing.T) {
 	encoder := NewFastTextEncoder()
 	for _, field := range fields {
 		encoder.Reset()
-		encoder.appendFieldValueFast(field)
+		// Use migration method for safe Field processing
+		encoder.appendFieldValueFastMigration(field)
 		if len(encoder.Bytes()) == 0 {
 			t.Errorf("Field %s should produce non-empty output", field.Key)
 		}
