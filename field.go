@@ -257,18 +257,36 @@ func NextBool(key string, value bool) BinaryField {
 	}
 }
 
-// ToLegacyFields converts BinaryField slice back to legacy Field slice
-// Step 1.1: Basic conversion for compilation stability
+// ToLegacyFields converts a slice of BinaryField to legacy Field slice
+// Step 1.3: Enhanced batch conversion with pre-allocation optimization
 func ToLegacyFields(binaryFields []BinaryField) []Field {
 	if len(binaryFields) == 0 {
-		return nil
+		return nil // Return nil slice for empty input
 	}
-
-	fields := make([]Field, len(binaryFields))
+	
+	legacyFields := make([]Field, len(binaryFields))
 	for i, bf := range binaryFields {
-		fields[i] = toLegacyField(bf)
+		legacyFields[i] = toLegacyField(bf)
 	}
-	return fields
+	return legacyFields
+}
+
+// ToLegacyFieldsWithCapacity converts with pre-allocated capacity
+// Step 1.3: Memory-efficient conversion for known capacity scenarios
+func ToLegacyFieldsWithCapacity(binaryFields []BinaryField, capacity int) []Field {
+	if len(binaryFields) == 0 {
+		return make([]Field, 0, capacity)
+	}
+	
+	if capacity < len(binaryFields) {
+		capacity = len(binaryFields)
+	}
+	
+	legacyFields := make([]Field, len(binaryFields), capacity)
+	for i, bf := range binaryFields {
+		legacyFields[i] = toLegacyField(bf)
+	}
+	return legacyFields
 }
 
 // toLegacyField converts a single BinaryField back to legacy Field
@@ -287,4 +305,56 @@ func toLegacyField(bf BinaryField) Field {
 	default:
 		return Field{Key: key, Type: StringType, String: "unknown"}
 	}
+}
+
+// =============================================================================
+// Step 1.3: Reverse Conversion (Legacy → BinaryField)
+// =============================================================================
+
+// ToBinaryField converts a single legacy Field to BinaryField
+// Step 1.3: Reverse conversion for migration scenarios
+func ToBinaryField(field Field) BinaryField {
+	switch field.Type {
+	case StringType:
+		return NextStr(field.Key, field.String)
+	case IntType:
+		return NextInt(field.Key, int(field.Int))
+	case BoolType:
+		return NextBool(field.Key, field.Bool)
+	default:
+		// Fallback for unknown types - treat as string
+		return NextStr(field.Key, "")
+	}
+}
+
+// ToBinaryFields converts a slice of legacy Fields to BinaryField slice
+// Step 1.3: Batch reverse conversion
+func ToBinaryFields(legacyFields []Field) []BinaryField {
+	if len(legacyFields) == 0 {
+		return nil
+	}
+	
+	binaryFields := make([]BinaryField, len(legacyFields))
+	for i, field := range legacyFields {
+		binaryFields[i] = ToBinaryField(field)
+	}
+	return binaryFields
+}
+
+// ToBinaryFieldsWithCapacity converts with pre-allocated capacity
+// Step 1.3: Memory-efficient reverse conversion
+func ToBinaryFieldsWithCapacity(legacyFields []Field, capacity int) []BinaryField {
+	if len(legacyFields) == 0 {
+		return make([]BinaryField, 0, capacity)
+	}
+	
+	if capacity < len(legacyFields) {
+		capacity = len(legacyFields)
+	}
+	
+	binaryFields := make([]BinaryField, len(legacyFields), capacity)
+	for i, field := range legacyFields {
+		binaryFields[i] = ToBinaryField(field)
+	}
+	return binaryFields
 }

@@ -36,22 +36,22 @@ func TestSafeBinaryField_String(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test NextStr creation
 			bf := NextStr(tt.key, tt.value)
-			
+
 			// Basic validation
 			if bf.Type != uint8(StringType) {
 				t.Errorf("Expected StringType (%d), got %d", StringType, bf.Type)
 			}
-			
+
 			if bf.KeyLen != uint16(len(tt.key)) {
 				t.Errorf("Expected KeyLen %d, got %d", len(tt.key), bf.KeyLen)
 			}
-			
+
 			// Test conversion to legacy
 			field := toLegacyField(bf)
 			if field.Type != StringType {
 				t.Errorf("Expected StringType after conversion, got %v", field.Type)
 			}
-			
+
 			t.Logf("✅ String field created: key=%s, value=%s, KeyLen=%d", tt.key, tt.value, bf.KeyLen)
 		})
 	}
@@ -68,37 +68,37 @@ func TestSafeBinaryField_Int(t *testing.T) {
 		{"negative", "delta", -100},
 		{"zero", "zero", 0},
 		{"max_int", "max", int(^uint(0) >> 1)},
-		{"min_int", "min", -int(^uint(0) >> 1) - 1},
+		{"min_int", "min", -int(^uint(0)>>1) - 1},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test NextInt creation
 			bf := NextInt(tt.key, tt.value)
-			
+
 			// Basic validation
 			if bf.Type != uint8(IntType) {
 				t.Errorf("Expected IntType (%d), got %d", IntType, bf.Type)
 			}
-			
+
 			if bf.KeyLen != uint16(len(tt.key)) {
 				t.Errorf("Expected KeyLen %d, got %d", len(tt.key), bf.KeyLen)
 			}
-			
+
 			if bf.Data != uint64(tt.value) && tt.value >= 0 {
 				t.Errorf("Expected Data %d, got %d", tt.value, bf.Data)
 			}
-			
+
 			// Test conversion to legacy
 			field := toLegacyField(bf)
 			if field.Type != IntType {
 				t.Errorf("Expected IntType after conversion, got %v", field.Type)
 			}
-			
+
 			if field.Int != int64(tt.value) {
 				t.Errorf("Expected Int %d after conversion, got %d", tt.value, field.Int)
 			}
-			
+
 			t.Logf("✅ Int field created: key=%s, value=%d, Data=%d", tt.key, tt.value, bf.Data)
 		})
 	}
@@ -121,16 +121,16 @@ func TestSafeBinaryField_Bool(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test NextBool creation
 			bf := NextBool(tt.key, tt.value)
-			
+
 			// Basic validation
 			if bf.Type != uint8(BoolType) {
 				t.Errorf("Expected BoolType (%d), got %d", BoolType, bf.Type)
 			}
-			
+
 			if bf.KeyLen != uint16(len(tt.key)) {
 				t.Errorf("Expected KeyLen %d, got %d", len(tt.key), bf.KeyLen)
 			}
-			
+
 			expectedData := uint64(0)
 			if tt.value {
 				expectedData = 1
@@ -138,17 +138,17 @@ func TestSafeBinaryField_Bool(t *testing.T) {
 			if bf.Data != expectedData {
 				t.Errorf("Expected Data %d, got %d", expectedData, bf.Data)
 			}
-			
+
 			// Test conversion to legacy
 			field := toLegacyField(bf)
 			if field.Type != BoolType {
 				t.Errorf("Expected BoolType after conversion, got %v", field.Type)
 			}
-			
+
 			if field.Bool != tt.value {
 				t.Errorf("Expected Bool %v after conversion, got %v", tt.value, field.Bool)
 			}
-			
+
 			t.Logf("✅ Bool field created: key=%s, value=%v, Data=%d", tt.key, tt.value, bf.Data)
 		})
 	}
@@ -167,21 +167,21 @@ func TestSafeBinaryField_ConversionRoundTrip(t *testing.T) {
 		t.Run(string(rune('A'+i)), func(t *testing.T) {
 			// Convert to legacy
 			legacyField := toLegacyField(bf)
-			
+
 			// Convert back to binary (when we implement it)
 			binaryFields := []BinaryField{bf}
 			legacyFields := ToLegacyFields(binaryFields)
-			
+
 			// Validate
 			if len(legacyFields) != 1 {
 				t.Fatalf("Expected 1 legacy field, got %d", len(legacyFields))
 			}
-			
+
 			if legacyFields[0].Type != legacyField.Type {
-				t.Errorf("Type mismatch after round trip: expected %v, got %v", 
+				t.Errorf("Type mismatch after round trip: expected %v, got %v",
 					legacyField.Type, legacyFields[0].Type)
 			}
-			
+
 			t.Logf("✅ Round trip successful for type %v", legacyField.Type)
 		})
 	}
@@ -191,7 +191,7 @@ func TestSafeBinaryField_ConversionRoundTrip(t *testing.T) {
 func TestSafeBinaryField_MemorySafety(t *testing.T) {
 	// Test multiple allocations to ensure no memory corruption
 	fields := make([]BinaryField, 1000)
-	
+
 	for i := 0; i < 1000; i++ {
 		switch i % 3 {
 		case 0:
@@ -202,13 +202,13 @@ func TestSafeBinaryField_MemorySafety(t *testing.T) {
 			fields[i] = NextBool("key", i%2 == 0)
 		}
 	}
-	
+
 	// Convert all to legacy (this should not crash)
 	legacyFields := ToLegacyFields(fields)
 	if len(legacyFields) != 1000 {
 		t.Errorf("Expected 1000 legacy fields, got %d", len(legacyFields))
 	}
-	
+
 	// Validate random samples
 	for i := 0; i < 10; i++ {
 		idx := i * 100
@@ -216,7 +216,7 @@ func TestSafeBinaryField_MemorySafety(t *testing.T) {
 			t.Errorf("Expected converted_key, got %s", legacyFields[idx].Key)
 		}
 	}
-	
+
 	t.Logf("✅ Memory safety test passed: 1000 fields processed without crashes")
 }
 
@@ -224,9 +224,9 @@ func TestSafeBinaryField_MemorySafety(t *testing.T) {
 func TestSafeBinaryField_ConcurrentAccess(t *testing.T) {
 	const numGoroutines = 100
 	const numOperations = 100
-	
+
 	results := make(chan bool, numGoroutines)
-	
+
 	for g := 0; g < numGoroutines; g++ {
 		go func(goroutineID int) {
 			defer func() {
@@ -237,14 +237,14 @@ func TestSafeBinaryField_ConcurrentAccess(t *testing.T) {
 				}
 				results <- true
 			}()
-			
+
 			for i := 0; i < numOperations; i++ {
 				bf := NextStr("concurrent", "test")
 				_ = toLegacyField(bf)
 			}
 		}(g)
 	}
-	
+
 	// Wait for all goroutines
 	passed := 0
 	for i := 0; i < numGoroutines; i++ {
@@ -252,11 +252,11 @@ func TestSafeBinaryField_ConcurrentAccess(t *testing.T) {
 			passed++
 		}
 	}
-	
+
 	if passed != numGoroutines {
 		t.Errorf("Only %d/%d goroutines completed successfully", passed, numGoroutines)
 	}
-	
-	t.Logf("✅ Concurrent access test passed: %d goroutines, %d operations each", 
+
+	t.Logf("✅ Concurrent access test passed: %d goroutines, %d operations each",
 		numGoroutines, numOperations)
 }

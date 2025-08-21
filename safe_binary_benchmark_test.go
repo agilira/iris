@@ -24,14 +24,14 @@ func BenchmarkFieldCreation_Legacy(b *testing.B) {
 			_ = Str("benchmark_key", "benchmark_value")
 		}
 	})
-	
+
 	b.Run("Int", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			_ = Int("benchmark_key", 12345)
 		}
 	})
-	
+
 	b.Run("Bool", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -48,14 +48,14 @@ func BenchmarkFieldCreation_NextGen(b *testing.B) {
 			_ = NextStr("benchmark_key", "benchmark_value")
 		}
 	})
-	
+
 	b.Run("NextInt", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			_ = NextInt("benchmark_key", 12345)
 		}
 	})
-	
+
 	b.Run("NextBool", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -103,7 +103,7 @@ func BenchmarkConversion_ToLegacy(b *testing.B) {
 		NextStr("email", "john@example.com"),
 		NextInt("score", 95),
 	}
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -114,7 +114,7 @@ func BenchmarkConversion_ToLegacy(b *testing.B) {
 // BenchmarkConversion_SingleField benchmarks single field conversion
 func BenchmarkConversion_SingleField(b *testing.B) {
 	bf := NextStr("test_key", "test_value")
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -141,7 +141,7 @@ func BenchmarkMemoryFootprint(b *testing.B) {
 			_ = fields
 		}
 	})
-	
+
 	b.Run("NextGen_1000_Fields", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -171,7 +171,7 @@ func BenchmarkConcurrentFieldCreation(b *testing.B) {
 			}
 		})
 	})
-	
+
 	b.Run("NextGen_Concurrent", func(b *testing.B) {
 		b.ReportAllocs()
 		b.RunParallel(func(pb *testing.PB) {
@@ -193,7 +193,7 @@ func BenchmarkStringFieldVariations(b *testing.B) {
 		{"medium", "medium_key_name", "medium_length_value_content"},
 		{"large", "very_long_key_name_for_testing_purposes", "very_long_value_content_that_represents_real_world_usage_scenarios"},
 	}
-	
+
 	for _, tc := range testCases {
 		b.Run("Legacy_"+tc.name, func(b *testing.B) {
 			b.ReportAllocs()
@@ -201,7 +201,7 @@ func BenchmarkStringFieldVariations(b *testing.B) {
 				_ = Str(tc.key, tc.value)
 			}
 		})
-		
+
 		b.Run("NextGen_"+tc.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
@@ -223,7 +223,7 @@ func BenchmarkIntFieldVariations(b *testing.B) {
 		{"large_positive", 1234567890},
 		{"large_negative", -1234567890},
 	}
-	
+
 	for _, tc := range testCases {
 		b.Run("Legacy_"+tc.name, func(b *testing.B) {
 			b.ReportAllocs()
@@ -231,7 +231,7 @@ func BenchmarkIntFieldVariations(b *testing.B) {
 				_ = Int("test_key", tc.value)
 			}
 		})
-		
+
 		b.Run("NextGen_"+tc.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
@@ -254,7 +254,7 @@ func BenchmarkFullPipeline(b *testing.B) {
 			_ = fields
 		}
 	})
-	
+
 	b.Run("NextGen_Pipeline_With_Conversion", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -267,7 +267,7 @@ func BenchmarkFullPipeline(b *testing.B) {
 			_ = fields
 		}
 	})
-	
+
 	b.Run("NextGen_Pipeline_Binary_Only", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
