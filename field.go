@@ -86,6 +86,7 @@ func toLegacyField(bf BinaryField) Field {
 			field.Type = StringType
 		}
 	case Float64Type, Float32Type:
+		// #nosec G103 - unsafe.Pointer required for zero-allocation float conversion from BinaryField
 		field.Float = *(*float64)(unsafe.Pointer(&bf.Data))
 	case BoolType:
 		field.Bool = bf.Data != 0

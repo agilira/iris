@@ -34,6 +34,7 @@ func NewMultiWriter(writers ...WriteSyncer) *MultiWriter {
 	}
 
 	mw := &MultiWriter{}
+	// #nosec G103 - unsafe.Pointer required for lock-free atomic slice initialization
 	atomic.StorePointer(&mw.writers, unsafe.Pointer(&writersCopy))
 	return mw
 }
@@ -45,6 +46,7 @@ func (mw *MultiWriter) getWriters() []WriteSyncer {
 
 // setWriters sets the writers slice using atomic store
 func (mw *MultiWriter) setWriters(writers []WriteSyncer) {
+	// #nosec G103 - unsafe.Pointer required for lock-free atomic slice operations
 	atomic.StorePointer(&mw.writers, unsafe.Pointer(&writers))
 }
 

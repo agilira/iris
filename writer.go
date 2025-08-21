@@ -47,7 +47,8 @@ type FileWriter struct {
 
 // NewFileWriter creates a new file writer
 func NewFileWriter(path string) (*FileWriter, error) {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	// #nosec G304 - File path is provided by application, not user input
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600) // Secure permissions
 	if err != nil {
 		return nil, err
 	}

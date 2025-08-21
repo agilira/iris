@@ -24,6 +24,7 @@ func (l *Logger) Close() {
 
 	// Close writer if it supports closing
 	if closer, ok := l.writer.(interface{ Close() error }); ok {
+		// #nosec G104 - Close errors are intentionally ignored in logger cleanup
 		closer.Close()
 	}
 }

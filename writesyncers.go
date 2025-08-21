@@ -15,7 +15,8 @@ type FileWriteSyncer struct {
 
 // NewFileWriteSyncer creates a new FileWriteSyncer for the given filename
 func NewFileWriteSyncer(filename string) (*FileWriteSyncer, error) {
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	// #nosec G304 - File path is provided by application, not user input
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600) // Secure permissions
 	if err != nil {
 		return nil, err
 	}

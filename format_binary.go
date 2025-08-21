@@ -159,6 +159,7 @@ func (e *BinaryEncoder) encodeBinaryFieldFast(field BinaryField) {
 
 	case uint8(Float64Type):
 		// OPTIMIZED: Float64 using unsafe for speed
+		// #nosec G103 - unsafe.Pointer required for zero-allocation float64 binary encoding
 		val := *(*uint64)(unsafe.Pointer(&field.Data))
 		floatBytes := [8]byte{
 			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
@@ -169,6 +170,7 @@ func (e *BinaryEncoder) encodeBinaryFieldFast(field BinaryField) {
 	case uint8(Float32Type):
 		// 4 bytes for float32
 		floatVal := float32(field.GetFloat())
+		// #nosec G103 - unsafe.Pointer required for zero-allocation float32 binary encoding
 		val := *(*uint32)(unsafe.Pointer(&floatVal))
 		floatBytes := [4]byte{
 			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
@@ -336,6 +338,7 @@ func (e *BinaryEncoder) encodeBinaryFieldFastMigration(field Field) {
 
 	case Float64Type:
 		// OPTIMIZED: Float64 using unsafe for speed
+		// #nosec G103 - unsafe.Pointer required for zero-allocation float64 binary encoding
 		val := *(*uint64)(unsafe.Pointer(&field.Float))
 		floatBytes := [8]byte{
 			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
@@ -345,6 +348,7 @@ func (e *BinaryEncoder) encodeBinaryFieldFastMigration(field Field) {
 
 	case Float32Type:
 		// 4 bytes for float32
+		// #nosec G103 - unsafe.Pointer required for zero-allocation float32 binary encoding
 		val := *(*uint32)(unsafe.Pointer(&field.Float))
 		floatBytes := [4]byte{
 			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),

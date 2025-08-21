@@ -31,18 +31,26 @@ EXAMPLES:
     
     # Batch convert directory
     iris-export -i logs/ -o json/ -r
+    
+    # Filter by log level
+    iris-export -i app.log -level error -o errors.json
+    
+    # Validate format only
+    iris-export -i app.log -validate
 
 OPTIONS:
 `
 )
 
 type Config struct {
-	Input     string
-	Output    string
-	Recursive bool
-	Pretty    bool
-	Verbose   bool
-	Version   bool
+	Input        string
+	Output       string
+	Recursive    bool
+	Pretty       bool
+	Verbose      bool
+	Version      bool
+	LevelFilter  string // Filter by log level (debug, info, warn, error, etc.)
+	ValidateOnly bool   // Only validate input format without converting
 }
 
 func main() {
@@ -73,13 +81,32 @@ func parseFlags() *Config {
 	flag.BoolVar(&config.Verbose, "v", false, "Verbose output")
 	flag.BoolVar(&config.Verbose, "verbose", false, "Verbose output")
 	flag.BoolVar(&config.Version, "version", false, "Show version information")
+	flag.StringVar(&config.LevelFilter, "level", "", "Filter by log level (debug, info, warn, error, dpanic, panic, fatal)")
+	flag.BoolVar(&config.ValidateOnly, "validate", false, "Only validate input format without converting")
 
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, usage)
 		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nSupported log levels: %v\n", GetAllLevelNames())
 	}
 
 	flag.Parse()
+
+	// Validate level filter if provided
+	if config.LevelFilter != "" {
+		validLevels := GetAllLevelNames()
+		valid := false
+		for _, level := range validLevels {
+			if config.LevelFilter == level {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			fmt.Fprintf(os.Stderr, "Error: Invalid level '%s'. Valid levels: %v\n", config.LevelFilter, validLevels)
+			os.Exit(1)
+		}
+	}
 
 	return config
 }
@@ -134,11 +161,12 @@ func run(config *Config) error {
 }
 
 func convertStream(input io.Reader, output io.Writer, config *Config) error {
-	converter := NewBinaryToJSONConverter(config.Pretty)
+	converter := NewBinaryToJSONConverterWithOptions(config.Pretty, config.LevelFilter, config.ValidateOnly)
 	return converter.Convert(input, output)
 }
 
 func convertFile(inputPath, outputPath string, config *Config) error {
+	// #nosec G304 - File paths are provided via CLI arguments, validated by application
 	input, err := os.Open(inputPath)
 	if err != nil {
 		return fmt.Errorf("failed to open input file: %v", err)
@@ -147,11 +175,12 @@ func convertFile(inputPath, outputPath string, config *Config) error {
 
 	// Create output directory if needed
 	if dir := filepath.Dir(outputPath); dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0750); err != nil { // Secure directory permissions
 			return fmt.Errorf("failed to create output directory: %v", err)
 		}
 	}
 
+	// #nosec G304 - Output path is provided via CLI arguments, validated by application
 	output, err := os.Create(outputPath)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %v", err)

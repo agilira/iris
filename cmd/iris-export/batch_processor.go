@@ -43,7 +43,7 @@ type BatchStats struct {
 // NewBatchProcessor creates a new high-performance batch processor
 func NewBatchProcessor(config *Config) (*BatchProcessor, error) {
 	return &BatchProcessor{
-		converter: NewBinaryToJSONConverter(config.Pretty),
+		converter: NewBinaryToJSONConverterWithOptions(config.Pretty, config.LevelFilter, config.ValidateOnly),
 		config:    config,
 		stats: &BatchStats{
 			StartTime: time.Now(),
@@ -60,7 +60,7 @@ func (bp *BatchProcessor) ProcessDirectory(inputDir, outputDir string) error {
 	}
 
 	// Ensure output directory exists
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0750); err != nil { // Secure directory permissions
 		return fmt.Errorf("failed to create output directory: %v", err)
 	}
 
@@ -173,7 +173,7 @@ func (bp *BatchProcessor) convertSingleFile(task *FileTask) error {
 
 	// Create output directory if needed
 	if dir := filepath.Dir(task.OutputPath); dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0750); err != nil { // Secure directory permissions
 			return fmt.Errorf("failed to create output directory: %v", err)
 		}
 	}
