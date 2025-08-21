@@ -55,7 +55,13 @@ func (e *FastTextEncoder) EncodeLogEntry(timestamp time.Time, level Level, messa
 // prepareBuffer calculates required capacity and ensures buffer size
 func (e *FastTextEncoder) prepareBuffer(timestamp time.Time, level Level, message string, fields []BinaryField, caller Caller, stackTrace string) {
 	// OPTIMIZATION 1: Pre-calculate required capacity to minimize reallocations
-	estimatedSize := len(message) + 50 // base size for timestamp + level
+	estimatedSize := len(message)
+	if !timestamp.IsZero() {
+		estimatedSize += 13 // timestamp format "15:04:05.000 " = 13 chars
+	}
+	// All levels are formatted to 6 chars (including space)
+	_ = level // acknowledge parameter usage - all levels are 6 chars
+	estimatedSize += 6
 	for _, field := range fields {
 		estimatedSize += len(field.GetKey()) + 20 // field + estimated value
 	}
@@ -170,7 +176,13 @@ func (e *FastTextEncoder) EncodeLogEntryMigration(timestamp time.Time, level Lev
 // prepareBufferForMigration calculates required capacity for Field slice
 func (e *FastTextEncoder) prepareBufferForMigration(timestamp time.Time, level Level, message string, fields []Field, caller Caller, stackTrace string) {
 	// OPTIMIZATION 1: Pre-calculate required capacity to minimize reallocations
-	estimatedSize := len(message) + 50 // base size for timestamp + level
+	estimatedSize := len(message)
+	if !timestamp.IsZero() {
+		estimatedSize += 13 // timestamp format "15:04:05.000 " = 13 chars
+	}
+	// All levels are formatted to 6 chars (including space)
+	_ = level // acknowledge parameter usage - all levels are 6 chars
+	estimatedSize += 6
 	for _, field := range fields {
 		estimatedSize += len(field.Key) + 20 // field + estimated value
 	}
@@ -319,7 +331,7 @@ func (e *FastTextEncoder) appendFloat64Value(f float64) {
 	e.buf = strconv.AppendFloat(e.buf, f, 'f', -1, 64)
 }
 
-// appendFloat32Value appends 32-bit float value  
+// appendFloat32Value appends 32-bit float value
 func (e *FastTextEncoder) appendFloat32Value(f float64) {
 	e.buf = strconv.AppendFloat(e.buf, f, 'f', -1, 32)
 }
