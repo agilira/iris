@@ -114,10 +114,7 @@ func parseFlags() *Config {
 func run(config *Config) error {
 	// Handle stdin/stdout case
 	if config.Input == "" || config.Input == "-" {
-		if config.Verbose {
-			fmt.Fprintf(os.Stderr, "Reading from stdin...\n")
-		}
-		return convertStream(os.Stdin, os.Stdout, config)
+		return handleStdinInput(config)
 	}
 
 	// Check if input exists
@@ -128,36 +125,55 @@ func run(config *Config) error {
 
 	// Handle directory case
 	if info.IsDir() {
-		if config.Output == "" || config.Output == "-" {
-			return fmt.Errorf("directory input requires output directory")
-		}
-
-		// Use Zetes batch processor for directory conversion
-		batchProcessor, err := NewBatchProcessor(config)
-		if err != nil {
-			return fmt.Errorf("failed to create batch processor: %v", err)
-		}
-
-		return batchProcessor.ProcessDirectory(config.Input, config.Output)
+		return handleDirectoryInput(config)
 	}
 
 	// Handle single file case
+	return handleFileInput(config)
+}
+
+func handleStdinInput(config *Config) error {
+	if config.Verbose {
+		fmt.Fprintf(os.Stderr, "Reading from stdin...\n")
+	}
+	return convertStream(os.Stdin, os.Stdout, config)
+}
+
+func handleDirectoryInput(config *Config) error {
+	if config.Output == "" || config.Output == "-" {
+		return fmt.Errorf("directory input requires output directory")
+	}
+
+	// Use Zetes batch processor for directory conversion
+	batchProcessor, err := NewBatchProcessor(config)
+	if err != nil {
+		return fmt.Errorf("failed to create batch processor: %v", err)
+	}
+
+	return batchProcessor.ProcessDirectory(config.Input, config.Output)
+}
+
+func handleFileInput(config *Config) error {
 	if config.Output == "" || config.Output == "-" {
 		// Single file to stdout
-		input, err := os.Open(config.Input)
-		if err != nil {
-			return fmt.Errorf("failed to open input file: %v", err)
-		}
-		defer input.Close()
-
-		if config.Verbose {
-			fmt.Fprintf(os.Stderr, "Converting %s to stdout...\n", config.Input)
-		}
-		return convertStream(input, os.Stdout, config)
+		return handleFileToStdout(config)
 	}
 
 	// Single file to file
 	return convertFile(config.Input, config.Output, config)
+}
+
+func handleFileToStdout(config *Config) error {
+	input, err := os.Open(config.Input)
+	if err != nil {
+		return fmt.Errorf("failed to open input file: %v", err)
+	}
+	defer input.Close()
+
+	if config.Verbose {
+		fmt.Fprintf(os.Stderr, "Converting %s to stdout...\n", config.Input)
+	}
+	return convertStream(input, os.Stdout, config)
 }
 
 func convertStream(input io.Reader, output io.Writer, config *Config) error {

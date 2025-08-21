@@ -53,7 +53,7 @@ func NewBatchProcessor(config *Config) (*BatchProcessor, error) {
 
 // ProcessDirectory processes an entire directory using worker pool parallel processing
 func (bp *BatchProcessor) ProcessDirectory(inputDir, outputDir string) error {
-	// Calculate optimal worker count
+	// Calculate optimal worker count and setup
 	workers := runtime.NumCPU()
 	if bp.config.Verbose {
 		fmt.Fprintf(os.Stderr, "Initializing batch processor with %d workers\n", workers)
@@ -64,6 +64,10 @@ func (bp *BatchProcessor) ProcessDirectory(inputDir, outputDir string) error {
 		return fmt.Errorf("failed to create output directory: %v", err)
 	}
 
+	return bp.processWithWorkerPool(inputDir, outputDir, workers)
+}
+
+func (bp *BatchProcessor) processWithWorkerPool(inputDir, outputDir string, workers int) error {
 	// Create task channel with buffer
 	taskChan := make(chan *FileTask, workers*2)
 
@@ -75,57 +79,7 @@ func (bp *BatchProcessor) ProcessDirectory(inputDir, outputDir string) error {
 	}
 
 	// Scan directory and queue tasks
-	taskCount := 0
-	go func() {
-		defer close(taskChan)
-
-		err := filepath.Walk(inputDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-
-			// Skip directories
-			if info.IsDir() {
-				return nil
-			}
-
-			// Filter log files
-			if !bp.isLogFile(path) {
-				if bp.config.Verbose {
-					fmt.Fprintf(os.Stderr, "Skipping %s (not a log file)\n", path)
-				}
-				return nil
-			}
-
-			// Calculate output path
-			relPath, err := filepath.Rel(inputDir, path)
-			if err != nil {
-				return err
-			}
-			outputPath := filepath.Join(outputDir, strings.TrimSuffix(relPath, filepath.Ext(relPath))+".json")
-
-			// Create file task
-			task := &FileTask{
-				InputPath:  path,
-				OutputPath: outputPath,
-				Config:     bp.config,
-			}
-
-			// Send to worker pool
-			taskChan <- task
-			taskCount++
-
-			if bp.config.Verbose && taskCount%100 == 0 {
-				fmt.Fprintf(os.Stderr, "Queued %d tasks...\n", taskCount)
-			}
-
-			return nil
-		})
-
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
-		}
-	}()
+	taskCount := bp.queueTasks(inputDir, outputDir, taskChan)
 
 	if bp.config.Verbose {
 		fmt.Fprintf(os.Stderr, "Processing files with %d workers...\n", workers)
@@ -134,9 +88,9 @@ func (bp *BatchProcessor) ProcessDirectory(inputDir, outputDir string) error {
 	// Wait for all workers to complete
 	wg.Wait()
 
-	bp.stats.EndTime = time.Now()
-	bp.printStats()
-
+	if bp.config.Verbose {
+		fmt.Fprintf(os.Stderr, "Completed processing %d files\n", taskCount)
+	}
 	return nil
 }
 
@@ -202,23 +156,73 @@ func (bp *BatchProcessor) isLogFile(path string) bool {
 	return ext == ".log" || ext == ".iris" || ext == ".txt"
 }
 
-// printStats prints final processing statistics
-func (bp *BatchProcessor) printStats() {
-	bp.mu.RLock()
-	defer bp.mu.RUnlock()
+func (bp *BatchProcessor) queueTasks(inputDir, outputDir string, taskChan chan<- *FileTask) int {
+	taskCount := 0
+	go func() {
+		defer close(taskChan)
 
-	duration := bp.stats.EndTime.Sub(bp.stats.StartTime)
+		err := filepath.Walk(inputDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
 
-	fmt.Fprintf(os.Stderr, "\n🚀 BATCH PROCESSING COMPLETE!\n")
-	fmt.Fprintf(os.Stderr, "Files processed: %d\n", bp.stats.FilesProcessed)
-	fmt.Fprintf(os.Stderr, "Files error: %d\n", bp.stats.FilesError)
-	fmt.Fprintf(os.Stderr, "Bytes processed: %d (%.2f MB)\n",
-		bp.stats.BytesProcessed, float64(bp.stats.BytesProcessed)/(1024*1024))
-	fmt.Fprintf(os.Stderr, "Duration: %v\n", duration)
+			// Skip directories
+			if info.IsDir() {
+				return nil
+			}
 
-	if duration > 0 {
-		filesPerSec := float64(bp.stats.FilesProcessed) / duration.Seconds()
-		mbPerSec := float64(bp.stats.BytesProcessed) / (1024 * 1024) / duration.Seconds()
-		fmt.Fprintf(os.Stderr, "Throughput: %.2f files/sec, %.2f MB/sec\n", filesPerSec, mbPerSec)
+			if bp.processFile(inputDir, outputDir, path, taskChan, &taskCount) != nil {
+				return err
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
+		}
+	}()
+	return taskCount
+}
+
+func (bp *BatchProcessor) processFile(inputDir, outputDir, path string, taskChan chan<- *FileTask, taskCount *int) error {
+	// Filter log files
+	if !bp.isLogFile(path) {
+		if bp.config.Verbose {
+			fmt.Fprintf(os.Stderr, "Skipping %s (not a log file)\n", path)
+		}
+		return nil
 	}
+
+	// Calculate output path
+	task, err := bp.createFileTask(inputDir, outputDir, path)
+	if err != nil {
+		return err
+	}
+
+	// Send to worker pool
+	taskChan <- task
+	*taskCount++
+
+	if bp.config.Verbose && *taskCount%100 == 0 {
+		fmt.Fprintf(os.Stderr, "Queued %d tasks...\n", *taskCount)
+	}
+
+	return nil
+}
+
+func (bp *BatchProcessor) createFileTask(inputDir, outputDir, path string) (*FileTask, error) {
+	// Calculate output path
+	relPath, err := filepath.Rel(inputDir, path)
+	if err != nil {
+		return nil, err
+	}
+	outputPath := filepath.Join(outputDir, strings.TrimSuffix(relPath, filepath.Ext(relPath))+".json")
+
+	// Create file task
+	return &FileTask{
+		InputPath:  path,
+		OutputPath: outputPath,
+		Config:     bp.config,
+	}, nil
 }

@@ -65,47 +65,72 @@ func toLegacyField(bf BinaryField) Field {
 
 	// Set type-specific values based on the field type
 	switch fieldType {
-	case StringType:
-		// For now, we can't reconstruct the string from BinaryField
-		// This is a limitation of the current implementation
-		field.String = ""
+	case StringType, BinaryType, ByteStringType:
+		field = convertStringLikeTypes(field, bf, fieldType)
 	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
-		if safeValue, ok := SafeBinaryDataToInt64(bf.Data, field.Type); ok {
-			field.Int = safeValue
-		} else {
-			// Fallback: convert to string representation
-			field.String = fmt.Sprintf("%d", bf.Data)
-			field.Type = StringType
-		}
+		field = convertIntegerType(field, bf)
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		if safeValue, ok := SafeBinaryDataToInt64(bf.Data, field.Type); ok {
-			field.Int = safeValue
-		} else {
-			// Fallback: convert to string representation
-			field.String = fmt.Sprintf("%d", bf.Data)
-			field.Type = StringType
-		}
+		field = convertUintegerType(field, bf)
 	case Float64Type, Float32Type:
 		// #nosec G103 - unsafe.Pointer required for zero-allocation float conversion from BinaryField
 		field.Float = *(*float64)(unsafe.Pointer(&bf.Data))
 	case BoolType:
 		field.Bool = bf.Data != 0
 	case TimeType, DurationType:
-		if safeValue, ok := SafeBinaryDataToInt64(bf.Data, field.Type); ok {
-			field.Int = safeValue
-		} else {
-			// Fallback: convert to string representation
-			field.String = fmt.Sprintf("%d", bf.Data)
-			field.Type = StringType
-		}
-	case BinaryType, ByteStringType:
-		// For now, we can't reconstruct byte slices from BinaryField
-		// This is a limitation of the current implementation
-		field.Bytes = nil
+		field = convertTimeType(field, bf)
 	default:
 		// Unknown type, leave as default values
 	}
 
+	return field
+}
+
+// convertStringLikeTypes handles string, binary, and byte string types
+func convertStringLikeTypes(field Field, bf BinaryField, fieldType FieldType) Field {
+	if fieldType == StringType {
+		// For now, we can't reconstruct the string from BinaryField
+		// Use placeholder that shows we have data but can't decode it
+		field.String = fmt.Sprintf("<binary_data:%d>", bf.Data)
+	} else {
+		// BinaryType, ByteStringType
+		field.Bytes = nil
+	}
+	return field
+}
+
+// convertIntegerType handles integer types with safe conversion
+func convertIntegerType(field Field, bf BinaryField) Field {
+	if safeValue, ok := SafeBinaryDataToInt64(bf.Data, field.Type); ok {
+		field.Int = safeValue
+	} else {
+		// Fallback: convert to string representation
+		field.String = fmt.Sprintf("%d", bf.Data)
+		field.Type = StringType
+	}
+	return field
+}
+
+// convertUintegerType handles unsigned integer types with safe conversion
+func convertUintegerType(field Field, bf BinaryField) Field {
+	if safeValue, ok := SafeBinaryDataToInt64(bf.Data, field.Type); ok {
+		field.Int = safeValue
+	} else {
+		// Fallback: convert to string representation
+		field.String = fmt.Sprintf("%d", bf.Data)
+		field.Type = StringType
+	}
+	return field
+}
+
+// convertTimeType handles time and duration types
+func convertTimeType(field Field, bf BinaryField) Field {
+	if safeValue, ok := SafeBinaryDataToInt64(bf.Data, field.Type); ok {
+		field.Int = safeValue
+	} else {
+		// Fallback: convert to string representation
+		field.String = fmt.Sprintf("%d", bf.Data)
+		field.Type = StringType
+	}
 	return field
 }
 

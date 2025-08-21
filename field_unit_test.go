@@ -359,52 +359,60 @@ func TestFieldMutation(t *testing.T) {
 
 // TestSafeConversions tests the thread-safe conversion functions
 func TestSafeConversions(t *testing.T) {
-	t.Run("SafeUint64ToInt64", func(t *testing.T) {
-		// Test safe conversion
-		if result, ok := SafeUint64ToInt64(123); !ok || result != 123 {
-			t.Errorf("Expected safe conversion of 123, got %d, %v", result, ok)
-		}
+	t.Run("SafeUint64ToInt64", testSafeUint64ToInt64)
+	t.Run("SafeInt64ToUint64", testSafeInt64ToUint64)
+	t.Run("SafeUintToInt64", testSafeUintToInt64)
+}
 
-		// Test max safe value
-		maxInt64 := uint64(1<<63 - 1) // 9223372036854775807
-		if result, ok := SafeUint64ToInt64(maxInt64); !ok || result != int64(maxInt64) {
-			t.Errorf("Expected safe conversion of max int64, got %d, %v", result, ok)
-		}
+func testSafeUint64ToInt64(t *testing.T) {
+	// Test safe conversion
+	if result, ok := SafeUint64ToInt64(123); !ok || result != 123 {
+		t.Errorf("Expected safe conversion of 123, got %d, %v", result, ok)
+	}
 
-		// Test overflow
-		if result, ok := SafeUint64ToInt64(1 << 63); ok { // overflow by 1
-			t.Errorf("Expected overflow detection, got safe conversion: %d", result)
-		}
+	// Test max safe value
+	maxInt64 := uint64(1<<63 - 1) // 9223372036854775807
+	if result, ok := SafeUint64ToInt64(maxInt64); !ok || result != int64(maxInt64) {
+		t.Errorf("Expected safe conversion of max int64, got %d, %v", result, ok)
+	}
 
-		// Test maximum uint64 (definitely overflow)
-		if result, ok := SafeUint64ToInt64(^uint64(0)); ok { // max uint64
-			t.Errorf("Expected overflow detection for max uint64, got safe conversion: %d", result)
-		}
-	})
+	testSafeUint64ToInt64Overflow(t)
+}
 
-	t.Run("SafeInt64ToUint64", func(t *testing.T) {
-		// Test safe conversion
-		if result, ok := SafeInt64ToUint64(123); !ok || result != 123 {
-			t.Errorf("Expected safe conversion of 123, got %d, %v", result, ok)
-		}
+func testSafeUint64ToInt64Overflow(t *testing.T) {
+	// Test overflow
+	if result, ok := SafeUint64ToInt64(1 << 63); ok { // overflow by 1
+		t.Errorf("Expected overflow detection, got safe conversion: %d", result)
+	}
 
-		// Test zero
-		if result, ok := SafeInt64ToUint64(0); !ok || result != 0 {
-			t.Errorf("Expected safe conversion of 0, got %d, %v", result, ok)
-		}
+	// Test maximum uint64 (definitely overflow)
+	if result, ok := SafeUint64ToInt64(^uint64(0)); ok { // max uint64
+		t.Errorf("Expected overflow detection for max uint64, got safe conversion: %d", result)
+	}
+}
 
-		// Test negative (should fail)
-		if result, ok := SafeInt64ToUint64(-1); ok {
-			t.Errorf("Expected negative detection, got safe conversion: %d", result)
-		}
-	})
+func testSafeInt64ToUint64(t *testing.T) {
+	// Test safe conversion
+	if result, ok := SafeInt64ToUint64(123); !ok || result != 123 {
+		t.Errorf("Expected safe conversion of 123, got %d, %v", result, ok)
+	}
 
-	t.Run("SafeUintToInt64", func(t *testing.T) {
-		// Test safe conversion
-		if result, ok := SafeUintToInt64(123); !ok || result != 123 {
-			t.Errorf("Expected safe conversion of 123, got %d, %v", result, ok)
-		}
-	})
+	// Test zero
+	if result, ok := SafeInt64ToUint64(0); !ok || result != 0 {
+		t.Errorf("Expected safe conversion of 0, got %d, %v", result, ok)
+	}
+
+	// Test negative (should fail)
+	if result, ok := SafeInt64ToUint64(-1); ok {
+		t.Errorf("Expected negative detection, got safe conversion: %d", result)
+	}
+}
+
+func testSafeUintToInt64(t *testing.T) {
+	// Test safe conversion
+	if result, ok := SafeUintToInt64(123); !ok || result != 123 {
+		t.Errorf("Expected safe conversion of 123, got %d, %v", result, ok)
+	}
 }
 
 // TestLargeUintFields tests field creation with large uint values

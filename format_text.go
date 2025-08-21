@@ -218,61 +218,44 @@ func (e *FastTextEncoder) appendMigrationFields(fields []Field) {
 
 // appendFieldValueFast appends field value without quotes (ULTRA-OPTIMIZED)
 func (e *FastTextEncoder) appendFieldValueFast(field BinaryField) {
-	// OPTIMIZATION: Fast paths for most common types with reduced switch overhead
+	// OPTIMIZATION: Fast paths for most common types first
 	switch field.Type {
-	case uint8(StringType):
+	case uint8(StringType), uint8(ByteStringType), uint8(ErrorType):
 		// FAST PATH: Direct string append (most common case)
 		e.buf = append(e.buf, field.GetString()...)
-
-	case uint8(IntType), uint8(Int64Type):
+	case uint8(IntType), uint8(Int64Type), uint8(Int32Type), uint8(Int16Type), uint8(Int8Type):
 		// FAST PATH: Integer append (second most common)
 		e.buf = strconv.AppendInt(e.buf, field.GetInt(), 10)
-
 	case uint8(BoolType):
 		// OPTIMIZED: Single conditional append
-		if field.GetBool() {
-			e.buf = append(e.buf, "true"...)
-		} else {
-			e.buf = append(e.buf, "false"...)
-		}
-
-	case uint8(Float64Type):
-		// OPTIMIZED: Direct float append
-		e.buf = strconv.AppendFloat(e.buf, field.GetFloat(), 'f', -1, 64)
-
-	case uint8(Float32Type):
-		e.buf = strconv.AppendFloat(e.buf, field.GetFloat(), 'f', -1, 32)
-
-	// OPTIMIZATION: Group similar integer types to reduce switch branches
-	case uint8(Int32Type), uint8(Int16Type), uint8(Int8Type):
-		e.buf = strconv.AppendInt(e.buf, field.GetInt(), 10)
-
+		e.appendBoolValue(field.GetBool())
+	case uint8(Float64Type), uint8(Float32Type):
+		e.appendFloatValueFromBinary(field)
 	case uint8(UintType), uint8(Uint64Type), uint8(Uint32Type), uint8(Uint16Type), uint8(Uint8Type):
-		// Use safe conversion for encoding unsigned integers
-		value, _ := SafeInt64ToUint64ForEncoding(field.GetInt())
-		e.buf = strconv.AppendUint(e.buf, value, 10)
-
-	case uint8(DurationType):
-		// OPTIMIZED: Duration formatting
-		duration := time.Duration(field.GetInt())
-		e.buf = append(e.buf, duration.String()...)
-
-	case uint8(TimeType):
-		// Time formatting
-		t := time.Unix(0, field.GetInt())
-		e.buf = t.AppendFormat(e.buf, time.RFC3339)
-
-	case uint8(ByteStringType):
-		// Byte string as string
-		e.buf = append(e.buf, field.GetString()...)
-
-	case uint8(ErrorType):
-		// Error formatting - for now use string representation
-		e.buf = append(e.buf, field.GetString()...)
-
+		e.appendUintValue(field.GetInt())
+	case uint8(DurationType), uint8(TimeType):
+		e.appendTimeValueFromBinary(field)
 	default:
 		// Fallback for unknown types
 		e.buf = append(e.buf, "<?>"...)
+	}
+}
+
+// appendFloatValueFromBinary appends float value from BinaryField
+func (e *FastTextEncoder) appendFloatValueFromBinary(field BinaryField) {
+	if field.Type == uint8(Float64Type) {
+		e.appendFloat64Value(field.GetFloat())
+	} else {
+		e.appendFloat32Value(field.GetFloat())
+	}
+}
+
+// appendTimeValueFromBinary appends duration or time value from BinaryField
+func (e *FastTextEncoder) appendTimeValueFromBinary(field BinaryField) {
+	if field.Type == uint8(DurationType) {
+		e.appendDurationValue(field.GetInt())
+	} else {
+		e.appendTimeValue(field.GetInt())
 	}
 }
 
@@ -282,28 +265,40 @@ func (e *FastTextEncoder) appendFieldValueFastMigration(field Field) {
 	switch field.Type {
 	case StringType:
 		e.appendStringValue(field.String)
-	case IntType, Int64Type:
+	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
 		e.appendIntValue(field.Int)
 	case BoolType:
 		e.appendBoolValue(field.Bool)
-	case Float64Type:
-		e.appendFloat64Value(field.Float)
-	case Float32Type:
-		e.appendFloat32Value(field.Float)
-	case Int32Type, Int16Type, Int8Type:
-		e.appendIntValue(field.Int)
+	case Float64Type, Float32Type:
+		e.appendFloatValueFromField(field)
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
 		e.appendUintValue(field.Int)
-	case DurationType:
-		e.appendDurationValue(field.Int)
-	case TimeType:
-		e.appendTimeValue(field.Int)
+	case DurationType, TimeType:
+		e.appendTimeValueFromField(field)
 	case ByteStringType:
 		e.appendByteStringValue(field.Bytes)
 	case ErrorType:
 		e.appendErrorValue(field.Err)
 	default:
 		e.appendUnknownValue()
+	}
+}
+
+// appendFloatValueFromField appends float value from Field
+func (e *FastTextEncoder) appendFloatValueFromField(field Field) {
+	if field.Type == Float64Type {
+		e.appendFloat64Value(field.Float)
+	} else {
+		e.appendFloat32Value(field.Float)
+	}
+}
+
+// appendTimeValueFromField appends duration or time value from Field
+func (e *FastTextEncoder) appendTimeValueFromField(field Field) {
+	if field.Type == DurationType {
+		e.appendDurationValue(field.Int)
+	} else {
+		e.appendTimeValue(field.Int)
 	}
 }
 

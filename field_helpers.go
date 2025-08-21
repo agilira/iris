@@ -54,17 +54,38 @@ func GetFieldValue(field Field) interface{} {
 	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
 		return field.Int
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		// Use safe conversion for encoding
-		value, _ := SafeInt64ToUint64ForEncoding(field.Int)
-		return value
+		return getFieldUintValue(field)
 	case Float64Type, Float32Type:
 		return field.Float
 	case BoolType:
 		return field.Bool
-	case TimeType:
+	case TimeType, DurationType:
+		return getFieldTimeValue(field)
+	case ErrorType, BinaryType, ByteStringType, AnyType:
+		return getFieldSpecialValue(field)
+	default:
+		return nil
+	}
+}
+
+// getFieldUintValue returns unsigned integer value with safe conversion
+func getFieldUintValue(field Field) interface{} {
+	// Use safe conversion for encoding
+	value, _ := SafeInt64ToUint64ForEncoding(field.Int)
+	return value
+}
+
+// getFieldTimeValue returns time or duration value
+func getFieldTimeValue(field Field) interface{} {
+	if field.Type == TimeType {
 		return time.Unix(0, field.Int)
-	case DurationType:
-		return time.Duration(field.Int)
+	}
+	return time.Duration(field.Int)
+}
+
+// getFieldSpecialValue handles special field types
+func getFieldSpecialValue(field Field) interface{} {
+	switch field.Type {
 	case ErrorType:
 		return field.Err
 	case BinaryType, ByteStringType:
@@ -79,22 +100,51 @@ func GetFieldValue(field Field) interface{} {
 // GetFieldString returns the string representation of a field's value
 func GetFieldString(field Field) string {
 	switch field.Type {
-	case StringType:
-		return field.String
+	case StringType, ByteStringType:
+		return getFieldStringValue(field)
 	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
 		return strconv.FormatInt(field.Int, 10)
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		// Use safe conversion for string formatting
-		value, _ := SafeInt64ToUint64ForEncoding(field.Int)
-		return strconv.FormatUint(value, 10)
+		return getUintString(field)
 	case Float64Type, Float32Type:
 		return strconv.FormatFloat(field.Float, 'g', -1, 64)
 	case BoolType:
 		return strconv.FormatBool(field.Bool)
-	case TimeType:
+	case TimeType, DurationType:
+		return getTimeString(field)
+	case ErrorType, BinaryType, AnyType:
+		return getSpecialString(field)
+	default:
+		return ""
+	}
+}
+
+// getFieldStringValue returns string representation for string-like types
+func getFieldStringValue(field Field) string {
+	if field.Type == StringType {
+		return field.String
+	}
+	return string(field.Bytes)
+}
+
+// getUintString returns formatted unsigned integer string
+func getUintString(field Field) string {
+	// Use safe conversion for string formatting
+	value, _ := SafeInt64ToUint64ForEncoding(field.Int)
+	return strconv.FormatUint(value, 10)
+}
+
+// getTimeString returns formatted time/duration string
+func getTimeString(field Field) string {
+	if field.Type == TimeType {
 		return time.Unix(0, field.Int).Format(time.RFC3339Nano)
-	case DurationType:
-		return time.Duration(field.Int).String()
+	}
+	return time.Duration(field.Int).String()
+}
+
+// getSpecialString handles error, binary, and any types
+func getSpecialString(field Field) string {
+	switch field.Type {
 	case ErrorType:
 		if field.Err != nil {
 			return field.Err.Error()
@@ -102,8 +152,6 @@ func GetFieldString(field Field) string {
 		return ""
 	case BinaryType:
 		return fmt.Sprintf("binary[%d]", len(field.Bytes))
-	case ByteStringType:
-		return string(field.Bytes)
 	case AnyType:
 		return fmt.Sprintf("%v", field.Any)
 	default:

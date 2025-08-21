@@ -283,8 +283,8 @@ func (e *ConsoleEncoder) appendFields(buf []byte, fields []Field) []byte {
 //go:inline
 func (e *ConsoleEncoder) appendFieldValue(buf []byte, field Field) []byte {
 	switch field.Type {
-	case StringType:
-		return e.appendStringValue(buf, field.String)
+	case StringType, ByteStringType:
+		return e.appendStringTypeValue(buf, field)
 	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
 		return strconv.AppendInt(buf, field.Int, 10)
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
@@ -293,20 +293,42 @@ func (e *ConsoleEncoder) appendFieldValue(buf []byte, field Field) []byte {
 		return strconv.AppendFloat(buf, field.Float, 'f', -1, 64)
 	case BoolType:
 		return e.appendBoolValue(buf, field.Bool)
-	case DurationType:
+	case DurationType, TimeType:
+		return e.appendTimeTypeValue(buf, field)
+	case ErrorType, BinaryType, AnyType:
+		return e.appendSpecialTypeValue(buf, field)
+	default:
+		return append(buf, field.String...)
+	}
+}
+
+// appendStringTypeValue handles string and byte string types
+func (e *ConsoleEncoder) appendStringTypeValue(buf []byte, field Field) []byte {
+	if field.Type == StringType {
+		return e.appendStringValue(buf, field.String)
+	}
+	return e.appendByteStringValue(buf, field.Bytes)
+}
+
+// appendTimeTypeValue handles duration and time types
+func (e *ConsoleEncoder) appendTimeTypeValue(buf []byte, field Field) []byte {
+	if field.Type == DurationType {
 		return e.appendDurationValue(buf, field.Int)
-	case TimeType:
-		return e.appendTimeValue(buf, field.Int)
+	}
+	return e.appendTimeValue(buf, field.Int)
+}
+
+// appendSpecialTypeValue handles error, binary, and any types
+func (e *ConsoleEncoder) appendSpecialTypeValue(buf []byte, field Field) []byte {
+	switch field.Type {
 	case ErrorType:
 		return e.appendErrorValue(buf, field.Err)
-	case ByteStringType:
-		return e.appendByteStringValue(buf, field.Bytes)
 	case BinaryType:
 		return e.appendBinaryValue(buf, field.Bytes)
 	case AnyType:
 		return e.appendAnyValue(buf, field.Any)
 	default:
-		return append(buf, field.String...)
+		return buf
 	}
 }
 

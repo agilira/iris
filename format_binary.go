@@ -127,86 +127,19 @@ func (e *BinaryEncoder) encodeBinaryFieldFast(field BinaryField) {
 
 	// OPTIMIZATION 2: Fast paths for hot types with reduced branching
 	switch field.Type {
-	case uint8(StringType):
-		// FAST PATH: String encoding (most common)
-		str := field.GetString()
-		strLen := len(str)
-		if strLen > 65535 {
-			strLen = 65535
-		}
-
-		// Batch string length and content
-		strHeader := [2]byte{byte(strLen >> 8), byte(strLen)}
-		e.buf = append(e.buf, strHeader[:]...)
-		e.buf = append(e.buf, str[:strLen]...)
-
+	case uint8(StringType), uint8(ByteStringType):
+		e.encodeBinaryStringValue(field)
 	case uint8(IntType), uint8(Int64Type):
 		// FAST PATH: Integer encoding (second most common)
-		val, _ := SafeInt64ToUint64ForEncoding(field.GetInt())
-		intBytes := [8]byte{
-			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
-			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
-		}
-		e.buf = append(e.buf, intBytes[:]...)
-
+		e.encodeBinaryInt64Value(field.GetInt())
 	case uint8(BoolType):
-		// FAST PATH: Boolean (single byte)
-		if field.GetBool() {
-			e.buf = append(e.buf, 1)
-		} else {
-			e.buf = append(e.buf, 0)
-		}
-
-	case uint8(Float64Type):
-		// OPTIMIZED: Float64 using unsafe for speed
-		// #nosec G103 - unsafe.Pointer required for zero-allocation float64 binary encoding
-		val := *(*uint64)(unsafe.Pointer(&field.Data))
-		floatBytes := [8]byte{
-			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
-			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
-		}
-		e.buf = append(e.buf, floatBytes[:]...)
-
-	case uint8(Float32Type):
-		// 4 bytes for float32
-		floatVal := float32(field.GetFloat())
-		// #nosec G103 - unsafe.Pointer required for zero-allocation float32 binary encoding
-		val := *(*uint32)(unsafe.Pointer(&floatVal))
-		floatBytes := [4]byte{
-			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
-		}
-		e.buf = append(e.buf, floatBytes[:]...)
-
-	// OPTIMIZATION 3: Group similar integer types
+		e.encodeBinaryBoolValue(field.GetBool())
+	case uint8(Float64Type), uint8(Float32Type):
+		e.encodeBinaryFloatValue(field)
 	case uint8(Int32Type), uint8(Int16Type), uint8(Int8Type), uint8(UintType), uint8(Uint64Type), uint8(Uint32Type), uint8(Uint16Type), uint8(Uint8Type):
-		val, _ := SafeInt64ToUint64ForEncoding(field.GetInt())
-		intBytes := [8]byte{
-			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
-			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
-		}
-		e.buf = append(e.buf, intBytes[:]...)
-
+		e.encodeBinaryInt64Value(field.GetInt())
 	case uint8(DurationType), uint8(TimeType):
-		// 8 bytes for duration/time
-		val, _ := SafeInt64ToUint64ForEncoding(field.GetInt())
-		timeBytes := [8]byte{
-			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
-			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
-		}
-		e.buf = append(e.buf, timeBytes[:]...)
-
-	case uint8(ByteStringType):
-		// Byte string encoding
-		str := field.GetString()
-		dataLen := len(str)
-		if dataLen > 65535 {
-			dataLen = 65535
-		}
-
-		dataHeader := [2]byte{byte(dataLen >> 8), byte(dataLen)}
-		e.buf = append(e.buf, dataHeader[:]...)
-		e.buf = append(e.buf, str[:dataLen]...)
-
+		e.encodeBinaryInt64Value(field.GetInt())
 	default:
 		// Fallback for unknown types - encode as empty
 		e.buf = append(e.buf, 0, 0) // zero-length value
@@ -307,36 +240,105 @@ func (e *BinaryEncoder) encodeBinaryFieldFastMigration(field Field) {
 
 	// OPTIMIZATION 2: Fast paths for hot types with reduced branching
 	switch field.Type {
-	case StringType:
-		// FAST PATH: String encoding (most common)
-		strLen := len(field.String)
-		if strLen > 65535 {
-			strLen = 65535
-		}
+	case StringType, ByteStringType:
+		e.encodeBinaryStringValueFromField(field)
+	case IntType, Int64Type, Int32Type, Int16Type, Int8Type, UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
+		e.encodeBinaryInt64Value(field.Int)
+	case BoolType:
+		e.encodeBinaryBoolValue(field.Bool)
+	case Float64Type, Float32Type:
+		e.encodeBinaryFloatValueFromField(field)
+	case DurationType, TimeType:
+		e.encodeBinaryInt64Value(field.Int)
+	default:
+		// Fallback for unknown types - encode as empty
+		e.buf = append(e.buf, 0, 0) // zero-length value
+	}
+}
 
-		// Batch string length and content
-		strHeader := [2]byte{byte(strLen >> 8), byte(strLen)}
-		e.buf = append(e.buf, strHeader[:]...)
-		e.buf = append(e.buf, field.String[:strLen]...)
+// encodeBinaryStringValue encodes string or byte string value
+func (e *BinaryEncoder) encodeBinaryStringValue(field BinaryField) {
+	str := field.GetString()
+	strLen := len(str)
+	if strLen > 65535 {
+		strLen = 65535
+	}
 
-	case IntType, Int64Type:
-		// FAST PATH: Integer encoding (second most common)
-		val, _ := SafeInt64ToUint64ForEncoding(field.Int)
-		intBytes := [8]byte{
+	// Batch string length and content
+	strHeader := [2]byte{byte(strLen >> 8), byte(strLen)}
+	e.buf = append(e.buf, strHeader[:]...)
+	e.buf = append(e.buf, str[:strLen]...)
+}
+
+// encodeBinaryInt64Value encodes 64-bit integer value
+func (e *BinaryEncoder) encodeBinaryInt64Value(value int64) {
+	val, _ := SafeInt64ToUint64ForEncoding(value)
+	intBytes := [8]byte{
+		byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
+		byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
+	}
+	e.buf = append(e.buf, intBytes[:]...)
+}
+
+// encodeBinaryBoolValue encodes boolean value
+func (e *BinaryEncoder) encodeBinaryBoolValue(value bool) {
+	if value {
+		e.buf = append(e.buf, 1)
+	} else {
+		e.buf = append(e.buf, 0)
+	}
+}
+
+// encodeBinaryFloatValue encodes float32 or float64 value
+func (e *BinaryEncoder) encodeBinaryFloatValue(field BinaryField) {
+	if field.Type == uint8(Float64Type) {
+		// OPTIMIZED: Float64 using unsafe for speed
+		// #nosec G103 - unsafe.Pointer required for zero-allocation float64 binary encoding
+		val := *(*uint64)(unsafe.Pointer(&field.Data))
+		floatBytes := [8]byte{
 			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
 			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
 		}
-		e.buf = append(e.buf, intBytes[:]...)
-
-	case BoolType:
-		// FAST PATH: Boolean (single byte)
-		if field.Bool {
-			e.buf = append(e.buf, 1)
-		} else {
-			e.buf = append(e.buf, 0)
+		e.buf = append(e.buf, floatBytes[:]...)
+	} else {
+		// 4 bytes for float32
+		floatVal := float32(field.GetFloat())
+		// #nosec G103 - unsafe.Pointer required for zero-allocation float32 binary encoding
+		val := *(*uint32)(unsafe.Pointer(&floatVal))
+		floatBytes := [4]byte{
+			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
 		}
+		e.buf = append(e.buf, floatBytes[:]...)
+	}
+}
 
-	case Float64Type:
+// encodeBinaryStringValueFromField encodes string from Field struct
+func (e *BinaryEncoder) encodeBinaryStringValueFromField(field Field) {
+	var str string
+	var strLen int
+
+	if field.Type == StringType {
+		str = field.String
+		strLen = len(field.String)
+	} else {
+		// ByteStringType
+		str = string(field.Bytes)
+		strLen = len(field.Bytes)
+	}
+
+	if strLen > 65535 {
+		strLen = 65535
+	}
+
+	// Batch string length and content
+	strHeader := [2]byte{byte(strLen >> 8), byte(strLen)}
+	e.buf = append(e.buf, strHeader[:]...)
+	e.buf = append(e.buf, str[:strLen]...)
+}
+
+// encodeBinaryFloatValueFromField encodes float from Field struct
+func (e *BinaryEncoder) encodeBinaryFloatValueFromField(field Field) {
+	if field.Type == Float64Type {
 		// OPTIMIZED: Float64 using unsafe for speed
 		// #nosec G103 - unsafe.Pointer required for zero-allocation float64 binary encoding
 		val := *(*uint64)(unsafe.Pointer(&field.Float))
@@ -345,8 +347,7 @@ func (e *BinaryEncoder) encodeBinaryFieldFastMigration(field Field) {
 			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
 		}
 		e.buf = append(e.buf, floatBytes[:]...)
-
-	case Float32Type:
+	} else {
 		// 4 bytes for float32
 		// #nosec G103 - unsafe.Pointer required for zero-allocation float32 binary encoding
 		val := *(*uint32)(unsafe.Pointer(&field.Float))
@@ -354,38 +355,5 @@ func (e *BinaryEncoder) encodeBinaryFieldFastMigration(field Field) {
 			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
 		}
 		e.buf = append(e.buf, floatBytes[:]...)
-
-	// OPTIMIZATION 3: Group similar integer types
-	case Int32Type, Int16Type, Int8Type, UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		val, _ := SafeInt64ToUint64ForEncoding(field.Int)
-		intBytes := [8]byte{
-			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
-			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
-		}
-		e.buf = append(e.buf, intBytes[:]...)
-
-	case DurationType, TimeType:
-		// 8 bytes for duration/time
-		val, _ := SafeInt64ToUint64ForEncoding(field.Int)
-		timeBytes := [8]byte{
-			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
-			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
-		}
-		e.buf = append(e.buf, timeBytes[:]...)
-
-	case ByteStringType:
-		// Byte string encoding
-		dataLen := len(field.Bytes)
-		if dataLen > 65535 {
-			dataLen = 65535
-		}
-
-		dataHeader := [2]byte{byte(dataLen >> 8), byte(dataLen)}
-		e.buf = append(e.buf, dataHeader[:]...)
-		e.buf = append(e.buf, field.Bytes[:dataLen]...)
-
-	default:
-		// Fallback for unknown types - encode as empty
-		e.buf = append(e.buf, 0, 0) // zero-length value
 	}
 }

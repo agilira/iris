@@ -18,12 +18,12 @@ func (m *MultiOutputConfig) ToConfig(baseConfig Config) Config {
 
 	// Pre-allocate slices to avoid multiple allocations
 	writers, syncers := m.prepareOutputSlices()
-	
+
 	// Add different types of outputs
 	syncers = m.addConsoleOutputs(syncers)
 	syncers = m.addFileOutputs(syncers)
 	writers, syncers = m.addCustomOutputs(writers, syncers)
-	
+
 	// Apply to config
 	m.applyOutputsToConfig(&config, writers, syncers)
 
@@ -51,7 +51,7 @@ func (m *MultiOutputConfig) prepareOutputSlices() ([]io.Writer, []WriteSyncer) {
 	if totalSyncers > 0 {
 		syncers = make([]WriteSyncer, 0, totalSyncers)
 	}
-	
+
 	return writers, syncers
 }
 

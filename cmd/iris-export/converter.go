@@ -116,6 +116,11 @@ func (c *BinaryToJSONConverter) Convert(input io.Reader, output io.Writer) error
 		encoder.SetIndent("", "  ")
 	}
 
+	return c.processLines(scanner, encoder)
+}
+
+func (c *BinaryToJSONConverter) processLines(scanner *bufio.Scanner, encoder *json.Encoder) error {
+
 	lineNum := 0
 	processedEntries := 0
 	filteredEntries := 0
@@ -129,19 +134,13 @@ func (c *BinaryToJSONConverter) Convert(input io.Reader, output io.Writer) error
 			continue
 		}
 
-		// For now, we'll handle the case where the binary logger is actually
-		// writing JSON (as we saw in tests). Later we'll implement true binary parsing.
-		entry, err := c.parseLineAsBinary()
+		entry, err := c.parseLogEntry(line)
 		if err != nil {
-			// If binary parsing fails, try JSON passthrough
-			entry, err = c.parseLineAsJSON(line)
-			if err != nil {
-				return fmt.Errorf("line %d: failed to parse as binary or JSON: %v", lineNum, err)
-			}
+			return fmt.Errorf("line %d: failed to parse as binary or JSON: %v", lineNum, err)
 		}
 
 		// Apply level filter if specified
-		if c.levelFilter != "" && entry.Level != c.levelFilter {
+		if c.shouldFilterEntry(entry) {
 			filteredEntries++
 			continue
 		}
@@ -158,16 +157,7 @@ func (c *BinaryToJSONConverter) Convert(input io.Reader, output io.Writer) error
 		processedEntries++
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("failed to read input: %v", err)
-	}
-
-	// Print validation summary to stderr if in validate mode
-	if c.validateOnly {
-		fmt.Fprintf(os.Stderr, "Validation complete: %d entries processed, %d filtered\n", processedEntries, filteredEntries)
-	}
-
-	return nil
+	return c.handleScannerResults(scanner, processedEntries, filteredEntries)
 }
 
 // parseLineAsBinary parses a true binary log entry
@@ -189,6 +179,25 @@ func (c *BinaryToJSONConverter) parseLineAsJSON(data []byte) (*LogEntry, error) 
 	}
 
 	// Extract standard fields
+	c.extractStandardFields(rawEntry, entry)
+
+	// Handle caller info if present
+	c.extractCallerInfo(rawEntry, entry)
+
+	// Add remaining fields
+	for k, v := range rawEntry {
+		entry.Fields[k] = v
+	}
+
+	// If no extra fields, remove the empty map
+	if len(entry.Fields) == 0 {
+		entry.Fields = nil
+	}
+
+	return entry, nil
+}
+
+func (c *BinaryToJSONConverter) extractStandardFields(rawEntry map[string]interface{}, entry *LogEntry) {
 	if ts, ok := rawEntry["timestamp"].(string); ok {
 		entry.Timestamp = ts
 		delete(rawEntry, "timestamp")
@@ -203,35 +212,31 @@ func (c *BinaryToJSONConverter) parseLineAsJSON(data []byte) (*LogEntry, error) 
 		entry.Message = msg
 		delete(rawEntry, "message")
 	}
+}
 
-	// Handle caller info if present
-	if caller, ok := rawEntry["caller"]; ok {
-		if callerMap, ok := caller.(map[string]interface{}); ok {
-			entry.Caller = &CallerInfo{}
-			if file, ok := callerMap["file"].(string); ok {
-				entry.Caller.File = file
-			}
-			if line, ok := callerMap["line"].(float64); ok {
-				entry.Caller.Line = int(line)
-			}
-			if function, ok := callerMap["function"].(string); ok {
-				entry.Caller.Function = function
-			}
-		}
-		delete(rawEntry, "caller")
+func (c *BinaryToJSONConverter) extractCallerInfo(rawEntry map[string]interface{}, entry *LogEntry) {
+	caller, ok := rawEntry["caller"]
+	if !ok {
+		return
 	}
 
-	// Add remaining fields
-	for k, v := range rawEntry {
-		entry.Fields[k] = v
+	callerMap, ok := caller.(map[string]interface{})
+	if !ok {
+		return
 	}
 
-	// If no extra fields, remove the empty map
-	if len(entry.Fields) == 0 {
-		entry.Fields = nil
+	entry.Caller = &CallerInfo{}
+	if file, ok := callerMap["file"].(string); ok {
+		entry.Caller.File = file
+	}
+	if line, ok := callerMap["line"].(float64); ok {
+		entry.Caller.Line = int(line)
+	}
+	if function, ok := callerMap["function"].(string); ok {
+		entry.Caller.Function = function
 	}
 
-	return entry, nil
+	delete(rawEntry, "caller")
 }
 
 // Helper functions for binary parsing (when implemented)
@@ -276,6 +281,37 @@ func unsafeString(ptr uintptr, length uint32) string {
 		data uintptr
 		len  int
 	}{ptr, int(length)}))
+}
+
+// parseLogEntry attempts to parse a log entry as binary first, then JSON
+func (c *BinaryToJSONConverter) parseLogEntry(line []byte) (*LogEntry, error) {
+	// For now, we'll handle the case where the binary logger is actually
+	// writing JSON (as we saw in tests). Later we'll implement true binary parsing.
+	entry, err := c.parseLineAsBinary()
+	if err != nil {
+		// If binary parsing fails, try JSON passthrough
+		return c.parseLineAsJSON(line)
+	}
+	return entry, nil
+}
+
+// shouldFilterEntry checks if an entry should be filtered based on level
+func (c *BinaryToJSONConverter) shouldFilterEntry(entry *LogEntry) bool {
+	return c.levelFilter != "" && entry.Level != c.levelFilter
+}
+
+// handleScannerResults processes final scanner results and prints stats
+func (c *BinaryToJSONConverter) handleScannerResults(scanner *bufio.Scanner, processedEntries, filteredEntries int) error {
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("failed to read input: %v", err)
+	}
+
+	// Print validation summary to stderr if in validate mode
+	if c.validateOnly {
+		fmt.Fprintf(os.Stderr, "Validation complete: %d entries processed, %d filtered\n", processedEntries, filteredEntries)
+	}
+
+	return nil
 }
 
 // init ensures future binary parsing functions are kept during compilation

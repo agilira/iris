@@ -45,81 +45,17 @@ func (e *JSONEncoder) EncodeLogEntry(timestamp time.Time, level Level, message s
 	e.buf = e.buf[:0]
 
 	// OPTIMIZATION: Fast size estimation with better accuracy
-	estimatedSize := 100 + len(message) + len(fields)*25 // More realistic estimation
-	if caller.Valid {
-		estimatedSize += len(caller.File) + len(caller.Function) + 50
-	}
-	if stackTrace != "" {
-		estimatedSize += len(stackTrace) + 20
-	}
-
-	// OPTIMIZATION: Grow buffer once if needed
-	if cap(e.buf) < estimatedSize {
-		e.buf = make([]byte, 0, estimatedSize+estimatedSize/2) // 50% extra headroom
-	}
+	e.prepareJSONBuffer(timestamp, level, message, fields, caller, stackTrace)
 
 	e.buf = append(e.buf, '{')
 
-	// ULTRA-OPTIMIZATION: Timestamp encoding (hot path)
-	if !timestamp.IsZero() {
-		e.buf = append(e.buf, `"timestamp":"`...)
-		e.buf = timestamp.AppendFormat(e.buf, time.RFC3339Nano)
-		e.buf = append(e.buf, '"')
-	}
-
-	// ULTRA-OPTIMIZATION: Level encoding with fast paths
-	if !timestamp.IsZero() {
-		e.buf = append(e.buf, ',')
-	}
-	e.buf = append(e.buf, `"level":"`...)
-	e.buf = append(e.buf, level.CapitalString()...)
-	e.buf = append(e.buf, '"')
-
-	// Caller information
-	if caller.Valid {
-		e.buf = append(e.buf, `,"caller":"`...)
-		e.escapeStringFast(caller.File)
-		e.buf = append(e.buf, ':')
-		e.buf = strconv.AppendInt(e.buf, int64(caller.Line), 10)
-		e.buf = append(e.buf, '"')
-
-		if caller.Function != "" {
-			e.buf = append(e.buf, `,"function":"`...)
-			e.escapeStringFast(caller.Function)
-			e.buf = append(e.buf, '"')
-		}
-	}
-
-	// Stack trace
-	if stackTrace != "" {
-		e.buf = append(e.buf, `,"stacktrace":"`...)
-		e.escapeStringFast(stackTrace)
-		e.buf = append(e.buf, '"')
-	}
-
-	// ULTRA-OPTIMIZATION: Message encoding
-	e.buf = append(e.buf, `,"message":"`...)
-	e.escapeStringFast(message)
-	e.buf = append(e.buf, '"')
-
-	// ULTRA-OPTIMIZATION: Fields encoding with zero-field fast path
-	fieldsLen := len(fields)
-	if fieldsLen == 0 {
-		// ULTRA-FAST PATH: No fields - common in simple logging
-		// Skip field encoding entirely
-	} else if fieldsLen <= 8 {
-		// FAST PATH: Small field count - unrolled for better CPU cache utilization
-		for i := 0; i < fieldsLen; i++ {
-			e.buf = append(e.buf, ',')
-			e.encodeField(fields[i])
-		}
-	} else {
-		// MEDIUM PATH: Large field count - standard loop
-		for i := range fields {
-			e.buf = append(e.buf, ',')
-			e.encodeField(fields[i])
-		}
-	}
+	// Encode main log components
+	e.encodeJSONTimestamp(timestamp)
+	e.encodeJSONLevel(timestamp, level)
+	e.encodeJSONCaller(caller)
+	e.encodeJSONStackTrace(stackTrace)
+	e.encodeJSONMessage(message)
+	e.encodeJSONFields(fields)
 
 	e.buf = append(e.buf, "}\n"...)
 }
@@ -300,33 +236,150 @@ func (e *JSONEncoder) encodeAnyTypeFast(value interface{}) {
 		e.buf = append(e.buf, '"')
 		e.escapeStringFast(v)
 		e.buf = append(e.buf, '"')
+	case int, int64, int32:
+		e.encodeIntegerType(v)
+	case bool:
+		e.encodeBoolType(v)
+	case float64, float32:
+		e.encodeFloatType(v)
+	case nil:
+		e.buf = append(e.buf, 'n', 'u', 'l', 'l')
+	default:
+		e.encodeComplexType(value)
+	}
+}
+
+// encodeIntegerType handles all integer types
+func (e *JSONEncoder) encodeIntegerType(value interface{}) {
+	switch v := value.(type) {
 	case int:
-		// HOT PATH: Int is second most common
 		e.buf = strconv.AppendInt(e.buf, int64(v), 10)
 	case int64:
 		e.buf = strconv.AppendInt(e.buf, v, 10)
-	case bool:
-		// HOT PATH: Bool is third most common
-		if v {
-			e.buf = append(e.buf, 't', 'r', 'u', 'e')
-		} else {
-			e.buf = append(e.buf, 'f', 'a', 'l', 's', 'e')
-		}
-	case float64:
-		e.buf = strconv.AppendFloat(e.buf, v, 'f', -1, 64)
-	case nil:
-		e.buf = append(e.buf, 'n', 'u', 'l', 'l')
 	case int32:
 		e.buf = strconv.AppendInt(e.buf, int64(v), 10)
+	}
+}
+
+// encodeBoolType handles boolean values
+func (e *JSONEncoder) encodeBoolType(value bool) {
+	if value {
+		e.buf = append(e.buf, 't', 'r', 'u', 'e')
+	} else {
+		e.buf = append(e.buf, 'f', 'a', 'l', 's', 'e')
+	}
+}
+
+// encodeFloatType handles float types
+func (e *JSONEncoder) encodeFloatType(value interface{}) {
+	switch v := value.(type) {
+	case float64:
+		e.buf = strconv.AppendFloat(e.buf, v, 'f', -1, 64)
 	case float32:
 		e.buf = strconv.AppendFloat(e.buf, float64(v), 'f', -1, 32)
-	default:
-		// COLD PATH: Complex types - fallback to json.Marshal
-		data, err := json.Marshal(value)
-		if err != nil {
-			e.buf = append(e.buf, 'n', 'u', 'l', 'l')
-		} else {
-			e.buf = append(e.buf, data...)
+	}
+}
+
+// encodeComplexType handles complex types using json.Marshal
+func (e *JSONEncoder) encodeComplexType(value interface{}) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		e.buf = append(e.buf, 'n', 'u', 'l', 'l')
+	} else {
+		e.buf = append(e.buf, data...)
+	}
+}
+
+// prepareJSONBuffer calculates and allocates appropriate buffer size
+func (e *JSONEncoder) prepareJSONBuffer(timestamp time.Time, level Level, message string, fields []Field, caller Caller, stackTrace string) {
+	estimatedSize := 100 + len(message) + len(fields)*25 // More realistic estimation
+	if !timestamp.IsZero() {
+		estimatedSize += 50 // timestamp field: "timestamp":"2023-..." (~45 chars)
+	}
+	// Add size for level field: "level":"DEBUG" (varies by level)
+	estimatedSize += 15 + len(level.CapitalString()) // "level":"" + level string
+	if caller.Valid {
+		estimatedSize += len(caller.File) + len(caller.Function) + 50
+	}
+	if stackTrace != "" {
+		estimatedSize += len(stackTrace) + 20
+	}
+
+	// OPTIMIZATION: Grow buffer once if needed
+	if cap(e.buf) < estimatedSize {
+		e.buf = make([]byte, 0, estimatedSize+estimatedSize/2) // 50% extra headroom
+	}
+}
+
+// encodeJSONTimestamp encodes timestamp field
+func (e *JSONEncoder) encodeJSONTimestamp(timestamp time.Time) {
+	if !timestamp.IsZero() {
+		e.buf = append(e.buf, `"timestamp":"`...)
+		e.buf = timestamp.AppendFormat(e.buf, time.RFC3339Nano)
+		e.buf = append(e.buf, '"')
+	}
+}
+
+// encodeJSONLevel encodes level field
+func (e *JSONEncoder) encodeJSONLevel(timestamp time.Time, level Level) {
+	if !timestamp.IsZero() {
+		e.buf = append(e.buf, ',')
+	}
+	e.buf = append(e.buf, `"level":"`...)
+	e.buf = append(e.buf, level.CapitalString()...)
+	e.buf = append(e.buf, '"')
+}
+
+// encodeJSONCaller encodes caller information
+func (e *JSONEncoder) encodeJSONCaller(caller Caller) {
+	if caller.Valid {
+		e.buf = append(e.buf, `,"caller":"`...)
+		e.escapeStringFast(caller.File)
+		e.buf = append(e.buf, ':')
+		e.buf = strconv.AppendInt(e.buf, int64(caller.Line), 10)
+		e.buf = append(e.buf, '"')
+
+		if caller.Function != "" {
+			e.buf = append(e.buf, `,"function":"`...)
+			e.escapeStringFast(caller.Function)
+			e.buf = append(e.buf, '"')
+		}
+	}
+}
+
+// encodeJSONStackTrace encodes stack trace
+func (e *JSONEncoder) encodeJSONStackTrace(stackTrace string) {
+	if stackTrace != "" {
+		e.buf = append(e.buf, `,"stacktrace":"`...)
+		e.escapeStringFast(stackTrace)
+		e.buf = append(e.buf, '"')
+	}
+}
+
+// encodeJSONMessage encodes message field
+func (e *JSONEncoder) encodeJSONMessage(message string) {
+	e.buf = append(e.buf, `,"message":"`...)
+	e.escapeStringFast(message)
+	e.buf = append(e.buf, '"')
+}
+
+// encodeJSONFields encodes fields with optimized paths
+func (e *JSONEncoder) encodeJSONFields(fields []Field) {
+	fieldsLen := len(fields)
+	if fieldsLen == 0 {
+		// ULTRA-FAST PATH: No fields - common in simple logging
+		return
+	} else if fieldsLen <= 8 {
+		// FAST PATH: Small field count - unrolled for better CPU cache utilization
+		for i := 0; i < fieldsLen; i++ {
+			e.buf = append(e.buf, ',')
+			e.encodeField(fields[i])
+		}
+	} else {
+		// MEDIUM PATH: Large field count - standard loop
+		for i := range fields {
+			e.buf = append(e.buf, ',')
+			e.encodeField(fields[i])
 		}
 	}
 }
