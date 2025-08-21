@@ -7,6 +7,7 @@
 package iris
 
 import (
+	"fmt"
 	"unsafe"
 )
 
@@ -69,15 +70,33 @@ func toLegacyField(bf BinaryField) Field {
 		// This is a limitation of the current implementation
 		field.String = ""
 	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
-		field.Int = int64(bf.Data)
+		if safeValue, ok := SafeBinaryDataToInt64(bf.Data, field.Type); ok {
+			field.Int = safeValue
+		} else {
+			// Fallback: convert to string representation
+			field.String = fmt.Sprintf("%d", bf.Data)
+			field.Type = StringType
+		}
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		field.Int = int64(bf.Data)
+		if safeValue, ok := SafeBinaryDataToInt64(bf.Data, field.Type); ok {
+			field.Int = safeValue
+		} else {
+			// Fallback: convert to string representation
+			field.String = fmt.Sprintf("%d", bf.Data)
+			field.Type = StringType
+		}
 	case Float64Type, Float32Type:
 		field.Float = *(*float64)(unsafe.Pointer(&bf.Data))
 	case BoolType:
 		field.Bool = bf.Data != 0
 	case TimeType, DurationType:
-		field.Int = int64(bf.Data)
+		if safeValue, ok := SafeBinaryDataToInt64(bf.Data, field.Type); ok {
+			field.Int = safeValue
+		} else {
+			// Fallback: convert to string representation
+			field.String = fmt.Sprintf("%d", bf.Data)
+			field.Type = StringType
+		}
 	case BinaryType, ByteStringType:
 		// For now, we can't reconstruct byte slices from BinaryField
 		// This is a limitation of the current implementation

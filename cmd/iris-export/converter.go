@@ -210,8 +210,14 @@ func getLevelName(level uint8) string {
 }
 
 func formatTimestamp(nanos uint64) string {
-	t := time.Unix(0, int64(nanos))
-	return t.Format(time.RFC3339Nano)
+	// Timestamp values are typically safe for conversion
+	// Only convert if the value is within safe range for int64
+	if nanos <= 1<<63-1 {
+		t := time.Unix(0, int64(nanos))
+		return t.Format(time.RFC3339Nano)
+	}
+	// For very large timestamps, return a string representation
+	return fmt.Sprintf("timestamp_overflow_%d", nanos)
 }
 
 // unsafeString converts a pointer and length to string (DANGEROUS - use carefully)

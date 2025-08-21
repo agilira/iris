@@ -27,9 +27,16 @@ func (bf BinaryField) GetString() string {
 	return bf.Value
 }
 
-// GetInt retrieves integer value
+// GetInt retrieves integer value safely
 func (bf BinaryField) GetInt() int64 {
-	return int64(bf.Data)
+	// Use the field type information to determine if safe conversion is needed
+	fieldType := FieldType(bf.Type)
+	if safeValue, ok := SafeBinaryDataToInt64(bf.Data, fieldType); ok {
+		return safeValue
+	}
+	// If conversion is not safe, return 0 (this should not happen in practice
+	// if the BinaryField was created correctly)
+	return 0
 }
 
 // GetBool retrieves boolean value

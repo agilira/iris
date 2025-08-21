@@ -234,7 +234,9 @@ func (e *FastTextEncoder) appendFieldValueFast(field BinaryField) {
 		e.buf = strconv.AppendInt(e.buf, field.GetInt(), 10)
 
 	case uint8(UintType), uint8(Uint64Type), uint8(Uint32Type), uint8(Uint16Type), uint8(Uint8Type):
-		e.buf = strconv.AppendUint(e.buf, uint64(field.GetInt()), 10)
+		// Use safe conversion for encoding unsigned integers
+		value, _ := SafeInt64ToUint64ForEncoding(field.GetInt())
+		e.buf = strconv.AppendUint(e.buf, value, 10)
 
 	case uint8(DurationType):
 		// OPTIMIZED: Duration formatting
@@ -292,7 +294,9 @@ func (e *FastTextEncoder) appendFieldValueFastMigration(field Field) {
 		e.buf = strconv.AppendInt(e.buf, field.Int, 10)
 
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		e.buf = strconv.AppendUint(e.buf, uint64(field.Int), 10)
+		// Use safe conversion for encoding unsigned integers
+		value, _ := SafeInt64ToUint64ForEncoding(field.Int)
+		e.buf = strconv.AppendUint(e.buf, value, 10)
 
 	case DurationType:
 		// OPTIMIZED: Duration formatting

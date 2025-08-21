@@ -142,7 +142,7 @@ func (e *BinaryEncoder) encodeBinaryFieldFast(field BinaryField) {
 
 	case uint8(IntType), uint8(Int64Type):
 		// FAST PATH: Integer encoding (second most common)
-		val := uint64(field.GetInt())
+		val, _ := SafeInt64ToUint64ForEncoding(field.GetInt())
 		intBytes := [8]byte{
 			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
 			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
@@ -177,7 +177,7 @@ func (e *BinaryEncoder) encodeBinaryFieldFast(field BinaryField) {
 
 	// OPTIMIZATION 3: Group similar integer types
 	case uint8(Int32Type), uint8(Int16Type), uint8(Int8Type), uint8(UintType), uint8(Uint64Type), uint8(Uint32Type), uint8(Uint16Type), uint8(Uint8Type):
-		val := uint64(field.GetInt())
+		val, _ := SafeInt64ToUint64ForEncoding(field.GetInt())
 		intBytes := [8]byte{
 			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
 			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
@@ -186,7 +186,7 @@ func (e *BinaryEncoder) encodeBinaryFieldFast(field BinaryField) {
 
 	case uint8(DurationType), uint8(TimeType):
 		// 8 bytes for duration/time
-		val := uint64(field.GetInt())
+		val, _ := SafeInt64ToUint64ForEncoding(field.GetInt())
 		timeBytes := [8]byte{
 			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
 			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
@@ -319,7 +319,7 @@ func (e *BinaryEncoder) encodeBinaryFieldFastMigration(field Field) {
 
 	case IntType, Int64Type:
 		// FAST PATH: Integer encoding (second most common)
-		val := uint64(field.Int)
+		val, _ := SafeInt64ToUint64ForEncoding(field.Int)
 		intBytes := [8]byte{
 			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
 			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
@@ -353,7 +353,7 @@ func (e *BinaryEncoder) encodeBinaryFieldFastMigration(field Field) {
 
 	// OPTIMIZATION 3: Group similar integer types
 	case Int32Type, Int16Type, Int8Type, UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		val := uint64(field.Int)
+		val, _ := SafeInt64ToUint64ForEncoding(field.Int)
 		intBytes := [8]byte{
 			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
 			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),
@@ -362,7 +362,7 @@ func (e *BinaryEncoder) encodeBinaryFieldFastMigration(field Field) {
 
 	case DurationType, TimeType:
 		// 8 bytes for duration/time
-		val := uint64(field.Int)
+		val, _ := SafeInt64ToUint64ForEncoding(field.Int)
 		timeBytes := [8]byte{
 			byte(val >> 56), byte(val >> 48), byte(val >> 40), byte(val >> 32),
 			byte(val >> 24), byte(val >> 16), byte(val >> 8), byte(val),

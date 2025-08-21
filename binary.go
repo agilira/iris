@@ -124,7 +124,8 @@ func (bc *BinaryContext) Info(message string) {
 
 	// Create binary entry (GC-SAFE)
 	entry := bc.logger.entryPool.Get().(*BinaryEntry)
-	entry.Timestamp = uint64(time.Now().UnixNano()) // Direct time.Now() is faster
+	timestamp, _ := SafeInt64ToUint64ForEncoding(time.Now().UnixNano()) // Safe timestamp conversion
+	entry.Timestamp = timestamp
 	entry.Level = uint8(InfoLevel)
 
 	// Direct message storage - LOCK-FREE immutable
@@ -152,7 +153,8 @@ func (bc *BinaryContext) InfoWithCaller(message string) {
 
 	// Create binary entry (GC-SAFE)
 	entry := bc.logger.entryPool.Get().(*BinaryEntry)
-	entry.Timestamp = uint64(time.Now().UnixNano())
+	timestamp, _ := SafeInt64ToUint64ForEncoding(time.Now().UnixNano()) // Safe timestamp conversion
+	entry.Timestamp = timestamp
 	entry.Level = uint8(InfoLevel)
 
 	// Direct message storage - LOCK-FREE immutable

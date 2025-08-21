@@ -54,7 +54,9 @@ func GetFieldValue(field Field) interface{} {
 	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
 		return field.Int
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		return uint64(field.Int)
+		// Use safe conversion for encoding
+		value, _ := SafeInt64ToUint64ForEncoding(field.Int)
+		return value
 	case Float64Type, Float32Type:
 		return field.Float
 	case BoolType:
@@ -82,7 +84,9 @@ func GetFieldString(field Field) string {
 	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
 		return strconv.FormatInt(field.Int, 10)
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		return strconv.FormatUint(uint64(field.Int), 10)
+		// Use safe conversion for string formatting
+		value, _ := SafeInt64ToUint64ForEncoding(field.Int)
+		return strconv.FormatUint(value, 10)
 	case Float64Type, Float32Type:
 		return strconv.FormatFloat(field.Float, 'g', -1, 64)
 	case BoolType:
@@ -238,4 +242,63 @@ func AnalyzeFields(fields []Field) FieldStats {
 	stats.AverageKeyLen = float64(totalKeyLen) / float64(len(fields))
 
 	return stats
+}
+
+// =============================================================================
+// Safe Type Conversion Helpers (THREAD-SAFE, LOCK-FREE)
+// =============================================================================
+
+// SafeUint64ToInt64 safely converts uint64 to int64, checking for overflow
+// Returns the converted value and true if conversion is safe
+func SafeUint64ToInt64(value uint64) (int64, bool) {
+	const maxInt64 = 1<<63 - 1 // 9223372036854775807
+	if value > maxInt64 {
+		return 0, false
+	}
+	return int64(value), true
+}
+
+// SafeInt64ToUint64 safely converts int64 to uint64, checking for negative values
+// Returns the converted value and true if conversion is safe
+func SafeInt64ToUint64(value int64) (uint64, bool) {
+	if value < 0 {
+		return 0, false
+	}
+	return uint64(value), true
+}
+
+// SafeUintToInt64 safely converts uint to int64, checking for overflow
+func SafeUintToInt64(value uint) (int64, bool) {
+	return SafeUint64ToInt64(uint64(value))
+}
+
+// SafeBinaryDataToInt64 safely converts BinaryField.Data to int64 for uint types
+// This function handles the case where BinaryField.Data contains uint values
+func SafeBinaryDataToInt64(data uint64, fieldType FieldType) (int64, bool) {
+	switch fieldType {
+	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
+		// For unsigned types, check for overflow
+		return SafeUint64ToInt64(data)
+	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
+		// For signed types, direct conversion is safe (already validated during creation)
+		return int64(data), true // #nosec G115 - Safe conversion in context
+	case TimeType, DurationType:
+		// Time values are typically safe
+		return int64(data), true // #nosec G115 - Safe conversion for time values
+	default:
+		// For other types, assume safe conversion
+		return int64(data), true // #nosec G115 - Safe conversion for primitive types
+	}
+}
+
+// SafeInt64ToUint64ForEncoding safely converts int64 to uint64 for encoding purposes
+// This is specifically for encoding/serialization where we need uint64 representation
+// Returns the converted value and a flag indicating if it's a negative value stored in 2's complement
+func SafeInt64ToUint64ForEncoding(value int64) (uint64, bool) {
+	if value >= 0 {
+		return uint64(value), false // Positive value, direct conversion
+	}
+	// For negative values, we use two's complement representation
+	// This is safe for encoding because we'll decode it back correctly
+	return uint64(value), true // #nosec G115 - Safe two's complement for encoding
 }

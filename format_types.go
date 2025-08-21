@@ -42,13 +42,13 @@ func (f Format) String() string {
 type Encoder interface {
 	// Reset resets the encoder for reuse
 	Reset()
-	
+
 	// Bytes returns the encoded bytes
 	Bytes() []byte
-	
+
 	// EncodeLogEntry encodes a log entry with BinaryField slice
 	EncodeLogEntry(timestamp time.Time, level Level, message string, fields []BinaryField, caller Caller, stackTrace string)
-	
+
 	// EncodeLogEntryMigration encodes a log entry with Field slice (migration support)
 	EncodeLogEntryMigration(timestamp time.Time, level Level, message string, fields []Field, caller Caller, stackTrace string)
 }
@@ -57,13 +57,13 @@ type Encoder interface {
 type EncoderConfig struct {
 	// BufferSize initial buffer size for encoders
 	BufferSize int
-	
+
 	// TimeFormat format for timestamps
 	TimeFormat string
-	
+
 	// IncludeCaller whether to include caller information
 	IncludeCaller bool
-	
+
 	// IncludeStackTrace whether to include stack traces
 	IncludeStackTrace bool
 }

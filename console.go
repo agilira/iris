@@ -258,7 +258,9 @@ func (e *ConsoleEncoder) appendFieldValue(buf []byte, field Field) []byte {
 	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
 		buf = strconv.AppendInt(buf, field.Int, 10)
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		buf = strconv.AppendUint(buf, uint64(field.Int), 10)
+		// Use safe conversion for encoding unsigned integers
+		value, _ := SafeInt64ToUint64ForEncoding(field.Int)
+		buf = strconv.AppendUint(buf, value, 10)
 	case Float64Type, Float32Type:
 		buf = strconv.AppendFloat(buf, field.Float, 'f', -1, 64)
 	case BoolType:

@@ -6,7 +6,10 @@
 
 package iris
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // String creates a string field (ULTRA-OPTIMIZED hot path)
 //
@@ -132,12 +135,20 @@ func Int8(key string, value int8) Field {
 
 // Uint creates a uint field
 func Uint(key string, value uint) Field {
-	return Field{Key: key, Type: UintType, Int: int64(value)}
+	if safeValue, ok := SafeUintToInt64(value); ok {
+		return Field{Key: key, Type: UintType, Int: safeValue}
+	}
+	// Fallback to string representation for very large values
+	return Field{Key: key, Type: StringType, String: fmt.Sprintf("%d", value)}
 }
 
 // Uint64 creates a uint64 field
 func Uint64(key string, value uint64) Field {
-	return Field{Key: key, Type: Uint64Type, Int: int64(value)}
+	if safeValue, ok := SafeUint64ToInt64(value); ok {
+		return Field{Key: key, Type: Uint64Type, Int: safeValue}
+	}
+	// Fallback to string representation for very large values (> max int64)
+	return Field{Key: key, Type: StringType, String: fmt.Sprintf("%d", value)}
 }
 
 // Uint32 creates a uint32 field

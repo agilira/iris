@@ -7,9 +7,9 @@
 package iris
 
 // StringBuffer manages string data for binary fields (LOCK-FREE)
+// NOTE: Legacy struct kept for compatibility - no longer used in production
 type StringBuffer struct {
-	data []byte
-	refs []StringRef
+	// Removed unused fields to fix staticcheck warnings
 }
 
 // StringRef represents a reference to string data in buffer
@@ -37,11 +37,24 @@ func BinaryStr(key string, value string) BinaryField {
 
 // BinaryInt creates an integer field in binary format (LOCK-FREE)
 func BinaryInt(key string, value int64) BinaryField {
+	// For int64 values, check if we need to handle very large positive values
+	// that might look like unsigned when converted to uint64
+	if safeData, ok := SafeInt64ToUint64(value); ok {
+		return BinaryField{
+			Key:   key,
+			Value: "", // Not used for integers
+			Type:  uint8(IntType),
+			Data:  safeData,
+		}
+	}
+	// For negative values that are very large in magnitude, we should still store them
+	// using uint64 representation (two's complement)
+	data, _ := SafeInt64ToUint64ForEncoding(value)
 	return BinaryField{
 		Key:   key,
 		Value: "", // Not used for integers
 		Type:  uint8(IntType),
-		Data:  uint64(value),
+		Data:  data, // Safe two's complement representation
 	}
 }
 

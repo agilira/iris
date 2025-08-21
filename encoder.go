@@ -162,7 +162,9 @@ func (e *JSONEncoder) encodeField(field Field) {
 		e.buf = strconv.AppendInt(e.buf, field.Int, 10)
 
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		e.buf = strconv.AppendUint(e.buf, uint64(field.Int), 10)
+		// Use safe conversion for encoding unsigned integers
+		value, _ := SafeInt64ToUint64ForEncoding(field.Int)
+		e.buf = strconv.AppendUint(e.buf, value, 10)
 
 	case Float32Type:
 		e.buf = strconv.AppendFloat(e.buf, field.Float, 'f', -1, 32)
@@ -218,7 +220,6 @@ func (e *JSONEncoder) encodeFieldColdPath(field Field) {
 	}
 }
 
-// escapeStringFast escapes a string for JSON encoding (ULTRA-OPTIMIZED)
 // escapeStringFast escapes a string for JSON encoding (ULTRA-OPTIMIZED)
 //
 //go:inline

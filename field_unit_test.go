@@ -8,6 +8,7 @@ package iris
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -47,7 +48,7 @@ func TestIntegerFields(t *testing.T) {
 		{"Int16", Int16("count16", 16000), 16000, Int16Type},
 		{"Int8", Int8("count8", 127), 127, Int8Type},
 		{"Uint", Uint("ucount", 42), 42, UintType},
-		{"Uint64", Uint64("ucount64", 18446744073709551615), -1, Uint64Type}, // Overflow to int64
+		{"Uint64_safe", Uint64("ucount64", 123456789), 123456789, Uint64Type}, // Safe range
 		{"Uint32", Uint32("ucount32", 4294967295), 4294967295, Uint32Type},
 		{"Uint16", Uint16("ucount16", 65535), 65535, Uint16Type},
 		{"Uint8", Uint8("ucount8", 255), 255, Uint8Type},
@@ -63,6 +64,17 @@ func TestIntegerFields(t *testing.T) {
 			}
 		})
 	}
+
+	// Test Uint64 overflow behavior (should fallback to string)
+	t.Run("Uint64_overflow", func(t *testing.T) {
+		overflowField := Uint64("large", 18446744073709551615) // Max uint64
+		if overflowField.Type != StringType {
+			t.Errorf("Expected StringType for overflow Uint64, got %v", overflowField.Type)
+		}
+		if overflowField.String != "18446744073709551615" {
+			t.Errorf("Expected string representation, got %s", overflowField.String)
+		}
+	})
 }
 
 // TestFloatFields tests float field types
@@ -343,4 +355,83 @@ func TestFieldMutation(t *testing.T) {
 	if copy.String != "modified" {
 		t.Error("Copy should have modified value")
 	}
+}
+
+// TestSafeConversions tests the thread-safe conversion functions
+func TestSafeConversions(t *testing.T) {
+	t.Run("SafeUint64ToInt64", func(t *testing.T) {
+		// Test safe conversion
+		if result, ok := SafeUint64ToInt64(123); !ok || result != 123 {
+			t.Errorf("Expected safe conversion of 123, got %d, %v", result, ok)
+		}
+
+		// Test max safe value
+		maxInt64 := uint64(1<<63 - 1) // 9223372036854775807
+		if result, ok := SafeUint64ToInt64(maxInt64); !ok || result != int64(maxInt64) {
+			t.Errorf("Expected safe conversion of max int64, got %d, %v", result, ok)
+		}
+
+		// Test overflow
+		if result, ok := SafeUint64ToInt64(1 << 63); ok { // overflow by 1
+			t.Errorf("Expected overflow detection, got safe conversion: %d", result)
+		}
+
+		// Test maximum uint64 (definitely overflow)
+		if result, ok := SafeUint64ToInt64(^uint64(0)); ok { // max uint64
+			t.Errorf("Expected overflow detection for max uint64, got safe conversion: %d", result)
+		}
+	})
+
+	t.Run("SafeInt64ToUint64", func(t *testing.T) {
+		// Test safe conversion
+		if result, ok := SafeInt64ToUint64(123); !ok || result != 123 {
+			t.Errorf("Expected safe conversion of 123, got %d, %v", result, ok)
+		}
+
+		// Test zero
+		if result, ok := SafeInt64ToUint64(0); !ok || result != 0 {
+			t.Errorf("Expected safe conversion of 0, got %d, %v", result, ok)
+		}
+
+		// Test negative (should fail)
+		if result, ok := SafeInt64ToUint64(-1); ok {
+			t.Errorf("Expected negative detection, got safe conversion: %d", result)
+		}
+	})
+
+	t.Run("SafeUintToInt64", func(t *testing.T) {
+		// Test safe conversion
+		if result, ok := SafeUintToInt64(123); !ok || result != 123 {
+			t.Errorf("Expected safe conversion of 123, got %d, %v", result, ok)
+		}
+	})
+}
+
+// TestLargeUintFields tests field creation with large uint values
+func TestLargeUintFields(t *testing.T) {
+	t.Run("Uint64 safe range", func(t *testing.T) {
+		field := Uint64("key", 123)
+		if field.Type != Uint64Type || field.Int != 123 {
+			t.Errorf("Expected Uint64Type with value 123, got Type: %d, Int: %d", field.Type, field.Int)
+		}
+	})
+
+	t.Run("Uint64 overflow to string", func(t *testing.T) {
+		largeValue := uint64(1 << 63) // This will overflow int64
+		field := Uint64("key", largeValue)
+		if field.Type != StringType {
+			t.Errorf("Expected fallback to StringType for large uint64, got Type: %d", field.Type)
+		}
+		expectedStr := fmt.Sprintf("%d", largeValue)
+		if field.String != expectedStr {
+			t.Errorf("Expected string representation %s, got %s", expectedStr, field.String)
+		}
+	})
+
+	t.Run("Uint safe range", func(t *testing.T) {
+		field := Uint("key", 123)
+		if field.Type != UintType || field.Int != 123 {
+			t.Errorf("Expected UintType with value 123, got Type: %d, Int: %d", field.Type, field.Int)
+		}
+	})
 }
