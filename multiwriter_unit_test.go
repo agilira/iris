@@ -9,11 +9,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 )
 
 // multiWriterMock is a mock implementation for testing
 type multiWriterMock struct {
+	mu         sync.Mutex
 	data       *bytes.Buffer
 	syncErr    error
 	writeErr   error
@@ -27,6 +29,9 @@ func newMultiWriterMock() *multiWriterMock {
 }
 
 func (m *multiWriterMock) Write(p []byte) (n int, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if m.writeErr != nil {
 		return 0, m.writeErr
 	}
@@ -37,11 +42,17 @@ func (m *multiWriterMock) Write(p []byte) (n int, err error) {
 }
 
 func (m *multiWriterMock) Sync() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.syncCalled = true
 	return m.syncErr
 }
 
 func (m *multiWriterMock) String() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	return m.data.String()
 }
 

@@ -6,29 +6,25 @@
 
 package iris
 
-// BinaryField represents a field in pure binary format (GC-SAFE FOR 104M/s)
+// BinaryField represents a field in pure binary format (LOCK-FREE IMMUTABLE)
 type BinaryField struct {
-	Buffer   *StringBuffer // Buffer reference (GC-safe)
-	KeyRef   StringRef     // Key reference in buffer
-	ValueRef StringRef     // Value reference (for strings)
-	Type     uint8         // Field type
-	Data     uint64        // Primitive data (int, bool, etc.)
+	Key   string // Direct string storage - no shared buffer
+	Value string // Direct value storage - immutable
+	Type  uint8  // Field type
+	Data  uint64 // Primitive data (int, bool, etc.)
 }
 
-// GetKey retrieves key string (GC-SAFE)
+// GetKey retrieves key string (ZERO-COPY)
 func (bf BinaryField) GetKey() string {
-	if bf.Buffer == nil {
-		return ""
-	}
-	return bf.Buffer.GetString(bf.KeyRef)
+	return bf.Key
 }
 
-// GetString retrieves string value (GC-SAFE)
+// GetString retrieves string value (ZERO-COPY)
 func (bf BinaryField) GetString() string {
-	if bf.Buffer == nil || bf.Type != uint8(StringType) {
+	if bf.Type != uint8(StringType) {
 		return ""
 	}
-	return bf.Buffer.GetString(bf.ValueRef)
+	return bf.Value
 }
 
 // GetInt retrieves integer value
@@ -46,21 +42,18 @@ func (bf BinaryField) GetFloat() float64 {
 	return float64(bf.Data)
 }
 
-// Release releases buffer back to pool (CRITICAL for 104M/s)
+// Release returns resources to pool (NO-OP for immutable fields)
 func (bf BinaryField) Release() {
-	if bf.Buffer != nil {
-		ReleaseStringBuffer(bf.Buffer)
-	}
+	// Immutable fields don't need release - GC handles cleanup
 }
 
-// BinaryEntry represents a complete log entry in binary format (SAFE)
+// BinaryEntry represents a complete log entry in binary format (LOCK-FREE)
 type BinaryEntry struct {
-	Timestamp uint64   // Unix nano timestamp
-	Level     uint8    // Log level (1 byte)
-	_         [3]uint8 // Padding for alignment
-	MsgBuffer *StringBuffer // Message buffer (GC-safe)
-	MsgRef    StringRef     // Message reference
-	Fields    []BinaryField // Fields array (GC-safe)
+	Timestamp uint64        // Unix nano timestamp
+	Level     uint8         // Log level (1 byte)
+	_         [3]uint8      // Padding for alignment
+	Message   string        // Direct message storage (immutable)
+	Fields    []BinaryField // Fields array (immutable)
 }
 
 // BinaryContext represents a binary logging context (SAFE)
@@ -68,3 +61,9 @@ type BinaryContext struct {
 	logger *BinaryLogger
 	fields []BinaryField
 }
+
+// SAFE MIGRATION: Alias per gradual transition (BACKWARD COMPATIBLE)
+type BField = BinaryField     // Alias to BinaryField - zero overhead
+type BContext = BinaryContext // Alias to BinaryContext - user friendly
+type BLogger = BinaryLogger   // Alias to BinaryLogger - clean API
+type BEntry = BinaryEntry     // Alias to BinaryEntry - short name

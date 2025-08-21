@@ -37,7 +37,7 @@ type BinaryLogger struct {
 func NewBinaryLogger(level Level) *BinaryLogger {
 	bl := &BinaryLogger{
 		level:          level,
-		lazyCallerPool: NewLazyCallerPool(), // Zap-style lazy caller pool (VICTORY!)
+		lazyCallerPool: NewLazyCallerPool(), // Lazy caller pool (VICTORY!)
 	}
 
 	// Initialize field pool
@@ -59,7 +59,11 @@ func NewBinaryLogger(level Level) *BinaryLogger {
 	return bl
 }
 
-//
+// SAFE MIGRATION: User-friendly constructor alias
+func NewBLogger(level Level) *BLogger {
+	return NewBinaryLogger(level)
+}
+
 // NOTE: BinaryField, BinaryEntry, BinaryContext moved to binary_types.go
 //
 
@@ -69,16 +73,15 @@ func NewBinaryLogger(level Level) *BinaryLogger {
 
 // WithBinaryFields creates context with direct binary fields (S1 OPTIMIZATION - OPTIMAL)
 func (bl *BinaryLogger) WithBinaryFields(fields ...BinaryField) *BinaryContext {
-	fieldsPtr := bl.fieldPool.Get().(*[]BinaryField)
-	binaryFields := (*fieldsPtr)[:0] // Reset length, keep capacity
+	// LOCK-FREE: Direct allocation, no shared pools
+	fieldsCopy := make([]BinaryField, len(fields))
+	copy(fieldsCopy, fields)
 
-	// Direct append - no conversion overhead
-	binaryFields = append(binaryFields, fields...)
-
-	// Get context from pool - ZERO ALLOCATION!
-	ctx := bl.contextPool.Get().(*BinaryContext)
-	ctx.logger = bl
-	ctx.fields = binaryFields
+	// Direct allocation - no pool contention
+	ctx := &BinaryContext{
+		logger: bl,
+		fields: fieldsCopy,
+	}
 	return ctx
 }
 
@@ -108,6 +111,11 @@ func (bl *BinaryLogger) WithFields(fields ...Field) *BinaryContext {
 	}
 }
 
+// SAFE MIGRATION: User-friendly alias (BACKWARD COMPATIBLE)
+func (bl *BinaryLogger) WithBFields(fields ...BField) *BinaryContext {
+	return bl.WithBinaryFields(fields...)
+}
+
 // Info logs at info level with pure binary format
 func (bc *BinaryContext) Info(message string) {
 	if bc.logger.level > InfoLevel {
@@ -118,27 +126,15 @@ func (bc *BinaryContext) Info(message string) {
 	entry := bc.logger.entryPool.Get().(*BinaryEntry)
 	entry.Timestamp = uint64(time.Now().UnixNano()) // Direct time.Now() is faster
 	entry.Level = uint8(InfoLevel)
-	
-	// Use GC-safe message storage
-	if entry.MsgBuffer == nil {
-		entry.MsgBuffer = GetStringBuffer()
-	}
-	entry.MsgRef = entry.MsgBuffer.AddString(message)
+
+	// Direct message storage - LOCK-FREE immutable
+	entry.Message = message
 	entry.Fields = bc.fields
 
 	// TODO: Write to binary output (no JSON!)
 	// For now, just measure the binary structure cost
 
-	// Release GC-safe resources
-	if entry.MsgBuffer != nil {
-		ReleaseStringBuffer(entry.MsgBuffer)
-		entry.MsgBuffer = nil
-	}
-	
-	// Release field buffers
-	for _, field := range bc.fields {
-		field.Release()
-	}
+	// No release needed - immutable fields, GC handles cleanup
 
 	// Return to pools
 	bc.logger.entryPool.Put(entry)
@@ -158,12 +154,9 @@ func (bc *BinaryContext) InfoWithCaller(message string) {
 	entry := bc.logger.entryPool.Get().(*BinaryEntry)
 	entry.Timestamp = uint64(time.Now().UnixNano())
 	entry.Level = uint8(InfoLevel)
-	
-	// Use GC-safe message storage
-	if entry.MsgBuffer == nil {
-		entry.MsgBuffer = GetStringBuffer()
-	}
-	entry.MsgRef = entry.MsgBuffer.AddString(message)
+
+	// Direct message storage - LOCK-FREE immutable
+	entry.Message = message
 	entry.Fields = bc.fields
 
 	// ZAP-STYLE: Create lazy caller without computing (12.6ns!)
@@ -174,16 +167,7 @@ func (bc *BinaryContext) InfoWithCaller(message string) {
 	// TODO: Write to binary output with caller info
 	// Caller computation only happens if/when the log is actually output
 
-	// Release GC-safe resources
-	if entry.MsgBuffer != nil {
-		ReleaseStringBuffer(entry.MsgBuffer)
-		entry.MsgBuffer = nil
-	}
-	
-	// Release field buffers
-	for _, field := range bc.fields {
-		field.Release()
-	}
+	// No release needed - immutable fields, GC handles cleanup
 
 	// Return to pools
 	bc.logger.entryPool.Put(entry)

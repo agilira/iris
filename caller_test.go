@@ -33,10 +33,11 @@ func TestCallerInfo(t *testing.T) {
 	// Log a message (this will capture caller info)
 	logger.Info("Test message with caller")
 
-	// Give the logger time to process
-	time.Sleep(10 * time.Millisecond)
+	// Give a moment for processing, then close
+	time.Sleep(5 * time.Millisecond)
+	logger.Close()
 
-	// Check output
+	// Now safe to read output
 	output := buf.String()
 
 	// Verify caller information is present
@@ -75,15 +76,15 @@ func TestCallerDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
 
 	// Log a message
 	logger.Info("Test message without caller")
 
-	// Give the logger time to process
-	time.Sleep(10 * time.Millisecond)
+	// Give a moment for processing, then close
+	time.Sleep(5 * time.Millisecond)
+	logger.Close()
 
-	// Check output
+	// Now safe to read output
 	output := buf.String()
 
 	// Verify caller information is NOT present
@@ -113,15 +114,15 @@ func TestConsoleCallerInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
 
 	// Log a message
 	logger.Info("Console test with caller")
 
-	// Give the logger time to process
-	time.Sleep(10 * time.Millisecond)
+	// Give a moment for processing, then close
+	time.Sleep(5 * time.Millisecond)
+	logger.Close()
 
-	// Check output
+	// Now safe to read output
 	output := buf.String()
 
 	// Verify caller information is present in console format [file:line]
