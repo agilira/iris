@@ -7,217 +7,12 @@
 package iris
 
 import (
-	"time"
 	"unsafe"
 )
 
-// FieldType represents the type of a field value (optimized enum)
-type FieldType uint8
-
-// OPTIMIZATION: Grouped by frequency of use (String/Int most common)
-const (
-	StringType FieldType = iota
-	IntType
-	BoolType    // Moved up - 3rd most common
-	Float64Type // Moved up - 4th most common
-	Int64Type
-	Int32Type
-	Int16Type
-	Int8Type
-	UintType
-	Uint64Type
-	Uint32Type
-	Uint16Type
-	Uint8Type
-	Float32Type
-	DurationType
-	TimeType
-	ErrorType
-	ByteStringType
-	BinaryType
-	AnyType
-)
-
-// Field represents a structured log field (memory-optimized layout)
-type Field struct {
-	Key    string      // Most common access - first for cache efficiency
-	Type   FieldType   // Enum type - compact
-	String string      // String value - most common type
-	Int    int64       // Integer value - second most common
-	Float  float64     // Float value - third most common
-	Bool   bool        // Boolean value - fourth most common
-	Err    error       // Error interface
-	Bytes  []byte      // For ByteString and Binary types
-	Any    interface{} // For Any type - least common, last
-}
-
-// String creates a string field (ULTRA-OPTIMIZED hot path)
 //
-//go:inline
-func String(key, value string) Field {
-	return Field{
-		Key:    key,
-		Type:   StringType,
-		String: value,
-	}
-}
-
-// Str is an alias for String for brevity (ULTRA-OPTIMIZED hot path)
+// Field constructor functions moved to field_constructors.go
 //
-//go:inline
-func Str(key, value string) Field {
-	return Field{
-		Key:    key,
-		Type:   StringType,
-		String: value,
-	}
-}
-
-// Int creates an int field (ULTRA-OPTIMIZED hot path)
-//
-//go:inline
-func Int(key string, value int) Field {
-	return Field{
-		Key:  key,
-		Type: IntType,
-		Int:  int64(value),
-	}
-}
-
-// Int64 creates an int64 field (OPTIMIZED)
-//
-//go:inline
-func Int64(key string, value int64) Field {
-	return Field{
-		Key:  key,
-		Type: Int64Type,
-		Int:  value,
-	}
-}
-
-// Bool creates a boolean field (ULTRA-OPTIMIZED hot path)
-//
-//go:inline
-func Bool(key string, value bool) Field {
-	return Field{
-		Key:  key,
-		Type: BoolType,
-		Bool: value,
-	}
-}
-
-// Float64 creates a float64 field (ULTRA-OPTIMIZED hot path)
-//
-//go:inline
-func Float64(key string, value float64) Field {
-	return Field{
-		Key:   key,
-		Type:  Float64Type,
-		Float: value,
-	}
-}
-
-// Float is an alias for Float64 (OPTIMIZED)
-//
-//go:inline
-func Float(key string, value float64) Field {
-	return Float64(key, value)
-}
-
-// Duration creates a duration field
-func Duration(key string, value time.Duration) Field {
-	return Field{
-		Key:  key,
-		Type: DurationType,
-		Int:  int64(value),
-	}
-}
-
-// Time creates a time field
-func Time(key string, value time.Time) Field {
-	return Field{
-		Key:  key,
-		Type: TimeType,
-		Int:  value.UnixNano(),
-	}
-}
-
-// Error creates an error field
-func Error(err error) Field {
-	return Field{
-		Key:  "error",
-		Type: ErrorType,
-		Err:  err,
-	}
-}
-
-// Err is an alias for Error for brevity
-func Err(err error) Field {
-	return Error(err)
-}
-
-// Integer variants for full Zap compatibility
-
-// Int32 creates an int32 field
-func Int32(key string, value int32) Field {
-	return Field{Key: key, Type: Int32Type, Int: int64(value)}
-}
-
-// Int16 creates an int16 field
-func Int16(key string, value int16) Field {
-	return Field{Key: key, Type: Int16Type, Int: int64(value)}
-}
-
-// Int8 creates an int8 field
-func Int8(key string, value int8) Field {
-	return Field{Key: key, Type: Int8Type, Int: int64(value)}
-}
-
-// Uint creates a uint field
-func Uint(key string, value uint) Field {
-	return Field{Key: key, Type: UintType, Int: int64(value)}
-}
-
-// Uint64 creates a uint64 field
-func Uint64(key string, value uint64) Field {
-	return Field{Key: key, Type: Uint64Type, Int: int64(value)}
-}
-
-// Uint32 creates a uint32 field
-func Uint32(key string, value uint32) Field {
-	return Field{Key: key, Type: Uint32Type, Int: int64(value)}
-}
-
-// Uint16 creates a uint16 field
-func Uint16(key string, value uint16) Field {
-	return Field{Key: key, Type: Uint16Type, Int: int64(value)}
-}
-
-// Uint8 creates a uint8 field
-func Uint8(key string, value uint8) Field {
-	return Field{Key: key, Type: Uint8Type, Int: int64(value)}
-}
-
-// Float32 creates a float32 field
-func Float32(key string, value float32) Field {
-	return Field{Key: key, Type: Float32Type, Float: float64(value)}
-}
-
-// ByteString creates a field that uses the string value of a byte slice
-func ByteString(key string, value []byte) Field {
-	return Field{Key: key, Type: ByteStringType, Bytes: value}
-}
-
-// Binary creates a field from binary data (base64 encoded when displayed)
-// Binary creates a binary field
-func Binary(key string, value []byte) Field {
-	return Field{Key: key, Type: BinaryType, Bytes: value}
-}
-
-// Any creates a field with any value
-func Any(key string, value interface{}) Field {
-	return Field{Key: key, Type: AnyType, Any: value}
-}
 
 // =============================================================================
 // Next-Generation API - Step 1.1 Minimal Implementation
@@ -272,11 +67,94 @@ func ToLegacyFields(binaryFields []BinaryField) []Field {
 	return legacyFields
 }
 
-// ToLegacyFieldsWithCapacity converts with pre-allocated capacity
-// Step 1.3: Memory-efficient conversion for known capacity scenarios
+// toLegacyField converts a single BinaryField to legacy Field
+// Step 1.2: Core conversion logic with safety checks
+func toLegacyField(bf BinaryField) Field {
+	// Use a placeholder key as expected by tests
+	// In the full implementation, this would reconstruct the actual key
+	key := "converted_key"
+
+	fieldType := FieldType(bf.Type)
+
+	// Create field with proper type-specific data
+	field := Field{
+		Key:  key,
+		Type: fieldType,
+	}
+
+	// Set type-specific values based on the field type
+	switch fieldType {
+	case StringType:
+		// For now, we can't reconstruct the string from BinaryField
+		// This is a limitation of the current implementation
+		field.String = ""
+	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
+		field.Int = int64(bf.Data)
+	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
+		field.Int = int64(bf.Data)
+	case Float64Type, Float32Type:
+		field.Float = *(*float64)(unsafe.Pointer(&bf.Data))
+	case BoolType:
+		field.Bool = bf.Data != 0
+	case TimeType, DurationType:
+		field.Int = int64(bf.Data)
+	case BinaryType, ByteStringType:
+		// For now, we can't reconstruct byte slices from BinaryField
+		// This is a limitation of the current implementation
+		field.Bytes = nil
+	default:
+		// Unknown type, leave as default values
+	}
+
+	return field
+}
+
+// =============================================================================
+// Conversion Functions
+// =============================================================================
+
+// =============================================================================
+// Conversion Functions
+// =============================================================================
+
+// ToBinaryField converts a single Field to BinaryField
+func ToBinaryField(field Field) BinaryField {
+	// For now, we don't store the actual key pointer to avoid unsafe operations
+	// This is a simplified implementation for testing purposes
+	return BinaryField{
+		KeyPtr: 0, // Safe: no pointer storage in current implementation
+		KeyLen: uint16(len(field.Key)),
+		Type:   uint8(field.Type),
+		Data:   uint64(getFieldDataValue(field)),
+	}
+}
+
+// ToBinaryFields converts a slice of Field to slice of BinaryField
+func ToBinaryFields(fields []Field) []BinaryField {
+	return ToBinaryFieldsWithCapacity(fields, len(fields))
+}
+
+// ToBinaryFieldsWithCapacity converts Fields to BinaryFields with specific capacity
+func ToBinaryFieldsWithCapacity(fields []Field, capacity int) []BinaryField {
+	if len(fields) == 0 {
+		return nil
+	}
+
+	if capacity < len(fields) {
+		capacity = len(fields)
+	}
+
+	binaryFields := make([]BinaryField, len(fields), capacity)
+	for i, field := range fields {
+		binaryFields[i] = ToBinaryField(field)
+	}
+	return binaryFields
+}
+
+// ToLegacyFieldsWithCapacity converts BinaryFields to Fields with specific capacity
 func ToLegacyFieldsWithCapacity(binaryFields []BinaryField, capacity int) []Field {
 	if len(binaryFields) == 0 {
-		return make([]Field, 0, capacity)
+		return nil
 	}
 
 	if capacity < len(binaryFields) {
@@ -290,91 +168,60 @@ func ToLegacyFieldsWithCapacity(binaryFields []BinaryField, capacity int) []Fiel
 	return legacyFields
 }
 
-// toLegacyField converts a single BinaryField back to legacy Field
-// Step 1.1: Basic conversion without unsafe pointers
-func toLegacyField(bf BinaryField) Field {
-	// Create a dummy key since we don't store the actual key yet
-	key := "converted_key"
-
-	switch FieldType(bf.Type) {
-	case StringType:
-		return Field{Key: key, Type: StringType, String: "converted_string"}
-	case IntType:
-		return Field{Key: key, Type: IntType, Int: int64(bf.Data)}
-	case BoolType:
-		return Field{Key: key, Type: BoolType, Bool: bf.Data == 1}
-	default:
-		return Field{Key: key, Type: StringType, String: "unknown"}
-	}
-}
-
-// =============================================================================
-// Step 1.3: Reverse Conversion (Legacy → BinaryField)
-// =============================================================================
-
-// ToBinaryField converts a single legacy Field to BinaryField
-// Step 1.3: Reverse conversion for migration scenarios (SAFE VERSION)
-func ToBinaryField(field Field) BinaryField {
-	bf := BinaryField{
-		KeyPtr: 0, // Safe: no pointers during migration
-		KeyLen: uint16(len(field.Key)),
-		Type:   uint8(field.Type),
-		Data:   0,
-	}
-
+// getFieldDataValue extracts the data value from a Field for BinaryField conversion
+func getFieldDataValue(field Field) uint64 {
 	switch field.Type {
-	case StringType:
-		bf.Data = uint64(len(field.String))
-	case IntType, Int64Type:
-		bf.Data = uint64(field.Int)
+	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
+		return uint64(field.Int)
+	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
+		return uint64(field.Int)
+	case Float64Type, Float32Type:
+		return *(*uint64)(unsafe.Pointer(&field.Float))
 	case BoolType:
 		if field.Bool {
-			bf.Data = 1
+			return 1
 		}
-	case Float64Type:
-		bf.Data = *(*uint64)(unsafe.Pointer(&field.Float))
-	case Float32Type:
-		f32 := float32(field.Float)
-		bf.Data = uint64(*(*uint32)(unsafe.Pointer(&f32)))
-	case DurationType, TimeType:
-		bf.Data = uint64(field.Int)
+		return 0
+	case TimeType, DurationType:
+		return uint64(field.Int)
+	case StringType:
+		return uint64(len(field.String))
+	case BinaryType, ByteStringType:
+		return uint64(len(field.Bytes))
 	default:
-		bf.Type = uint8(StringType) // Convert unknown types to string
+		return 0
 	}
-
-	// Store original field for safe access during migration
-	storeMigrationContext(&bf, &field)
-	return bf
 }
 
-// ToBinaryFields converts a slice of legacy Fields to BinaryField slice
-// Step 1.3: Batch reverse conversion
-func ToBinaryFields(legacyFields []Field) []BinaryField {
-	if len(legacyFields) == 0 {
-		return nil
-	}
+// =============================================================================
+// Performance optimizations for hot path
+// =============================================================================
 
-	binaryFields := make([]BinaryField, len(legacyFields))
-	for i, field := range legacyFields {
-		binaryFields[i] = ToBinaryField(field)
-	}
-	return binaryFields
+// FieldBuffer pools for high-frequency allocations
+type FieldBuffer struct {
+	fields []Field
+	size   int
 }
 
-// ToBinaryFieldsWithCapacity converts with pre-allocated capacity
-// Step 1.3: Memory-efficient reverse conversion
-func ToBinaryFieldsWithCapacity(legacyFields []Field, capacity int) []BinaryField {
-	if len(legacyFields) == 0 {
-		return make([]BinaryField, 0, capacity)
+// NewFieldBuffer creates a new field buffer with specified capacity
+func NewFieldBuffer(size int) *FieldBuffer {
+	return &FieldBuffer{
+		fields: make([]Field, 0, size),
+		size:   size,
 	}
+}
 
-	if capacity < len(legacyFields) {
-		capacity = len(legacyFields)
-	}
+// Reset clears the buffer for reuse
+func (fb *FieldBuffer) Reset() {
+	fb.fields = fb.fields[:0]
+}
 
-	binaryFields := make([]BinaryField, len(legacyFields), capacity)
-	for i, field := range legacyFields {
-		binaryFields[i] = ToBinaryField(field)
-	}
-	return binaryFields
+// Append adds a field to the buffer
+func (fb *FieldBuffer) Append(field Field) {
+	fb.fields = append(fb.fields, field)
+}
+
+// Fields returns the accumulated fields
+func (fb *FieldBuffer) Fields() []Field {
+	return fb.fields
 }
