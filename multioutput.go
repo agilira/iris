@@ -12,13 +12,32 @@ type MultiOutputConfig struct {
 }
 
 // ToConfig converts MultiOutputConfig to a standard Config with multiple outputs
+// Optimized to reduce allocations and improve performance
 func (m *MultiOutputConfig) ToConfig(baseConfig Config) Config {
 	config := baseConfig
 
+	// Pre-calculate total capacity to reduce allocations
+	totalWriters := len(m.Writers)
+	totalSyncers := len(m.WriteSyncers) + len(m.Files)
+	if m.Console {
+		totalSyncers++
+	}
+	if m.ConsoleErr {
+		totalSyncers++
+	}
+
+	// Pre-allocate slices with exact capacity to avoid multiple allocations
 	var writers []io.Writer
 	var syncers []WriteSyncer
 
-	// Add console outputs
+	if totalWriters > 0 {
+		writers = make([]io.Writer, 0, totalWriters)
+	}
+	if totalSyncers > 0 {
+		syncers = make([]WriteSyncer, 0, totalSyncers)
+	}
+
+	// Add console outputs first (most common case)
 	if m.Console {
 		syncers = append(syncers, StdoutWriteSyncer)
 	}
@@ -26,20 +45,31 @@ func (m *MultiOutputConfig) ToConfig(baseConfig Config) Config {
 		syncers = append(syncers, StderrWriteSyncer)
 	}
 
-	// Add file outputs
-	for _, filename := range m.Files {
-		if syncer, err := NewFileWriteSyncer(filename); err == nil {
-			syncers = append(syncers, syncer)
+	// Add file outputs - optimized error handling
+	if len(m.Files) > 0 {
+		for _, filename := range m.Files {
+			if syncer, err := NewFileWriteSyncer(filename); err == nil {
+				syncers = append(syncers, syncer)
+			}
+			// Note: silently skip invalid files to maintain backward compatibility
 		}
 	}
 
-	// Add custom writers and syncers
-	writers = append(writers, m.Writers...)
-	syncers = append(syncers, m.WriteSyncers...)
+	// Add custom writers and syncers (already allocated exactly)
+	if len(m.Writers) > 0 {
+		writers = append(writers, m.Writers...)
+	}
+	if len(m.WriteSyncers) > 0 {
+		syncers = append(syncers, m.WriteSyncers...)
+	}
 
-	// Set in config
-	config.Writers = writers
-	config.WriteSyncers = syncers
+	// Set in config only if we have writers
+	if len(writers) > 0 {
+		config.Writers = writers
+	}
+	if len(syncers) > 0 {
+		config.WriteSyncers = syncers
+	}
 
 	return config
 }
@@ -53,70 +83,96 @@ func NewMultiOutputLogger(multiConfig MultiOutputConfig, baseConfig Config) (*Lo
 // Convenience functions for common multiple output scenarios
 
 // NewTeeLogger creates a logger that writes to both console and a file
+// Optimized to reduce configuration overhead
 func NewTeeLogger(filename string, level Level, format Format) (*Logger, error) {
-	multiConfig := MultiOutputConfig{
-		Console: true,
-		Files:   []string{filename},
+	// Direct config construction instead of going through MultiOutputConfig
+	config := Config{
+		Level:        level,
+		Format:       format,
+		BufferSize:   4096,
+		BatchSize:    64,
+		WriteSyncers: make([]WriteSyncer, 0, 2), // Pre-allocate for console + file
 	}
 
-	baseConfig := Config{
-		Level:      level,
-		Format:     format,
-		BufferSize: 4096,
-		BatchSize:  64,
+	// Add console output
+	config.WriteSyncers = append(config.WriteSyncers, StdoutWriteSyncer)
+
+	// Add file output
+	if syncer, err := NewFileWriteSyncer(filename); err == nil {
+		config.WriteSyncers = append(config.WriteSyncers, syncer)
+	} else {
+		return nil, err
 	}
 
-	return NewMultiOutputLogger(multiConfig, baseConfig)
+	return New(config)
 }
 
 // NewDevelopmentTeeLogger creates a development logger with console (colorized) and file output
+// Optimized for development use case
 func NewDevelopmentTeeLogger(filename string) (*Logger, error) {
-	multiConfig := MultiOutputConfig{
-		Console: true,
-		Files:   []string{filename},
-	}
-
-	baseConfig := Config{
+	config := Config{
 		Level:        DebugLevel,
 		Format:       ConsoleFormat,
 		BufferSize:   1024,
 		BatchSize:    32,
 		EnableCaller: true,
+		WriteSyncers: make([]WriteSyncer, 0, 2),
 	}
 
-	return NewMultiOutputLogger(multiConfig, baseConfig)
+	config.WriteSyncers = append(config.WriteSyncers, StdoutWriteSyncer)
+
+	if syncer, err := NewFileWriteSyncer(filename); err == nil {
+		config.WriteSyncers = append(config.WriteSyncers, syncer)
+	} else {
+		return nil, err
+	}
+
+	return New(config)
 }
 
 // NewProductionTeeLogger creates a production logger with structured output to both stdout and file
+// Optimized for production use case
 func NewProductionTeeLogger(filename string) (*Logger, error) {
-	multiConfig := MultiOutputConfig{
-		Console: true,
-		Files:   []string{filename},
+	config := Config{
+		Level:        InfoLevel,
+		Format:       JSONFormat,
+		BufferSize:   8192,
+		BatchSize:    128,
+		WriteSyncers: make([]WriteSyncer, 0, 2),
 	}
 
-	baseConfig := Config{
-		Level:      InfoLevel,
-		Format:     JSONFormat,
-		BufferSize: 8192,
-		BatchSize:  128,
+	config.WriteSyncers = append(config.WriteSyncers, StdoutWriteSyncer)
+
+	if syncer, err := NewFileWriteSyncer(filename); err == nil {
+		config.WriteSyncers = append(config.WriteSyncers, syncer)
+	} else {
+		return nil, err
 	}
 
-	return NewMultiOutputLogger(multiConfig, baseConfig)
+	return New(config)
 }
 
 // NewRotatingFileLogger creates a logger that writes to console and multiple rotating files
+// Optimized for multiple file outputs
 func NewRotatingFileLogger(files []string, level Level) (*Logger, error) {
-	multiConfig := MultiOutputConfig{
-		Console: true,
-		Files:   files,
+	config := Config{
+		Level:        level,
+		Format:       JSONFormat,
+		BufferSize:   4096,
+		BatchSize:    64,
+		WriteSyncers: make([]WriteSyncer, 0, len(files)+1), // Pre-allocate for console + files
 	}
 
-	baseConfig := Config{
-		Level:      level,
-		Format:     JSONFormat,
-		BufferSize: 4096,
-		BatchSize:  64,
+	// Add console first
+	config.WriteSyncers = append(config.WriteSyncers, StdoutWriteSyncer)
+
+	// Add files
+	for _, filename := range files {
+		if syncer, err := NewFileWriteSyncer(filename); err == nil {
+			config.WriteSyncers = append(config.WriteSyncers, syncer)
+		}
+		// Continue with other files even if one fails
 	}
 
-	return NewMultiOutputLogger(multiConfig, baseConfig)
+	return New(config)
 }

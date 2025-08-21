@@ -5,58 +5,171 @@
 
 package iris
 
+import (
+	"sync"
+)
+
+// Cached preset configurations to avoid repeated allocations
+var (
+	developmentConfigCache Config
+	productionConfigCache  Config
+	exampleConfigCache     Config
+	ultraFastConfigCache   Config
+	fastTextConfigCache    Config
+	devStackTraceCache     Config
+	debugStackTraceCache   Config
+
+	configCacheOnce sync.Once
+)
+
+// initializeConfigCache initializes all preset configurations once
+func initializeConfigCache() {
+	developmentConfigCache = Config{
+		Level:      DebugLevel,
+		Writer:     StdoutWriter,
+		Format:     JSONFormat,
+		BufferSize: 1024,
+		BatchSize:  32,
+	}
+
+	productionConfigCache = Config{
+		Level:      InfoLevel,
+		Writer:     StdoutWriter,
+		Format:     JSONFormat,
+		BufferSize: 8192,
+		BatchSize:  128,
+	}
+
+	exampleConfigCache = Config{
+		Level:            InfoLevel,
+		Writer:           StdoutWriter,
+		Format:           JSONFormat,
+		BufferSize:       512,
+		BatchSize:        16,
+		DisableTimestamp: true,
+	}
+
+	ultraFastConfigCache = Config{
+		Level:            InfoLevel,
+		Writer:           StderrWriteSyncer,
+		Format:           BinaryFormat,
+		BufferSize:       16384,
+		BatchSize:        256,
+		DisableTimestamp: true,
+		EnableCaller:     false,
+		UltraFast:        true,
+	}
+
+	fastTextConfigCache = Config{
+		Level:      DebugLevel,
+		Writer:     StdoutWriter,
+		Format:     FastTextFormat,
+		BufferSize: 2048,
+		BatchSize:  64,
+	}
+
+	devStackTraceCache = Config{
+		Level:           DebugLevel,
+		Writer:          StdoutWriter,
+		Format:          ConsoleFormat,
+		BufferSize:      1024,
+		BatchSize:       32,
+		StackTraceLevel: ErrorLevel,
+	}
+
+	debugStackTraceCache = Config{
+		Level:           DebugLevel,
+		Writer:          StdoutWriter,
+		Format:          ConsoleFormat,
+		BufferSize:      1024,
+		BatchSize:       16,
+		StackTraceLevel: WarnLevel,
+		EnableCaller:    true,
+	}
+}
+
 // NewDevelopment creates a logger suitable for development
 // Features: console output with colors, debug level, human-readable format
 func NewDevelopment() (*Logger, error) {
-	return New(Config{
-		Level:      DebugLevel,
-		Writer:     StdoutWriter,
-		Format:     JSONFormat, // Structured but readable
-		BufferSize: 1024,       // Smaller buffer for development
-		BatchSize:  32,         // Smaller batches for immediate feedback
-	})
+	configCacheOnce.Do(initializeConfigCache)
+	return New(developmentConfigCache)
 }
 
 // NewProduction creates a logger suitable for production
 // Features: JSON output, info level, optimized for performance
 func NewProduction() (*Logger, error) {
-	return New(Config{
-		Level:      InfoLevel,
-		Writer:     StdoutWriter,
-		Format:     JSONFormat, // Structured for parsing
-		BufferSize: 8192,       // Larger buffer for throughput
-		BatchSize:  128,        // Larger batches for efficiency
-	})
+	configCacheOnce.Do(initializeConfigCache)
+	return New(productionConfigCache)
 }
 
 // NewExample creates a logger suitable for examples and testing
 // Features: deterministic output, no timestamps, consistent formatting
 func NewExample() (*Logger, error) {
-	return New(Config{
-		Level:            InfoLevel,
-		Writer:           StdoutWriter,
-		Format:           JSONFormat,
-		BufferSize:       512,  // Small buffer for examples
-		BatchSize:        16,   // Small batches
-		DisableTimestamp: true, // Deterministic output for examples
-	})
+	configCacheOnce.Do(initializeConfigCache)
+	return New(exampleConfigCache)
 }
 
 // NewUltraFast creates a logger optimized for maximum performance
 // Features: binary format, minimal allocations, maximum throughput
-// PRODUCTION READY: Writes to stderr by default for binary logging
-// For testing use: logger, _ := NewUltraFast(); logger.RemoveAll(); logger.AddWriteSyncer(DiscardSyncer)
 func NewUltraFast() (*Logger, error) {
-	return New(Config{
-		Level:            InfoLevel,
-		Writer:           StderrWriteSyncer, // Use stderr for production binary logs
-		Format:           BinaryFormat,      // Fastest encoding
-		BufferSize:       16384,             // Large buffer
-		BatchSize:        256,               // Large batches
-		DisableTimestamp: true,              // Skip timestamp for maximum speed
-		EnableCaller:     false,             // Skip caller info for speed
-		UltraFast:        true,              // Enable all optimizations
-	})
+	configCacheOnce.Do(initializeConfigCache)
+	return New(ultraFastConfigCache)
+}
+
+// NewFastText creates a logger with fast text output
+// Features: human-readable text, fast encoding, good for development
+func NewFastText() (*Logger, error) {
+	configCacheOnce.Do(initializeConfigCache)
+	return New(fastTextConfigCache)
+}
+
+// NewDevelopmentWithStackTrace creates a development logger with stack trace support
+// Features: console output with colors, debug level, stack traces for errors
+func NewDevelopmentWithStackTrace() (*Logger, error) {
+	configCacheOnce.Do(initializeConfigCache)
+	return New(devStackTraceCache)
+}
+
+// NewDebugWithStackTrace creates a debug logger with comprehensive stack trace support
+// Features: all levels logged, stack traces for warnings and above
+func NewDebugWithStackTrace() (*Logger, error) {
+	configCacheOnce.Do(initializeConfigCache)
+	return New(debugStackTraceCache)
+}
+
+// DevelopmentConfig returns a development configuration
+// Use this if you want to customize the development preset
+func DevelopmentConfig() Config {
+	configCacheOnce.Do(initializeConfigCache)
+	return developmentConfigCache
+}
+
+// ProductionConfig returns a production configuration
+// Use this if you want to customize the production preset
+func ProductionConfig() Config {
+	configCacheOnce.Do(initializeConfigCache)
+	return productionConfigCache
+}
+
+// ExampleConfig returns an example configuration
+// Use this if you want to customize the example preset
+func ExampleConfig() Config {
+	configCacheOnce.Do(initializeConfigCache)
+	return exampleConfigCache
+}
+
+// DevelopmentWithStackTraceConfig returns a development configuration with stack traces
+// Use this if you want to customize the development with stack trace preset
+func DevelopmentWithStackTraceConfig() Config {
+	configCacheOnce.Do(initializeConfigCache)
+	return devStackTraceCache
+}
+
+// DebugWithStackTraceConfig returns a debug configuration with comprehensive stack traces
+// Use this if you want to customize the debug with stack trace preset
+func DebugWithStackTraceConfig() Config {
+	configCacheOnce.Do(initializeConfigCache)
+	return debugStackTraceCache
 }
 
 // NewUltraFastFile creates a high-performance binary logger for file output
@@ -67,132 +180,21 @@ func NewUltraFastFile(filePath string) (*Logger, error) {
 		return nil, err
 	}
 
-	return New(Config{
-		Level:            InfoLevel,
-		Writer:           fileWriter,
-		Format:           BinaryFormat, // Fastest encoding
-		BufferSize:       16384,        // Large buffer
-		BatchSize:        256,          // Large batches
-		DisableTimestamp: false,        // Keep timestamp for production
-		EnableCaller:     false,        // Skip caller for speed
-		UltraFast:        true,         // Enable all optimizations
-	})
+	config := ultraFastConfigCache
+	config.Writer = fileWriter
+	config.DisableTimestamp = false // Keep timestamp for production files
+
+	return New(config)
 }
 
 // NewUltraFastNetwork creates a high-performance binary logger for network output
 // Features: binary format to network, maximum throughput, production-ready
 func NewUltraFastNetwork(writer WriteSyncer) (*Logger, error) {
-	return New(Config{
-		Level:            InfoLevel,
-		Writer:           writer,
-		Format:           BinaryFormat, // Fastest encoding
-		BufferSize:       32768,        // Extra large buffer for network
-		BatchSize:        512,          // Large batches for network efficiency
-		DisableTimestamp: false,        // Keep timestamp for production
-		EnableCaller:     false,        // Skip caller for speed
-		UltraFast:        true,         // Enable all optimizations
-	})
-}
+	config := ultraFastConfigCache
+	config.Writer = writer
+	config.BufferSize = 32768       // Extra large buffer for network
+	config.BatchSize = 512          // Large batches for network efficiency
+	config.DisableTimestamp = false // Keep timestamp for production
 
-// NewFastText creates a logger with fast text output
-// Features: human-readable text, fast encoding, good for development
-func NewFastText() (*Logger, error) {
-	return New(Config{
-		Level:      DebugLevel,
-		Writer:     StdoutWriter,
-		Format:     FastTextFormat, // Ultra-fast text format
-		BufferSize: 2048,
-		BatchSize:  64,
-	})
-}
-
-// NewDevelopmentWithStackTrace creates a development logger with stack trace support
-// Features: console output with colors, debug level, stack traces for errors
-func NewDevelopmentWithStackTrace() (*Logger, error) {
-	return New(Config{
-		Level:           DebugLevel,
-		Writer:          StdoutWriter,
-		Format:          ConsoleFormat, // Better for viewing stack traces
-		BufferSize:      1024,
-		BatchSize:       32,
-		StackTraceLevel: ErrorLevel, // Stack traces for errors and panics
-	})
-}
-
-// NewDebugWithStackTrace creates a debug logger with comprehensive stack trace support
-// Features: all levels logged, stack traces for warnings and above
-func NewDebugWithStackTrace() (*Logger, error) {
-	return New(Config{
-		Level:           DebugLevel,
-		Writer:          StdoutWriter,
-		Format:          ConsoleFormat, // Best for debugging
-		BufferSize:      1024,
-		BatchSize:       16,        // Immediate feedback
-		StackTraceLevel: WarnLevel, // Stack traces for warn, error, and panic
-		EnableCaller:    true,      // Include caller info for debugging
-	})
-}
-
-// DevelopmentConfig returns a development configuration
-// Use this if you want to customize the development preset
-func DevelopmentConfig() Config {
-	return Config{
-		Level:      DebugLevel,
-		Writer:     StdoutWriter,
-		Format:     JSONFormat,
-		BufferSize: 1024,
-		BatchSize:  32,
-	}
-}
-
-// ProductionConfig returns a production configuration
-// Use this if you want to customize the production preset
-func ProductionConfig() Config {
-	return Config{
-		Level:      InfoLevel,
-		Writer:     StdoutWriter,
-		Format:     JSONFormat,
-		BufferSize: 8192,
-		BatchSize:  128,
-	}
-}
-
-// ExampleConfig returns an example configuration
-// Use this if you want to customize the example preset
-func ExampleConfig() Config {
-	return Config{
-		Level:            InfoLevel,
-		Writer:           StdoutWriter,
-		Format:           JSONFormat,
-		BufferSize:       512,
-		BatchSize:        16,
-		DisableTimestamp: true,
-	}
-}
-
-// DevelopmentWithStackTraceConfig returns a development configuration with stack traces
-// Use this if you want to customize the development with stack trace preset
-func DevelopmentWithStackTraceConfig() Config {
-	return Config{
-		Level:           DebugLevel,
-		Writer:          StdoutWriter,
-		Format:          ConsoleFormat,
-		BufferSize:      1024,
-		BatchSize:       32,
-		StackTraceLevel: ErrorLevel,
-	}
-}
-
-// DebugWithStackTraceConfig returns a debug configuration with comprehensive stack traces
-// Use this if you want to customize the debug with stack trace preset
-func DebugWithStackTraceConfig() Config {
-	return Config{
-		Level:           DebugLevel,
-		Writer:          StdoutWriter,
-		Format:          ConsoleFormat,
-		BufferSize:      1024,
-		BatchSize:       16,
-		StackTraceLevel: WarnLevel,
-		EnableCaller:    true,
-	}
+	return New(config)
 }

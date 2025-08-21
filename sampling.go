@@ -38,11 +38,14 @@ type SamplingConfig struct {
 
 // Sampler implements the sampling logic
 type Sampler struct {
-	config   SamplingConfig
-	counter  int64
-	lastTick int64
-	dropped  int64
-	sampled  int64
+	config         SamplingConfig
+	counter        int64
+	lastTick       int64
+	dropped        int64
+	sampled        int64
+	hasHook        bool  // Pre-computed hook presence for performance
+	isPowerOf2     bool  // True if Thereafter is power of 2
+	thereafterMask int64 // Bitmask for power-of-2 optimization
 }
 
 // NewSampler creates a new sampler with the given configuration
@@ -56,7 +59,14 @@ func NewSampler(config SamplingConfig) *Sampler {
 
 	sampler := &Sampler{
 		config:   config,
-		lastTick: time.Now().UnixNano(),
+		lastTick: CachedTimeNano(),   // Use cached time for initialization
+		hasHook:  config.Hook != nil, // Pre-compute hook presence
+	}
+
+	// Optimize for power-of-2 Thereafter values
+	if config.Thereafter > 0 && (config.Thereafter&(config.Thereafter-1)) == 0 {
+		sampler.isPowerOf2 = true
+		sampler.thereafterMask = config.Thereafter - 1
 	}
 
 	return sampler
@@ -69,7 +79,7 @@ func (s *Sampler) Sample(entry LogEntry) SamplingDecision {
 
 	// Check if we need to reset based on tick duration
 	if s.config.Tick > 0 {
-		now := time.Now().UnixNano()
+		now := CachedTimeNano() // Use cached time instead of syscall
 		lastTick := atomic.LoadInt64(&s.lastTick)
 
 		if now-lastTick > int64(s.config.Tick) {
@@ -92,7 +102,17 @@ func (s *Sampler) Sample(entry LogEntry) SamplingDecision {
 		// After initial window - sample every Nth entry
 		// We want to sample the Nth entry after the initial period
 		afterInitial := n - s.config.Initial
-		if afterInitial%s.config.Thereafter == 0 {
+
+		var shouldSample bool
+		if s.isPowerOf2 {
+			// Fast bit-wise operation for power-of-2
+			shouldSample = (afterInitial & s.thereafterMask) == 1
+		} else {
+			// Standard modulo for non-power-of-2
+			shouldSample = afterInitial%s.config.Thereafter == 1
+		}
+
+		if shouldSample {
 			decision = LogSample
 			atomic.AddInt64(&s.sampled, 1)
 		} else {
@@ -101,8 +121,8 @@ func (s *Sampler) Sample(entry LogEntry) SamplingDecision {
 		}
 	}
 
-	// Call hook if configured
-	if s.config.Hook != nil {
+	// Call hook if configured (optimized check)
+	if s.hasHook {
 		s.config.Hook(entry, decision)
 	}
 

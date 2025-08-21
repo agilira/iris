@@ -1,71 +1,47 @@
 package iris
 
-import (
-	"time"
-)
-
-// StructuredLogger extends Iris logger with structured internal encoding
+// StructuredLogger extends Iris logger with optimized field handling
 func (l *Logger) WithFieldsStructured(fields ...Field) *StructuredEntry {
+	// NO TIMESTAMP! Let the internal logger.log() handle it with CachedTime()
 	entry := &StructuredEntry{
-		logger:    l,
-		encoder:   NewStructuredEncoder(),
-		timestamp: time.Now(),
-	}
-
-	// Add fields to structured encoder (no JSON generation)
-	for _, field := range fields {
-		switch field.Type {
-		case StringType:
-			entry.encoder.AddString(field.Key, field.String)
-		case IntType:
-			entry.encoder.AddInt(field.Key, field.Int)
-		case BoolType:
-			entry.encoder.AddBool(field.Key, field.Bool)
-		}
+		logger: l,
+		fields: fields, // Store fields directly - NO CONVERSION!
 	}
 
 	return entry
 }
 
-// StructuredEntry represents a log entry with structured fields
+// StructuredEntry represents a log entry with pre-computed fields
 type StructuredEntry struct {
-	logger    *Logger
-	encoder   *StructuredEncoder
-	timestamp time.Time
+	logger *Logger
+	fields []Field // Direct field storage - NO INTERMEDIATE LAYER!
+	// NO TIMESTAMP! Saves 24 bytes per entry + time.Now() call
 }
 
-// Info logs with structured fields (lazy JSON conversion)
+// Info logs with structured fields (ZERO conversion overhead)
 func (se *StructuredEntry) Info(message string) {
 	if !se.logger.level.Enabled(InfoLevel) {
 		return
 	}
 
-	// Convert structured fields back to Field slice for existing infrastructure
-	fields := make([]Field, len(se.encoder.fields))
-	for i, sfield := range se.encoder.fields {
-		fields[i] = Field{
-			Key:  sfield.Key,
-			Type: sfield.Type,
-		}
-
-		switch sfield.Type {
-		case StringType:
-			fields[i].String = sfield.StrVal
-		case IntType:
-			fields[i].Int = sfield.IntVal
-		case BoolType:
-			fields[i].Bool = sfield.BoolVal
-		}
-	}
-
-	// Use existing logger infrastructure
-	se.logger.log(InfoLevel, message, fields)
-
-	// Reset encoder back to pool
-	se.encoder.Reset()
+	// Direct pass-through to existing optimized infrastructure
+	// NO CONVERSION! NO ALLOCATIONS! NO DOUBLE ENCODING!
+	se.logger.log(InfoLevel, message, se.fields)
 }
 
-// MemoryFootprint returns internal structured memory usage (for benchmarking)
+// MemoryFootprint returns memory usage (for benchmarking)
 func (se *StructuredEntry) MemoryFootprint() int {
-	return se.encoder.MemoryFootprint()
+	memSize := 0
+	for _, field := range se.fields {
+		memSize += len(field.Key)
+		switch field.Type {
+		case StringType:
+			memSize += len(field.String)
+		case IntType:
+			memSize += 8 // int64 size
+		case BoolType:
+			memSize += 1 // bool size
+		}
+	}
+	return memSize
 }

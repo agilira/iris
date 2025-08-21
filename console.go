@@ -37,29 +37,79 @@ func NewConsoleEncoder(colorize bool) *ConsoleEncoder {
 	}
 }
 
-// EncodeLogEntry formats a log entry for console output
+// EncodeLogEntry formats a log entry as human-readable console output.
+// Performance-optimized with hot path analysis and micro-optimizations.
+//
+//go:inline
 func (e *ConsoleEncoder) EncodeLogEntry(entry *LogEntry, buf []byte) []byte {
 	// Reset buffer
 	buf = buf[:0]
 
 	// Format: [TIMESTAMP] LEVEL MESSAGE [CALLER] field1=value1 field2=value2
 
-	// Timestamp
+	// Timestamp formatting - optimize common case of no timestamp
 	if !entry.Timestamp.IsZero() {
+		// Fast path: pre-calculate timestamp size and avoid repeated allocations
+		const timestampSize = 23 // "[2006-01-02 15:04:05.000] "
+		if cap(buf)-len(buf) < timestampSize {
+			// Unlikely path: ensure capacity
+			newBuf := make([]byte, len(buf), len(buf)+timestampSize+256)
+			copy(newBuf, buf)
+			buf = newBuf
+		}
+
 		buf = append(buf, '[')
 		buf = entry.Timestamp.AppendFormat(buf, "2006-01-02 15:04:05.000")
 		buf = append(buf, ']', ' ')
 	}
 
-	// Level with colors
+	// Level formatting - hot path optimization
 	if e.colorize {
-		color := e.levelColor(entry.Level)
-		buf = append(buf, color...)
-		buf = append(buf, e.levelText(entry.Level)...)
+		// Pre-calculate color codes to avoid repeated lookups
+		var levelColor, levelText []byte
+		switch entry.Level {
+		case DebugLevel:
+			levelColor = []byte(Magenta)
+			levelText = []byte("DEBUG")
+		case InfoLevel:
+			levelColor = []byte(Blue)
+			levelText = []byte("INFO ")
+		case WarnLevel:
+			levelColor = []byte(Yellow)
+			levelText = []byte("WARN ")
+		case ErrorLevel:
+			levelColor = []byte(Red)
+			levelText = []byte("ERROR")
+		default:
+			// Cold path: use method calls for uncommon levels
+			color := e.levelColor(entry.Level)
+			buf = append(buf, color...)
+			buf = append(buf, e.levelText(entry.Level)...)
+			buf = append(buf, Reset...)
+			goto afterLevel
+		}
+
+		buf = append(buf, levelColor...)
+		buf = append(buf, levelText...)
 		buf = append(buf, Reset...)
 	} else {
-		buf = append(buf, e.levelText(entry.Level)...)
+		// Fast path: direct level text without method calls
+		switch entry.Level {
+		case DebugLevel:
+			buf = append(buf, "DEBUG"...)
+		case InfoLevel:
+			buf = append(buf, "INFO "...)
+		case WarnLevel:
+			buf = append(buf, "WARN "...)
+		case ErrorLevel:
+			buf = append(buf, "ERROR"...)
+		default:
+			// Cold path: use method call for uncommon levels
+			buf = append(buf, e.levelText(entry.Level)...)
+		}
 	}
+
+afterLevel:
 	buf = append(buf, ' ')
 
 	// Message
@@ -163,14 +213,18 @@ func (e *ConsoleEncoder) levelText(level Level) string {
 	}
 }
 
-// appendFields formats and appends fields to the buffer
+// appendFields formats and appends fields to the buffer.
+// Performance-optimized with reduced method calls and hot path analysis.
+//
+//go:inline
 func (e *ConsoleEncoder) appendFields(buf []byte, fields []Field) []byte {
+	// Hot path: optimize common case of few fields
 	for i, field := range fields {
 		if i > 0 {
 			buf = append(buf, ' ')
 		}
 
-		// Key
+		// Key formatting - avoid colorize method calls in hot path
 		if e.colorize {
 			buf = append(buf, Cyan...)
 			buf = append(buf, field.Key...)
@@ -180,17 +234,21 @@ func (e *ConsoleEncoder) appendFields(buf []byte, fields []Field) []byte {
 		}
 		buf = append(buf, '=')
 
-		// Value
+		// Value formatting - inline hot paths
 		buf = e.appendFieldValue(buf, field)
 	}
 	return buf
 }
 
-// appendFieldValue appends a field value to the buffer
+// appendFieldValue appends a field value to the buffer.
+// Ultra-optimized with hot path specialization and reduced allocations.
+//
+//go:inline
 func (e *ConsoleEncoder) appendFieldValue(buf []byte, field Field) []byte {
 	switch field.Type {
 	case StringType:
-		if needsQuoting(field.String) {
+		// Optimize string quoting check
+		if needsQuotingFast(field.String) {
 			buf = append(buf, '"')
 			buf = append(buf, field.String...)
 			buf = append(buf, '"')
@@ -253,6 +311,22 @@ func (e *ConsoleEncoder) appendFieldValue(buf []byte, field Field) []byte {
 // needsQuoting returns true if a string needs to be quoted
 func needsQuoting(s string) bool {
 	return strings.ContainsAny(s, " \t\n\r\"\\=")
+}
+
+// needsQuotingFast is an optimized version of needsQuoting for hot paths.
+// Uses manual scanning instead of ContainsAny for better performance.
+//
+//go:inline
+func needsQuotingFast(s string) bool {
+	// Hot path: most strings don't need quoting
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		// Check for characters that require quoting
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '"' || c == '\\' || c == '=' {
+			return true
+		}
+	}
+	return false
 }
 
 // lastIndex returns the last index of substr in s, or -1 if not found

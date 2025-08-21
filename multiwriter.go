@@ -3,6 +3,8 @@ package iris
 import (
 	"io"
 	"sync"
+	"sync/atomic"
+	"unsafe"
 )
 
 // WriteSyncer combines io.Writer and Sync functionality
@@ -12,44 +14,63 @@ type WriteSyncer interface {
 }
 
 // MultiWriter implements WriteSyncer for multiple outputs
+// Optimized for high-performance concurrent access with lock-free reads
 type MultiWriter struct {
-	writers []WriteSyncer
-	mu      sync.RWMutex
+	// Using atomic pointer for lock-free reads in common case
+	writers unsafe.Pointer // *[]WriteSyncer
+	mu      sync.RWMutex   // Only used for modifications
 }
 
 // NewMultiWriter creates a new MultiWriter that writes to all provided writers
 func NewMultiWriter(writers ...WriteSyncer) *MultiWriter {
+	var writersCopy []WriteSyncer
+
 	if len(writers) == 0 {
-		return &MultiWriter{writers: []WriteSyncer{}}
+		writersCopy = make([]WriteSyncer, 0)
+	} else {
+		// Create a copy to avoid external modifications
+		writersCopy = make([]WriteSyncer, len(writers))
+		copy(writersCopy, writers)
 	}
 
-	// Create a copy to avoid external modifications
-	writersCopy := make([]WriteSyncer, len(writers))
-	copy(writersCopy, writers)
+	mw := &MultiWriter{}
+	atomic.StorePointer(&mw.writers, unsafe.Pointer(&writersCopy))
+	return mw
+}
 
-	return &MultiWriter{
-		writers: writersCopy,
-	}
+// getWriters returns the current writers slice using atomic load
+func (mw *MultiWriter) getWriters() []WriteSyncer {
+	return *(*[]WriteSyncer)(atomic.LoadPointer(&mw.writers))
+}
+
+// setWriters sets the writers slice using atomic store
+func (mw *MultiWriter) setWriters(writers []WriteSyncer) {
+	atomic.StorePointer(&mw.writers, unsafe.Pointer(&writers))
 }
 
 // Write implements io.Writer, writing to all underlying writers
+// Optimized with lock-free read for the common case
 func (mw *MultiWriter) Write(p []byte) (n int, err error) {
-	mw.mu.RLock()
-	defer mw.mu.RUnlock()
+	writers := mw.getWriters()
 
-	if len(mw.writers) == 0 {
+	if len(writers) == 0 {
 		return len(p), nil
 	}
 
-	// Write to all writers, collecting any errors
+	// Fast path: single writer case (no locking needed)
+	if len(writers) == 1 {
+		return writers[0].Write(p)
+	}
+
+	// Multi-writer case: write to all writers, collecting any errors
 	var firstErr error
-	for _, w := range mw.writers {
+	for i, w := range writers {
 		nn, werr := w.Write(p)
 		if werr != nil && firstErr == nil {
 			firstErr = werr
 		}
 		// Return the bytes written by the first writer as the canonical count
-		if w == mw.writers[0] {
+		if i == 0 {
 			n = nn
 		}
 	}
@@ -58,12 +79,12 @@ func (mw *MultiWriter) Write(p []byte) (n int, err error) {
 }
 
 // Sync implements WriteSyncer, syncing all underlying writers
+// Optimized with lock-free read
 func (mw *MultiWriter) Sync() error {
-	mw.mu.RLock()
-	defer mw.mu.RUnlock()
+	writers := mw.getWriters()
 
 	var firstErr error
-	for _, w := range mw.writers {
+	for _, w := range writers {
 		if err := w.Sync(); err != nil && firstErr == nil {
 			firstErr = err
 		}
@@ -77,7 +98,11 @@ func (mw *MultiWriter) AddWriter(writer WriteSyncer) {
 	mw.mu.Lock()
 	defer mw.mu.Unlock()
 
-	mw.writers = append(mw.writers, writer)
+	writers := mw.getWriters()
+	newWriters := make([]WriteSyncer, len(writers)+1)
+	copy(newWriters, writers)
+	newWriters[len(writers)] = writer
+	mw.setWriters(newWriters)
 }
 
 // RemoveWriter removes a writer from the MultiWriter
@@ -85,11 +110,14 @@ func (mw *MultiWriter) RemoveWriter(writer WriteSyncer) bool {
 	mw.mu.Lock()
 	defer mw.mu.Unlock()
 
-	for i, w := range mw.writers {
+	writers := mw.getWriters()
+	for i, w := range writers {
 		if w == writer {
 			// Remove writer by swapping with last element and truncating
-			mw.writers[i] = mw.writers[len(mw.writers)-1]
-			mw.writers = mw.writers[:len(mw.writers)-1]
+			newWriters := make([]WriteSyncer, len(writers)-1)
+			copy(newWriters[:i], writers[:i])
+			copy(newWriters[i:], writers[i+1:])
+			mw.setWriters(newWriters)
 			return true
 		}
 	}
@@ -99,21 +127,16 @@ func (mw *MultiWriter) RemoveWriter(writer WriteSyncer) bool {
 
 // Writers returns a copy of the current writers slice
 func (mw *MultiWriter) Writers() []WriteSyncer {
-	mw.mu.RLock()
-	defer mw.mu.RUnlock()
-
-	writers := make([]WriteSyncer, len(mw.writers))
-	copy(writers, mw.writers)
-
-	return writers
+	writers := mw.getWriters()
+	writersCopy := make([]WriteSyncer, len(writers))
+	copy(writersCopy, writers)
+	return writersCopy
 }
 
 // Count returns the number of writers
 func (mw *MultiWriter) Count() int {
-	mw.mu.RLock()
-	defer mw.mu.RUnlock()
-
-	return len(mw.writers)
+	writers := mw.getWriters()
+	return len(writers)
 }
 
 // WriteSyncerWrapper wraps an io.Writer to implement WriteSyncer

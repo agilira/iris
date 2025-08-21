@@ -1,14 +1,8 @@
-// level.go: Logging levels for Iris
-// Copyright (c) 2025 AGILira
-// Series: an AGILira fragment
-// SPDX-License-Identifier: MPL-2.0
-
 package iris
 
 import (
 	"fmt"
 	"os"
-	"strings"
 )
 
 // Level represents the severity of a log entry
@@ -35,31 +29,64 @@ const (
 	FatalLevel
 )
 
-// String returns a lower-case ASCII representation of the log level.
-func (l Level) String() string {
-	switch l {
-	case DebugLevel:
-		return "debug"
-	case InfoLevel:
-		return "info"
-	case WarnLevel:
-		return "warn"
-	case ErrorLevel:
-		return "error"
-	case DPanicLevel:
-		return "dpanic"
-	case PanicLevel:
-		return "panic"
-	case FatalLevel:
-		return "fatal"
-	default:
-		return fmt.Sprintf("Level(%d)", l)
+// Pre-computed string representations for ultra-fast lookups
+var (
+	levelNames = [...]string{
+		0: "debug",  // DebugLevel = -1, index 0
+		1: "info",   // InfoLevel = 0, index 1
+		2: "warn",   // WarnLevel = 1, index 2
+		3: "error",  // ErrorLevel = 2, index 3
+		4: "dpanic", // DPanicLevel = 3, index 4
+		5: "panic",  // PanicLevel = 4, index 5
+		6: "fatal",  // FatalLevel = 5, index 6
 	}
+
+	levelNamesCapital = [...]string{
+		0: "DEBUG",  // DebugLevel = -1, index 0
+		1: "INFO",   // InfoLevel = 0, index 1
+		2: "WARN",   // WarnLevel = 1, index 2
+		3: "ERROR",  // ErrorLevel = 2, index 3
+		4: "DPANIC", // DPanicLevel = 3, index 4
+		5: "PANIC",  // PanicLevel = 4, index 5
+		6: "FATAL",  // FatalLevel = 5, index 6
+	}
+)
+
+// String returns a lower-case ASCII representation of the log level.
+// Optimized with pre-computed lookup tables for zero allocations.
+func (l Level) String() string {
+	// Fast path: use lookup table for known levels
+	if l >= DebugLevel && l <= FatalLevel {
+		return levelNames[l-DebugLevel]
+	}
+
+	// Slow path: unknown levels - optimized fmt.Sprintf alternative
+	return "Level(" + formatInt(int8(l)) + ")"
 }
 
 // CapitalString returns an all-caps ASCII representation of the log level.
+// Optimized with pre-computed lookup tables for zero allocations.
 func (l Level) CapitalString() string {
-	return strings.ToUpper(l.String())
+	// Fast path: use lookup table for known levels
+	if l >= DebugLevel && l <= FatalLevel {
+		return levelNamesCapital[l-DebugLevel]
+	}
+
+	// Slow path: unknown levels - optimized for minimal allocations
+	return "LEVEL(" + formatInt(int8(l)) + ")"
+}
+
+// formatInt is an optimized integer to string conversion for small integers
+// avoiding fmt.Sprintf overhead for the unknown level case
+func formatInt(i int8) string {
+	if i >= 0 && i <= 9 {
+		return string('0' + byte(i))
+	}
+	if i >= -9 && i < 0 {
+		return "-" + string('0'+byte(-i))
+	}
+	// For larger numbers, fall back to strconv (rare case)
+	return fmt.Sprintf("%d", i)
 }
 
 // Enabled returns true if the given level is at or above this level.
