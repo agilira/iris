@@ -263,7 +263,7 @@ func ToLegacyFields(binaryFields []BinaryField) []Field {
 	if len(binaryFields) == 0 {
 		return nil // Return nil slice for empty input
 	}
-	
+
 	legacyFields := make([]Field, len(binaryFields))
 	for i, bf := range binaryFields {
 		legacyFields[i] = toLegacyField(bf)
@@ -277,11 +277,11 @@ func ToLegacyFieldsWithCapacity(binaryFields []BinaryField, capacity int) []Fiel
 	if len(binaryFields) == 0 {
 		return make([]Field, 0, capacity)
 	}
-	
+
 	if capacity < len(binaryFields) {
 		capacity = len(binaryFields)
 	}
-	
+
 	legacyFields := make([]Field, len(binaryFields), capacity)
 	for i, bf := range binaryFields {
 		legacyFields[i] = toLegacyField(bf)
@@ -333,7 +333,7 @@ func ToBinaryFields(legacyFields []Field) []BinaryField {
 	if len(legacyFields) == 0 {
 		return nil
 	}
-	
+
 	binaryFields := make([]BinaryField, len(legacyFields))
 	for i, field := range legacyFields {
 		binaryFields[i] = ToBinaryField(field)
@@ -347,11 +347,11 @@ func ToBinaryFieldsWithCapacity(legacyFields []Field, capacity int) []BinaryFiel
 	if len(legacyFields) == 0 {
 		return make([]BinaryField, 0, capacity)
 	}
-	
+
 	if capacity < len(legacyFields) {
 		capacity = len(legacyFields)
 	}
-	
+
 	binaryFields := make([]BinaryField, len(legacyFields), capacity)
 	for i, field := range legacyFields {
 		binaryFields[i] = ToBinaryField(field)
