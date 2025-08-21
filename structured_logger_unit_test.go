@@ -6,24 +6,36 @@
 package iris
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
 
-// mockStructuredWriter for testing
+// mockStructuredWriter for testing - now thread-safe
 type mockStructuredWriter struct {
+	mu     sync.RWMutex
 	data   []byte
 	writes int
 }
 
 func (msw *mockStructuredWriter) Write(p []byte) (n int, err error) {
+	msw.mu.Lock()
+	defer msw.mu.Unlock()
 	msw.writes++
 	msw.data = append(msw.data, p...)
 	return len(p), nil
 }
 
 func (msw *mockStructuredWriter) String() string {
+	msw.mu.RLock()
+	defer msw.mu.RUnlock()
 	return string(msw.data)
+}
+
+func (msw *mockStructuredWriter) Writes() int {
+	msw.mu.RLock()
+	defer msw.mu.RUnlock()
+	return msw.writes
 }
 
 // TestStructuredLoggerBasic tests basic structured logging functionality
@@ -56,7 +68,7 @@ func TestStructuredLoggerBasic(t *testing.T) {
 	// Give time for processing
 	time.Sleep(10 * time.Millisecond)
 
-	if mock.writes == 0 {
+	if mock.Writes() == 0 {
 		t.Error("Expected at least one write to mock writer")
 	}
 
@@ -180,7 +192,7 @@ func TestStructuredLoggerLevelFiltering(t *testing.T) {
 	// Give time for processing
 	time.Sleep(10 * time.Millisecond)
 
-	if mock.writes > 0 {
+	if mock.Writes() > 0 {
 		t.Error("Expected no writes for filtered log level")
 	}
 }
@@ -210,7 +222,7 @@ func TestStructuredLoggerEmpty(t *testing.T) {
 	// Give time for processing
 	time.Sleep(10 * time.Millisecond)
 
-	if mock.writes == 0 {
+	if mock.Writes() == 0 {
 		t.Error("Expected at least one write even with no fields")
 	}
 

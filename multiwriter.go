@@ -51,7 +51,7 @@ func (mw *MultiWriter) setWriters(writers []WriteSyncer) {
 }
 
 // Write implements io.Writer, writing to all underlying writers
-// Optimized with lock-free read for the common case
+// Thread-safe implementation that protects both the writers list and individual writes
 func (mw *MultiWriter) Write(p []byte) (n int, err error) {
 	writers := mw.getWriters()
 
@@ -59,12 +59,24 @@ func (mw *MultiWriter) Write(p []byte) (n int, err error) {
 		return len(p), nil
 	}
 
-	// Fast path: single writer case (no locking needed)
+	// Fast path: single writer case (no locking needed for list, but still need sync for writer)
 	if len(writers) == 1 {
+		// Even with single writer, we need to protect against concurrent writes to the same writer
+		// Use a sync.Mutex per write operation to ensure thread safety
+		mw.mu.Lock()
+		defer mw.mu.Unlock()
 		return writers[0].Write(p)
 	}
 
-	// Multi-writer case: write to all writers, collecting any errors
+	// Multi-writer case: protect the entire write operation
+	// This ensures that when multiple goroutines call Write() concurrently,
+	// each complete Write() operation is atomic across all writers
+	mw.mu.Lock()
+	defer mw.mu.Unlock()
+	
+	// Re-get writers inside lock to ensure consistency
+	writers = mw.getWriters()
+	
 	var firstErr error
 	for i, w := range writers {
 		nn, werr := w.Write(p)
