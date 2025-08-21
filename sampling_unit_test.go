@@ -162,3 +162,208 @@ func TestSamplingZeroConfig(t *testing.T) {
 	// Just test it doesn't crash - sampling logic has edge cases
 	_ = decisions
 }
+
+// TestSamplingStatsRate tests SamplingRate function
+func TestSamplingStatsRate(t *testing.T) {
+	tests := []struct {
+		name     string
+		stats    SamplingStats
+		expected float64
+	}{
+		{
+			name:     "zero total",
+			stats:    SamplingStats{Sampled: 0, Dropped: 0, Total: 0},
+			expected: 0,
+		},
+		{
+			name:     "all sampled",
+			stats:    SamplingStats{Sampled: 100, Dropped: 0, Total: 100},
+			expected: 100,
+		},
+		{
+			name:     "half sampled",
+			stats:    SamplingStats{Sampled: 50, Dropped: 50, Total: 100},
+			expected: 50,
+		},
+		{
+			name:     "quarter sampled",
+			stats:    SamplingStats{Sampled: 25, Dropped: 75, Total: 100},
+			expected: 25,
+		},
+		{
+			name:     "high volume scenario",
+			stats:    SamplingStats{Sampled: 1000, Dropped: 9000, Total: 10000},
+			expected: 10,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rate := test.stats.SamplingRate()
+			if rate != test.expected {
+				t.Errorf("SamplingRate() = %f, expected %f", rate, test.expected)
+			}
+		})
+	}
+}
+
+// TestSamplingStatsDropRate tests DropRate function
+func TestSamplingStatsDropRate(t *testing.T) {
+	tests := []struct {
+		name     string
+		stats    SamplingStats
+		expected float64
+	}{
+		{
+			name:     "zero total",
+			stats:    SamplingStats{Sampled: 0, Dropped: 0, Total: 0},
+			expected: 0,
+		},
+		{
+			name:     "all dropped",
+			stats:    SamplingStats{Sampled: 0, Dropped: 100, Total: 100},
+			expected: 100,
+		},
+		{
+			name:     "none dropped",
+			stats:    SamplingStats{Sampled: 100, Dropped: 0, Total: 100},
+			expected: 0,
+		},
+		{
+			name:     "half dropped",
+			stats:    SamplingStats{Sampled: 50, Dropped: 50, Total: 100},
+			expected: 50,
+		},
+		{
+			name:     "high drop rate",
+			stats:    SamplingStats{Sampled: 100, Dropped: 9900, Total: 10000},
+			expected: 99,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rate := test.stats.DropRate()
+			if rate != test.expected {
+				t.Errorf("DropRate() = %f, expected %f", rate, test.expected)
+			}
+		})
+	}
+}
+
+// TestNewDevelopmentSampling tests the development sampling preset
+func TestNewDevelopmentSampling(t *testing.T) {
+	config := NewDevelopmentSampling()
+
+	// Verify development preset values
+	if config.Initial != 100 {
+		t.Errorf("Expected Initial=100, got %d", config.Initial)
+	}
+	if config.Thereafter != 10 {
+		t.Errorf("Expected Thereafter=10, got %d", config.Thereafter)
+	}
+	if config.Tick != 0 {
+		t.Errorf("Expected Tick=0 (no reset), got %v", config.Tick)
+	}
+
+	// Test that the config works with a sampler
+	sampler := NewSampler(config)
+	if sampler == nil {
+		t.Error("NewSampler should accept development config")
+	}
+
+	// Quick functionality test
+	entry := LogEntry{Level: InfoLevel, Message: "development test"}
+	decision := sampler.Sample(entry)
+	if decision != LogSample {
+		t.Error("Development sampling should allow initial entries")
+	}
+}
+
+// TestNewProductionSampling tests the production sampling preset
+func TestNewProductionSampling(t *testing.T) {
+	config := NewProductionSampling()
+
+	// Verify production preset values
+	if config.Initial != 100 {
+		t.Errorf("Expected Initial=100, got %d", config.Initial)
+	}
+	if config.Thereafter != 100 {
+		t.Errorf("Expected Thereafter=100, got %d", config.Thereafter)
+	}
+	if config.Tick != time.Minute {
+		t.Errorf("Expected Tick=1m, got %v", config.Tick)
+	}
+
+	// Test that the config works with a sampler
+	sampler := NewSampler(config)
+	if sampler == nil {
+		t.Error("NewSampler should accept production config")
+	}
+
+	// Quick functionality test
+	entry := LogEntry{Level: InfoLevel, Message: "production test"}
+	decision := sampler.Sample(entry)
+	if decision != LogSample {
+		t.Error("Production sampling should allow initial entries")
+	}
+}
+
+// TestNewHighVolumeSampling tests the high volume sampling preset
+func TestNewHighVolumeSampling(t *testing.T) {
+	config := NewHighVolumeSampling()
+
+	// Verify high volume preset values
+	if config.Initial != 50 {
+		t.Errorf("Expected Initial=50, got %d", config.Initial)
+	}
+	if config.Thereafter != 1000 {
+		t.Errorf("Expected Thereafter=1000, got %d", config.Thereafter)
+	}
+	if config.Tick != 10*time.Minute {
+		t.Errorf("Expected Tick=10m, got %v", config.Tick)
+	}
+
+	// Test that the config works with a sampler
+	sampler := NewSampler(config)
+	if sampler == nil {
+		t.Error("NewSampler should accept high volume config")
+	}
+
+	// Quick functionality test
+	entry := LogEntry{Level: InfoLevel, Message: "high volume test"}
+	decision := sampler.Sample(entry)
+	if decision != LogSample {
+		t.Error("High volume sampling should allow initial entries")
+	}
+}
+
+// TestSamplingPresetsComparison tests that the presets have the expected relative characteristics
+func TestSamplingPresetsComparison(t *testing.T) {
+	dev := NewDevelopmentSampling()
+	prod := NewProductionSampling()
+	highVol := NewHighVolumeSampling()
+
+	// Development should be most permissive
+	if dev.Thereafter >= prod.Thereafter {
+		t.Error("Development sampling should be more permissive than production")
+	}
+
+	// Production should be more permissive than high volume
+	if prod.Thereafter >= highVol.Thereafter {
+		t.Error("Production sampling should be more permissive than high volume")
+	}
+
+	// High volume should have the smallest initial window
+	if highVol.Initial >= dev.Initial || highVol.Initial >= prod.Initial {
+		t.Error("High volume sampling should have the smallest initial window")
+	}
+
+	// Only production and high volume should have tick resets
+	if dev.Tick != 0 {
+		t.Error("Development sampling should not have time-based resets")
+	}
+	if prod.Tick == 0 || highVol.Tick == 0 {
+		t.Error("Production and high volume sampling should have time-based resets")
+	}
+}

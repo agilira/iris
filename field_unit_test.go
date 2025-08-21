@@ -443,3 +443,119 @@ func TestLargeUintFields(t *testing.T) {
 		}
 	})
 }
+
+// TestValidateField tests the ValidateField function
+func TestValidateField(t *testing.T) {
+	tests := []struct {
+		name      string
+		field     Field
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name:      "valid string field",
+			field:     Str("key", "value"),
+			expectErr: false,
+		},
+		{
+			name:      "valid int field",
+			field:     Int("key", 123),
+			expectErr: false,
+		},
+		{
+			name:      "empty key",
+			field:     Field{Key: "", Type: StringType, String: "value"},
+			expectErr: true,
+			errMsg:    "field key cannot be empty",
+		},
+		{
+			name:      "invalid type",
+			field:     Field{Key: "key", Type: FieldType(255), String: "value"},
+			expectErr: true,
+			errMsg:    "invalid field type: 255",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateField(test.field)
+
+			if test.expectErr {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				} else if test.errMsg != "" && err.Error() != test.errMsg {
+					t.Errorf("Expected error %q, got %q", test.errMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestGetFieldValue tests the GetFieldValue function
+func TestGetFieldValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		field    Field
+		expected interface{}
+	}{
+		{"string field", Str("key", "value"), "value"},
+		{"int field", Int("key", 123), int64(123)},
+		{"bool field", Bool("key", true), true},
+		{"float field", Float64("key", 3.14), 3.14},
+		{"error field", Error(fmt.Errorf("test error")), fmt.Errorf("test error")},
+		{"bytes field", ByteString("key", []byte("data")), []byte("data")},
+		{"any field", Any("key", "anything"), "anything"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := GetFieldValue(test.field)
+
+			// Special handling for error comparison
+			if test.field.Type == ErrorType {
+				expectedErr, ok1 := test.expected.(error)
+				resultErr, ok2 := result.(error)
+				if !ok1 || !ok2 {
+					t.Errorf("Expected both to be errors")
+				} else if expectedErr.Error() != resultErr.Error() {
+					t.Errorf("Expected error %q, got %q", expectedErr.Error(), resultErr.Error())
+				}
+			} else {
+				if fmt.Sprintf("%v", result) != fmt.Sprintf("%v", test.expected) {
+					t.Errorf("GetFieldValue() = %v, expected %v", result, test.expected)
+				}
+			}
+		})
+	}
+}
+
+// TestGetFieldString tests the GetFieldString function
+func TestGetFieldString(t *testing.T) {
+	tests := []struct {
+		name     string
+		field    Field
+		expected string
+	}{
+		{"string field", Str("key", "value"), "value"},
+		{"int field", Int("key", 123), "123"},
+		{"bool true", Bool("key", true), "true"},
+		{"bool false", Bool("key", false), "false"},
+		{"float field", Float64("key", 3.14), "3.14"},
+		{"error field", Error(fmt.Errorf("test error")), "test error"},
+		{"bytes field", ByteString("key", []byte("data")), "data"},
+		{"any field", Any("key", 42), "42"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := GetFieldString(test.field)
+			if result != test.expected {
+				t.Errorf("GetFieldString() = %q, expected %q", result, test.expected)
+			}
+		})
+	}
+}

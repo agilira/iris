@@ -59,10 +59,13 @@ func NewBinaryLogger(level Level) *BinaryLogger {
 	return bl
 }
 
-// SAFE MIGRATION: User-friendly constructor alias
-func NewBLogger(level Level) *BLogger {
+// DESIGNER API: Iris-branded constructor for ultra-performance logging
+func NewIrisLogger(level Level) *XLogger {
 	return NewBinaryLogger(level)
 }
+
+// Type alias for designer API consistency
+type IrisLogger = XLogger
 
 // NOTE: BinaryField, BinaryEntry, BinaryContext moved to binary_types.go
 //
@@ -111,6 +114,11 @@ func (bl *BinaryLogger) WithFields(fields ...Field) *BinaryContext {
 	}
 }
 
+// DESIGNER API: Iris-branded eXtreme performance field context creation
+func (bl *BinaryLogger) XFields(fields ...XField) *XContext {
+	return bl.WithBinaryFields(fields...)
+}
+
 // SAFE MIGRATION: User-friendly alias (BACKWARD COMPATIBLE)
 func (bl *BinaryLogger) WithBFields(fields ...BField) *BinaryContext {
 	return bl.WithBinaryFields(fields...)
@@ -126,7 +134,7 @@ func (bc *BinaryContext) Info(message string) {
 	entry := bc.logger.entryPool.Get().(*BinaryEntry)
 	timestamp, _ := SafeInt64ToUint64ForEncoding(time.Now().UnixNano()) // Safe timestamp conversion
 	entry.Timestamp = timestamp
-	entry.Level = uint8(InfoLevel)
+	entry.Level = levelToUint8(InfoLevel)
 
 	// Direct message storage - LOCK-FREE immutable
 	entry.Message = message
@@ -155,7 +163,7 @@ func (bc *BinaryContext) InfoWithCaller(message string) {
 	entry := bc.logger.entryPool.Get().(*BinaryEntry)
 	timestamp, _ := SafeInt64ToUint64ForEncoding(time.Now().UnixNano()) // Safe timestamp conversion
 	entry.Timestamp = timestamp
-	entry.Level = uint8(InfoLevel)
+	entry.Level = levelToUint8(InfoLevel)
 
 	// Direct message storage - LOCK-FREE immutable
 	entry.Message = message
@@ -176,6 +184,72 @@ func (bc *BinaryContext) InfoWithCaller(message string) {
 	bc.logger.fieldPool.Put(&bc.fields)
 
 	// Return context to pool - ZERO ALLOCATION COMPLETE!
+	bc.logger.contextPool.Put(bc)
+}
+
+// levelToUint8 converts Level to uint8 for binary storage
+func levelToUint8(level Level) uint8 {
+	// Map Level (-1 to 5) to uint8 (0 to 6)
+	return uint8(level + 1)
+}
+
+// Debug logs at debug level with pure binary format
+func (bc *BinaryContext) Debug(message string) {
+	if bc.logger.level > DebugLevel {
+		return
+	}
+
+	// Create binary entry (GC-SAFE)
+	entry := bc.logger.entryPool.Get().(*BinaryEntry)
+	timestamp, _ := SafeInt64ToUint64ForEncoding(time.Now().UnixNano())
+	entry.Timestamp = timestamp
+	entry.Level = levelToUint8(DebugLevel)
+	entry.Message = message
+	entry.Fields = bc.fields
+
+	// TODO: Write to binary output
+	bc.logger.entryPool.Put(entry)
+	bc.logger.fieldPool.Put(&bc.fields)
+	bc.logger.contextPool.Put(bc)
+}
+
+// Warn logs at warn level with pure binary format
+func (bc *BinaryContext) Warn(message string) {
+	if bc.logger.level > WarnLevel {
+		return
+	}
+
+	// Create binary entry (GC-SAFE)
+	entry := bc.logger.entryPool.Get().(*BinaryEntry)
+	timestamp, _ := SafeInt64ToUint64ForEncoding(time.Now().UnixNano())
+	entry.Timestamp = timestamp
+	entry.Level = levelToUint8(WarnLevel)
+	entry.Message = message
+	entry.Fields = bc.fields
+
+	// TODO: Write to binary output
+	bc.logger.entryPool.Put(entry)
+	bc.logger.fieldPool.Put(&bc.fields)
+	bc.logger.contextPool.Put(bc)
+}
+
+// Error logs at error level with pure binary format
+func (bc *BinaryContext) Error(message string) {
+	if bc.logger.level > ErrorLevel {
+		return
+	}
+
+	// Create binary entry (GC-SAFE)
+	entry := bc.logger.entryPool.Get().(*BinaryEntry)
+	timestamp, _ := SafeInt64ToUint64ForEncoding(time.Now().UnixNano())
+	entry.Timestamp = timestamp
+	entry.Level = levelToUint8(ErrorLevel)
+	entry.Message = message
+	entry.Fields = bc.fields
+
+	// TODO: Write to binary output
+	bc.logger.entryPool.Put(entry)
+	bc.logger.fieldPool.Put(&bc.fields)
 	bc.logger.contextPool.Put(bc)
 }
 

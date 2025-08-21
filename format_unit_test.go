@@ -379,3 +379,95 @@ func TestEncoderMemoryUsage(t *testing.T) {
 		t.Errorf("Binary encoder buffer grew too large: %d", cap(binaryEncoder.buf))
 	}
 }
+
+// TestSanitizeForLogSafety tests the sanitizeForLogSafety function
+func TestSanitizeForLogSafety(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"normal string", "hello world", "hello world"},
+		{"empty string", "", ""},
+		{"newline injection", "hello\nworld", "hello\\nworld"},
+		{"carriage return", "hello\rworld", "hello\\rworld"},
+		{"tab character", "hello\tworld", "hello world"},             // tab -> space
+		{"null byte", "hello\x00world", "hello\\0world"},             // null -> \0
+		{"control characters", "hello\x01\x1fworld", "hello??world"}, // control -> ?
+		{"multiple issues", "hello\n\r\tworld\x00", "hello\\n\\r world\\0"},
+		{"unicode safe", "hello 世界", "hello 世界"},
+		{"quotes", "hello\"world", "hello\\\"world"},
+		{"backslash", "hello\\world", "hello\\\\world"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := sanitizeForLogSafety(test.input)
+			if result != test.expected {
+				t.Errorf("sanitizeForLogSafety(%q) = %q, expected %q", test.input, result, test.expected)
+			}
+		})
+	}
+}
+
+// TestNeedsLogSafetySanitization tests the needsLogSafetySanitization function
+func TestNeedsLogSafetySanitization(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"safe string", "hello world", false},
+		{"empty string", "", false},
+		{"with newline", "hello\nworld", true},
+		{"with carriage return", "hello\rworld", true},
+		{"with tab", "hello\tworld", true},
+		{"with null byte", "hello\x00world", true},
+		{"with control char", "hello\x01world", true},
+		{"unicode safe", "hello 世界", false},
+		{"numbers and letters", "abc123XYZ", false},
+		{"common punctuation", "hello, world!", false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := needsLogSafetySanitization(test.input)
+			if result != test.expected {
+				t.Errorf("needsLogSafetySanitization(%q) = %v, expected %v", test.input, result, test.expected)
+			}
+		})
+	}
+}
+
+// TestNeedsQuotingFastSecure tests the needsQuotingFastSecure function edge cases
+func TestNeedsQuotingFastSecure(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"empty string", "", true},
+		{"simple word", "hello", false},
+		{"with space", "hello world", true},
+		{"with equals", "key=value", true},
+		{"with quotes", "hello\"world", true},
+		{"with backslash", "hello\\world", true},
+		{"with newline", "hello\nworld", true},
+		{"with tab", "hello\tworld", true},
+		{"with brackets", "hello[world]", true},
+		{"control character", "hello\x1fworld", true},
+		{"del character", "hello\x7fworld", true},
+		{"unicode safe", "hello世界", false},
+		{"numbers", "12345", false},
+		{"safe punctuation", "hello.world-test_123", false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := needsQuotingFastSecure(test.input)
+			if result != test.expected {
+				t.Errorf("needsQuotingFastSecure(%q) = %v, expected %v", test.input, result, test.expected)
+			}
+		})
+	}
+}

@@ -17,16 +17,16 @@ import (
 
 func main() {
     // Create logger
-    logger := iris.NewBLogger(iris.InfoLevel)
+    logger := iris.NewIrisLogger(iris.InfoLevel)
     
     // Simple logging
     logger.Info("Application started")
     
     // Structured logging
-    ctx := logger.WithBFields(
-        iris.BStr("user", "john_doe"),
-        iris.BInt("session_id", 12345),
-        iris.BBool("authenticated", true),
+    ctx := logger.XFields(
+        iris.XStr("user", "john_doe"),
+        iris.XInt("session_id", 12345),
+        iris.XBool("authenticated", true),
     )
     ctx.Info("User logged in successfully")
 }
@@ -50,7 +50,7 @@ iris-decoder < logs.bin
 For development and debugging, enable JSON output:
 
 ```go
-logger := iris.NewBLogger(iris.DebugLevel)
+logger := iris.NewIrisLogger(iris.DebugLevel)
 logger.SetOutputFormat(iris.JSONFormat) // Human-readable JSON
 ```
 
@@ -72,8 +72,8 @@ logger.SetOutputFormat(iris.JSONFormat) // Human-readable JSON
 
 ### 1. Development Mode
 ```go
-func setupDevLogger() *iris.BLogger {
-    logger := iris.NewBLogger(iris.DebugLevel)
+func setupDevLogger() *iris.XLogger {
+    logger := iris.NewIrisLogger(iris.DebugLevel)
     logger.SetOutputFormat(iris.JSONFormat)
     logger.EnableCaller(true) // Show file:line info
     return logger
@@ -82,8 +82,8 @@ func setupDevLogger() *iris.BLogger {
 
 ### 2. Production Mode
 ```go
-func setupProdLogger() *iris.BLogger {
-    logger := iris.NewBLogger(iris.InfoLevel)
+func setupProdLogger() *iris.XLogger {
+    logger := iris.NewIrisLogger(iris.InfoLevel)
     logger.SetOutputFormat(iris.BinaryFormat) // Maximum performance
     logger.EnableCaller(false) // Disable caller info
     return logger
@@ -92,8 +92,8 @@ func setupProdLogger() *iris.BLogger {
 
 ### 3. Testing Mode
 ```go
-func setupTestLogger() *iris.BLogger {
-    logger := iris.NewBLogger(iris.ErrorLevel) // Only errors
+func setupTestLogger() *iris.XLogger {
+    logger := iris.NewIrisLogger(iris.ErrorLevel) // Only errors
     logger.SetOutput(io.Discard) // Silent during tests
     return logger
 }
@@ -103,13 +103,13 @@ func setupTestLogger() *iris.BLogger {
 
 ### Request Logging
 ```go
-func handleRequest(w http.ResponseWriter, r *http.Request, logger *iris.BLogger) {
+func handleRequest(w http.ResponseWriter, r *http.Request, logger *iris.XLogger) {
     // Create request context
-    ctx := logger.WithBFields(
-        iris.BStr("method", r.Method),
-        iris.BStr("path", r.URL.Path),
-        iris.BStr("remote_addr", r.RemoteAddr),
-        iris.BStr("user_agent", r.UserAgent()),
+    ctx := logger.XFields(
+        iris.XStr("method", r.Method),
+        iris.XStr("path", r.URL.Path),
+        iris.XStr("remote_addr", r.RemoteAddr),
+        iris.XStr("user_agent", r.UserAgent()),
     )
     
     start := time.Now()
@@ -120,19 +120,19 @@ func handleRequest(w http.ResponseWriter, r *http.Request, logger *iris.BLogger)
     // Process request...
     
     // Log request completion
-    ctx.WithBFields(
-        iris.BInt("duration_ms", int(time.Since(start).Milliseconds())),
-        iris.BInt("status_code", 200),
+    ctx.XFields(
+        iris.XInt("duration_ms", int(time.Since(start).Milliseconds())),
+        iris.XInt("status_code", 200),
     ).Info("Request completed")
 }
 ```
 
 ### Error Handling
 ```go
-func processData(data []byte, logger *iris.BLogger) error {
-    ctx := logger.WithBFields(
-        iris.BInt("data_size", len(data)),
-        iris.BStr("operation", "process_data"),
+func processData(data []byte, logger *iris.XLogger) error {
+    ctx := logger.XFields(
+        iris.XInt("data_size", len(data)),
+        iris.XStr("operation", "process_data"),
     )
     
     if len(data) == 0 {
@@ -142,9 +142,9 @@ func processData(data []byte, logger *iris.BLogger) error {
     
     // Process data...
     if err := validate(data); err != nil {
-        ctx.WithBFields(
-            iris.BStr("error", err.Error()),
-            iris.BStr("validation_stage", "format_check"),
+        ctx.XFields(
+            iris.XStr("error", err.Error()),
+            iris.XStr("validation_stage", "format_check"),
         ).Error("Data validation failed")
         return err
     }
@@ -156,10 +156,10 @@ func processData(data []byte, logger *iris.BLogger) error {
 
 ### Performance Monitoring
 ```go
-func monitorPerformance(logger *iris.BLogger) {
-    ctx := logger.WithBFields(
-        iris.BStr("component", "api_server"),
-        iris.BStr("version", "v1.2.3"),
+func monitorPerformance(logger *iris.XLogger) {
+    ctx := logger.XFields(
+        iris.XStr("component", "api_server"),
+        iris.XStr("version", "v1.2.3"),
     )
     
     ticker := time.NewTicker(30 * time.Second)
@@ -169,10 +169,10 @@ func monitorPerformance(logger *iris.BLogger) {
         var m runtime.MemStats
         runtime.ReadMemStats(&m)
         
-        ctx.WithBFields(
-            iris.BInt("goroutines", runtime.NumGoroutine()),
-            iris.BInt("heap_mb", int(m.HeapAlloc/1024/1024)),
-            iris.BInt("gc_cycles", int(m.NumGC)),
+        ctx.XFields(
+            iris.XInt("goroutines", runtime.NumGoroutine()),
+            iris.XInt("heap_mb", int(m.HeapAlloc/1024/1024)),
+            iris.XInt("gc_cycles", int(m.NumGC)),
         ).Info("Performance metrics")
     }
 }
@@ -182,53 +182,53 @@ func monitorPerformance(logger *iris.BLogger) {
 
 ### Enable Debug Logging
 ```go
-logger := iris.NewBLogger(iris.DebugLevel)
+logger := iris.NewIrisLogger(iris.DebugLevel)
 logger.SetOutputFormat(iris.JSONFormat)
 
 // Add caller information
 logger.EnableCaller(true)
 
 // Debug specific operations
-ctx := logger.WithBFields(iris.BStr("debug_session", "session_123"))
+ctx := logger.XFields(iris.XStr("debug_session", "session_123"))
 ctx.Debug("Starting debug session")
 ```
 
 ### Memory Usage Monitoring
 ```go
-func logMemoryUsage(ctx *iris.BContext) {
+func logMemoryUsage(ctx *iris.XContext) {
     footprint := ctx.MemoryFootprint()
     binarySize := ctx.GetBinarySize()
     
-    ctx.WithBFields(
-        iris.BInt("memory_footprint", footprint),
-        iris.BInt("binary_size", binarySize),
+    ctx.XFields(
+        iris.XInt("memory_footprint", footprint),
+        iris.XInt("binary_size", binarySize),
     ).Debug("Context memory usage")
 }
 ```
 
 ### Performance Profiling
 ```go
-func profileLogging(logger *iris.BLogger) {
+func profileLogging(logger *iris.XLogger) {
     start := time.Now()
     
     // Create context once, reuse multiple times
-    ctx := logger.WithBFields(
-        iris.BStr("operation", "batch_processing"),
-        iris.BInt("batch_size", 1000),
+    ctx := logger.XFields(
+        iris.XStr("operation", "batch_processing"),
+        iris.XInt("batch_size", 1000),
     )
     
     // Log 1000 messages
     for i := 0; i < 1000; i++ {
-        ctx.WithBFields(
-            iris.BInt("item_id", i),
+        ctx.XFields(
+            iris.XInt("item_id", i),
         ).Info("Processing item")
     }
     
     duration := time.Since(start)
-    logger.WithBFields(
-        iris.BInt("operations", 1000),
-        iris.BInt("duration_ns", int(duration.Nanoseconds())),
-        iris.BInt("ops_per_second", int(1000*time.Second/duration)),
+    logger.XFields(
+        iris.XInt("operations", 1000),
+        iris.XInt("duration_ns", int(duration.Nanoseconds())),
+        iris.XInt("ops_per_second", int(1000*time.Second/duration)),
     ).Info("Performance profile completed")
 }
 ```
@@ -290,28 +290,28 @@ func main() {
 
 ### Environment-Based Configuration
 ```go
-func createLogger() *iris.BLogger {
+func createLogger() *iris.XLogger {
     env := os.Getenv("ENV")
     
     switch env {
     case "development":
-        logger := iris.NewBLogger(iris.DebugLevel)
+        logger := iris.NewIrisLogger(iris.DebugLevel)
         logger.SetOutputFormat(iris.JSONFormat)
         logger.EnableCaller(true)
         return logger
         
     case "staging":
-        logger := iris.NewBLogger(iris.InfoLevel)
+        logger := iris.NewIrisLogger(iris.InfoLevel)
         logger.SetOutputFormat(iris.JSONFormat)
         return logger
         
     case "production":
-        logger := iris.NewBLogger(iris.WarnLevel)
+        logger := iris.NewIrisLogger(iris.WarnLevel)
         logger.SetOutputFormat(iris.BinaryFormat)
         return logger
         
     default:
-        return iris.NewBLogger(iris.InfoLevel)
+        return iris.NewIrisLogger(iris.InfoLevel)
     }
 }
 ```
@@ -334,7 +334,7 @@ type LogConfig struct {
     OutputFile   string `yaml:"output_file"`
 }
 
-func setupLoggerFromConfig(configPath string) (*iris.BLogger, error) {
+func setupLoggerFromConfig(configPath string) (*iris.XLogger, error) {
     data, err := os.ReadFile(configPath)
     if err != nil {
         return nil, err
@@ -353,7 +353,7 @@ func setupLoggerFromConfig(configPath string) (*iris.BLogger, error) {
         return nil, err
     }
     
-    logger := iris.NewBLogger(level)
+    logger := iris.NewIrisLogger(level)
     
     if config.Logging.Format == "json" {
         logger.SetOutputFormat(iris.JSONFormat)
@@ -378,53 +378,53 @@ func setupLoggerFromConfig(configPath string) (*iris.BLogger, error) {
 ### 1. Context Reuse
 ```go
 // ✅ Good: Reuse context
-baseCtx := logger.WithBFields(
-    iris.BStr("service", "user-api"),
-    iris.BStr("version", "1.0.0"),
+baseCtx := logger.XFields(
+    iris.XStr("service", "user-api"),
+    iris.XStr("version", "1.0.0"),
 )
 
 // Use baseCtx for all operations in this service
 baseCtx.Info("Service started")
-baseCtx.WithBFields(iris.BStr("user_id", "123")).Info("User created")
+baseCtx.XFields(iris.XStr("user_id", "123")).Info("User created")
 
 // ❌ Bad: Create new context every time
-logger.WithBFields(iris.BStr("service", "user-api")).Info("Service started")
-logger.WithBFields(iris.BStr("service", "user-api")).Info("User created")
+logger.XFields(iris.XStr("service", "user-api")).Info("Service started")
+logger.XFields(iris.XStr("service", "user-api")).Info("User created")
 ```
 
 ### 2. Field Naming
 ```go
 // ✅ Good: Consistent, descriptive names
-ctx := logger.WithBFields(
-    iris.BStr("user_id", "12345"),
-    iris.BStr("request_id", "req_67890"),
-    iris.BInt("response_time_ms", 150),
-    iris.BBool("cache_hit", true),
+ctx := logger.XFields(
+    iris.XStr("user_id", "12345"),
+    iris.XStr("request_id", "req_67890"),
+    iris.XInt("response_time_ms", 150),
+    iris.XBool("cache_hit", true),
 )
 
 // ❌ Bad: Inconsistent, unclear names
-ctx := logger.WithBFields(
-    iris.BStr("user", "12345"),      // Missing _id suffix
-    iris.BStr("reqId", "req_67890"), // CamelCase instead of snake_case
-    iris.BInt("time", 150),          // Unclear units
-    iris.BBool("cached", true),      // Unclear meaning
+ctx := logger.XFields(
+    iris.XStr("user", "12345"),      // Missing _id suffix
+    iris.XStr("reqId", "req_67890"), // CamelCase instead of snake_case
+    iris.XInt("time", 150),          // Unclear units
+    iris.XBool("cached", true),      // Unclear meaning
 )
 ```
 
 ### 3. Error Context
 ```go
 // ✅ Good: Rich error context
-func processUser(userID string, logger *iris.BLogger) error {
-    ctx := logger.WithBFields(
-        iris.BStr("user_id", userID),
-        iris.BStr("operation", "process_user"),
+func processUser(userID string, logger *iris.XLogger) error {
+    ctx := logger.XFields(
+        iris.XStr("user_id", userID),
+        iris.XStr("operation", "process_user"),
     )
     
     user, err := fetchUser(userID)
     if err != nil {
-        ctx.WithBFields(
-            iris.BStr("error", err.Error()),
-            iris.BStr("stage", "fetch_user"),
+        ctx.XFields(
+            iris.XStr("error", err.Error()),
+            iris.XStr("stage", "fetch_user"),
         ).Error("Failed to fetch user")
         return err
     }
@@ -433,7 +433,7 @@ func processUser(userID string, logger *iris.BLogger) error {
 }
 
 // ❌ Bad: Minimal error context
-func processUser(userID string, logger *iris.BLogger) error {
+func processUser(userID string, logger *iris.XLogger) error {
     user, err := fetchUser(userID)
     if err != nil {
         logger.Error("Error") // Useless
@@ -447,15 +447,15 @@ func processUser(userID string, logger *iris.BLogger) error {
 // ✅ Good: Check level before expensive operations
 if logger.IsDebugEnabled() {
     expensiveData := generateDebugInfo() // Only when needed
-    logger.WithBFields(
-        iris.BStr("debug_data", expensiveData),
+    logger.XFields(
+        iris.XStr("debug_data", expensiveData),
     ).Debug("Debug information")
 }
 
 // ❌ Bad: Always generate expensive data
 expensiveData := generateDebugInfo() // Always executed
-logger.WithBFields(
-    iris.BStr("debug_data", expensiveData),
+logger.XFields(
+    iris.XStr("debug_data", expensiveData),
 ).Debug("Debug information") // Might be discarded
 ```
 
@@ -466,7 +466,7 @@ logger.WithBFields(
 **Issue: No output visible**
 ```go
 // Check if level is too high
-logger := iris.NewBLogger(iris.ErrorLevel)
+logger := iris.NewIrisLogger(iris.ErrorLevel)
 logger.Info("This won't appear") // Info < Error level
 ```
 
@@ -483,13 +483,13 @@ logger.SetOutputFormat(iris.JSONFormat)
 logger.Info("User " + userID + " logged in")
 
 // ✅ Good
-logger.WithBFields(iris.BStr("user_id", userID)).Info("User logged in")
+logger.XFields(iris.XStr("user_id", userID)).Info("User logged in")
 ```
 
 **Issue: Memory leaks**
 ```go
 // Always release fields when done
-field := iris.BStr("temp", "value")
+field := iris.XStr("temp", "value")
 defer field.Release() // Return to pool
 ```
 

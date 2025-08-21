@@ -342,3 +342,126 @@ func TestJSONEncoderLargeData(t *testing.T) {
 		}
 	}
 }
+
+// TestJSONEncoderBoolType tests the encodeBoolType function directly
+func TestJSONEncoderBoolType(t *testing.T) {
+	encoder := NewJSONEncoder()
+
+	// Test true value
+	encoder.Reset()
+	encoder.encodeBoolType(true)
+	result := string(encoder.Bytes())
+	if result != "true" {
+		t.Errorf("encodeBoolType(true) = %q, expected \"true\"", result)
+	}
+
+	// Test false value
+	encoder.Reset()
+	encoder.encodeBoolType(false)
+	result = string(encoder.Bytes())
+	if result != "false" {
+		t.Errorf("encodeBoolType(false) = %q, expected \"false\"", result)
+	}
+}
+
+// TestJSONEncoderFloatType tests the encodeFloatType function directly
+func TestJSONEncoderFloatType(t *testing.T) {
+	encoder := NewJSONEncoder()
+
+	tests := []struct {
+		name     string
+		value    interface{}
+		expected string
+	}{
+		{"float64_positive", 123.456, "123.456"},
+		{"float64_negative", -123.456, "-123.456"},
+		{"float64_zero", 0.0, "0"},
+		{"float32_positive", float32(123.456), "123.456"},
+		{"float32_negative", float32(-123.456), "-123.456"},
+		{"float32_zero", float32(0.0), "0"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			encoder.Reset()
+			encoder.encodeFloatType(test.value)
+			result := string(encoder.Bytes())
+
+			// Parse both values to compare numerically (avoid precision issues)
+			expectedFloat, _ := strconv.ParseFloat(test.expected, 64)
+			resultFloat, err := strconv.ParseFloat(result, 64)
+			if err != nil {
+				t.Errorf("encodeFloatType(%v) produced invalid float: %q", test.value, result)
+				return
+			}
+
+			if resultFloat != expectedFloat {
+				t.Errorf("encodeFloatType(%v) = %q, expected %q", test.value, result, test.expected)
+			}
+		})
+	}
+}
+
+// TestJSONEncoderComplexType tests the encodeComplexType function directly
+func TestJSONEncoderComplexType(t *testing.T) {
+	encoder := NewJSONEncoder()
+
+	tests := []struct {
+		name     string
+		value    interface{}
+		expected string
+	}{
+		{"slice", []int{1, 2, 3}, "[1,2,3]"},
+		{"map", map[string]int{"a": 1, "b": 2}, `{"a":1,"b":2}`},
+		{"struct", struct{ Name string }{"test"}, `{"Name":"test"}`},
+		{"nil", nil, "null"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			encoder.Reset()
+			encoder.encodeComplexType(test.value)
+			result := string(encoder.Bytes())
+
+			// For maps, order can vary, so parse both and compare
+			if test.name == "map" {
+				var expectedMap, resultMap map[string]interface{}
+				if err := json.Unmarshal([]byte(test.expected), &expectedMap); err != nil {
+					t.Fatalf("Failed to parse expected JSON: %v", err)
+				}
+				if err := json.Unmarshal([]byte(result), &resultMap); err != nil {
+					t.Fatalf("Failed to parse result JSON: %v", err)
+				}
+
+				if len(expectedMap) != len(resultMap) {
+					t.Errorf("Map lengths differ: expected %d, got %d", len(expectedMap), len(resultMap))
+				}
+
+				for k, v := range expectedMap {
+					if resultMap[k] != v {
+						t.Errorf("Map key %q: expected %v, got %v", k, v, resultMap[k])
+					}
+				}
+			} else {
+				if result != test.expected {
+					t.Errorf("encodeComplexType(%v) = %q, expected %q", test.value, result, test.expected)
+				}
+			}
+		})
+	}
+}
+
+// TestJSONEncoderComplexTypeError tests error handling in encodeComplexType
+func TestJSONEncoderComplexTypeError(t *testing.T) {
+	encoder := NewJSONEncoder()
+
+	// Use a value that can't be marshaled to JSON (channel)
+	ch := make(chan int)
+	encoder.Reset()
+	encoder.encodeComplexType(ch)
+	result := string(encoder.Bytes())
+
+	if result != "null" {
+		t.Errorf("encodeComplexType with unmarshalable value should return \"null\", got %q", result)
+	}
+}

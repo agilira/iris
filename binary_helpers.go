@@ -73,15 +73,15 @@ func BinaryBool(key string, value bool) BinaryField {
 	}
 }
 
-// SAFE MIGRATION: Short aliases for user-friendly API (BACKWARD COMPATIBLE)
-func BStr(key string, value string) BField {
+// DESIGNER API: eXtreme performance field constructors (ULTRA-FAST)
+func XStr(key string, value string) XField {
 	return BinaryStr(key, value)
 }
 
-func BInt(key string, value int64) BField {
+func XInt(key string, value int64) XField {
 	return BinaryInt(key, value)
 }
 
-func BBool(key string, value bool) BField {
+func XBool(key string, value bool) XField {
 	return BinaryBool(key, value)
 }

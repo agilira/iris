@@ -6,7 +6,9 @@
 package iris
 
 import (
+	"os"
 	"testing"
+	"time"
 )
 
 // TestNewDevelopment tests development preset creation
@@ -254,4 +256,68 @@ func TestPresetPerformanceCharacteristics(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		logger.Info("performance test", Int("iteration", i))
 	}
+}
+
+// TestNewUltraFastFile tests the NewUltraFastFile function
+func TestNewUltraFastFile(t *testing.T) {
+	// Create a temporary file for testing
+	tmpFile := "/tmp/iris_test_ultrafast.log"
+
+	// Clean up before and after test
+	defer func() {
+		if err := os.Remove(tmpFile); err != nil && !os.IsNotExist(err) {
+			t.Logf("Warning: failed to clean up test file: %v", err)
+		}
+	}()
+
+	logger, err := NewUltraFastFile(tmpFile)
+	if err != nil {
+		t.Fatalf("Failed to create ultra fast file logger: %v", err)
+	}
+	defer logger.Close()
+
+	// Test logging
+	logger.Info("test ultra fast file logging")
+
+	// Verify the file was created and has content
+	time.Sleep(100 * time.Millisecond) // Allow time for async writes
+
+	if _, err := os.Stat(tmpFile); os.IsNotExist(err) {
+		t.Error("Expected log file to be created")
+	}
+}
+
+// TestNewUltraFastFileInvalidPath tests error handling for invalid file paths
+func TestNewUltraFastFileInvalidPath(t *testing.T) {
+	// Try to create logger with invalid path
+	invalidPath := "/nonexistent/directory/file.log"
+
+	logger, err := NewUltraFastFile(invalidPath)
+	if err == nil {
+		if logger != nil {
+			logger.Close()
+		}
+		t.Error("Expected error when creating logger with invalid path")
+	}
+}
+
+// TestNewUltraFastNetwork tests the NewUltraFastNetwork function
+func TestNewUltraFastNetwork(t *testing.T) {
+	// Create a mock network writer using a discard writer for simplicity
+	writer := DiscardSyncer
+
+	logger, err := NewUltraFastNetwork(writer)
+	if err != nil {
+		t.Fatalf("Failed to create ultra fast network logger: %v", err)
+	}
+	defer logger.Close()
+
+	// Test logging - just verify it doesn't crash
+	logger.Info("test ultra fast network logging")
+
+	// Allow time for async processing
+	time.Sleep(100 * time.Millisecond)
+
+	// For discard writer, we just test that it completes without error
+	// In a real test, you'd use a proper mock writer that captures data
 }

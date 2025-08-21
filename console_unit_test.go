@@ -389,3 +389,95 @@ func TestConsoleEncoderBinaryFields(t *testing.T) {
 		t.Errorf("Binary field not correctly encoded, got: %s", output)
 	}
 }
+
+// TestConsoleEncoderLevelColor tests the levelColor function for all levels
+func TestConsoleEncoderLevelColor(t *testing.T) {
+	encoder := NewConsoleEncoder(true) // Enable colors
+
+	tests := []struct {
+		level    Level
+		expected string
+	}{
+		{DebugLevel, Magenta},
+		{InfoLevel, Blue},
+		{WarnLevel, Yellow},
+		{ErrorLevel, Red},
+		{DPanicLevel, BrightRed + Bold},
+		{PanicLevel, BrightRed + Bold},
+		{FatalLevel, BrightRed + Bold},
+		{Level(127), White}, // Unknown level should return White
+	}
+
+	for _, test := range tests {
+		t.Run(test.level.String(), func(t *testing.T) {
+			color := encoder.levelColor(test.level)
+			if color != test.expected {
+				t.Errorf("levelColor(%v) = %q, expected %q", test.level, color, test.expected)
+			}
+		})
+	}
+}
+
+// TestConsoleEncoderLevelText tests the levelText function for all levels
+func TestConsoleEncoderLevelText(t *testing.T) {
+	encoder := NewConsoleEncoder(false)
+
+	tests := []struct {
+		level    Level
+		expected string
+	}{
+		{DebugLevel, "DEBUG"},
+		{InfoLevel, "INFO "},
+		{WarnLevel, "WARN "},
+		{ErrorLevel, "ERROR"},
+		{DPanicLevel, "DPANIC"},
+		{PanicLevel, "PANIC"},
+		{FatalLevel, "FATAL"},
+		{Level(127), "UNKNOWN"}, // Unknown level
+	}
+
+	for _, test := range tests {
+		t.Run(test.level.String(), func(t *testing.T) {
+			text := encoder.levelText(test.level)
+			if text != test.expected {
+				t.Errorf("levelText(%v) = %q, expected %q", test.level, text, test.expected)
+			}
+		})
+	}
+}
+
+// TestConsoleEncoderAppendTimeValue tests the appendTimeValue function directly
+func TestConsoleEncoderAppendTimeValue(t *testing.T) {
+	encoder := NewConsoleEncoder(false)
+
+	// Test specific timestamp
+	nanos := int64(1692633045123456789) // 2023-08-21T15:30:45.123456789Z
+	buf := make([]byte, 0, 64)
+
+	result := encoder.appendTimeValue(buf, nanos)
+	output := string(result)
+
+	// Should be in RFC3339 format - verify it's a valid RFC3339 timestamp
+	// The exact format depends on local timezone but should parse correctly
+	_, err := time.Parse(time.RFC3339, output)
+	if err != nil {
+		t.Errorf("appendTimeValue() produced invalid RFC3339 format: %q, error: %v", output, err)
+	}
+
+	// Test zero time
+	buf = buf[:0]
+	result = encoder.appendTimeValue(buf, 0)
+	output = string(result)
+
+	// Should also be valid RFC3339
+	_, err = time.Parse(time.RFC3339, output)
+	if err != nil {
+		t.Errorf("appendTimeValue(0) produced invalid RFC3339 format: %q, error: %v", output, err)
+	}
+
+	// Verify zero time is epoch start
+	parsedTime, _ := time.Parse(time.RFC3339, output)
+	if parsedTime.Unix() != 0 {
+		t.Errorf("appendTimeValue(0) should represent Unix epoch, got Unix time: %d", parsedTime.Unix())
+	}
+}

@@ -1,20 +1,20 @@
-# Iris Binary Logger API Reference
+# Iris eXtreme Logger API Reference
 
 ## Overview
 
-Iris Binary Logger is an ultra-high performance structured logging system designed for applications requiring maximum throughput (104M+ operations/second) with zero-allocation, garbage collection-safe logging. The binary format provides superior performance compared to traditional JSON-based loggers.
+Iris eXtreme Logger is an ultra-high performance structured logging system designed for applications requiring maximum throughput (104M+ operations/second) with zero-allocation, garbage collection-safe logging. The binary format provides superior performance compared to traditional JSON-based loggers.
 
 ## Quick Start
 
 ```go
-// Create logger - CLEAN API!
-logger := NewBLogger(InfoLevel)
+// Create logger - DESIGNER API!
+logger := NewIrisLogger(InfoLevel)
 
-// Create context with fields - SHORT NAMES!
-ctx := logger.WithBFields(
-    BStr("user_id", "12345"),
-    BInt("request_size", 1024),
-    BBool("authenticated", true),
+// Create context with fields - eXtreme PERFORMANCE!
+ctx := logger.XFields(
+    XStr("user_id", "12345"),
+    XInt("request_size", 1024),
+    XBool("authenticated", true),
 )
 
 // Log with context
@@ -24,9 +24,9 @@ ctx.Info("Request processed successfully")
 ## Table of Contents
 
 - [Core Architecture](#core-architecture)
-- [Logger](#1-logger-blogger)
-- [Fields](#2-fields-bfield)
-- [Context](#3-context-bcontext)
+- [Logger](#1-logger-irislogger)
+- [Fields](#2-fields-xfield)
+- [Context](#3-context-xcontext)
 - [Memory Management](#4-memory-management)
 - [Usage Examples](#usage-examples)
 - [Performance Characteristics](#performance-characteristics)
@@ -62,27 +62,27 @@ Three-tier pooling strategy optimizes for high-throughput scenarios:
 
 ## Core Components
 
-### 1. Logger (`BLogger`)
+### 1. Logger (`IrisLogger`)
 
 #### Constructor
 
 ```go
-func NewBLogger(level Level) *BLogger
+func NewIrisLogger(level Level) *IrisLogger
 ```
 
 **Parameters:**
 - `level`: Minimum log level (DebugLevel, InfoLevel, WarnLevel, ErrorLevel)
 
-**Returns:** Logger instance with initialized pools and GC-safe structures.
+**Returns:** Iris logger instance with initialized pools and GC-safe structures.
 
-### 2. Fields (`BField`)
+### 2. Fields (`XField`)
 
 Binary fields represent structured data in a memory-optimized format using buffer references instead of direct string storage.
 
 #### Field Types
 
 ```go
-type BField struct {
+type XField struct {
     Buffer   *StringBuffer // Buffer reference (GC-safe)
     KeyRef   StringRef     // Key reference in buffer
     ValueRef StringRef     // Value reference (for strings)
@@ -96,107 +96,111 @@ type BField struct {
 ##### String Fields
 
 ```go
-func BStr(key string, value string) BField
+func XStr(key string, value string) XField
 ```
 - **Purpose:** Creates a string field with GC-safe buffer pooling
-- **Performance:** Zero allocations after buffer pool warmup
+- **Performance:** Zero allocations after buffer pool warmup  
 - **Memory:** Stored as buffer references, not direct strings
+- **Design:** "X" = eXtreme performance
 
 ##### Integer Fields
 
 ```go
-func BInt(key string, value int64) BField
+func XInt(key string, value int64) XField
 ```
 - **Purpose:** Creates an integer field with inline storage
 - **Performance:** Direct data storage in `Data` field, no additional allocations
 - **Range:** Full int64 range supported
+- **Design:** "X" = eXtreme performance
 
 ##### Boolean Fields
 
 ```go
-func BBool(key string, value bool) BField
+func XBool(key string, value bool) XField
 ```
 - **Purpose:** Creates a boolean field with compact storage
 - **Performance:** Single bit stored as uint64, zero allocation
 - **Storage:** `true` = 1, `false` = 0 in `Data` field
+- **Design:** "X" = eXtreme performance
 
 #### Field Methods
 
 ```go
-func (bf BField) GetKey() string
+func (xf XField) GetKey() string
 ```
 - **Purpose:** Retrieves field key as string
 - **Safety:** Returns empty string if buffer is nil
 
 ```go
-func (bf BField) GetString() string
+func (xf XField) GetString() string
 ```
 - **Purpose:** Retrieves string value for string fields
 - **Validation:** Returns empty string for non-string field types
 
 ```go
-func (bf BField) GetInt() int64
+func (xf XField) GetInt() int64
 ```
 - **Purpose:** Retrieves integer value from `Data` field
 - **Performance:** Direct memory access, zero allocation
 
 ```go
-func (bf BField) GetBool() bool
+func (xf XField) GetBool() bool
 ```
 - **Purpose:** Retrieves boolean value from `Data` field
 - **Logic:** Returns `true` if `Data != 0`
 
 ```go
-func (bf BField) Release()
+func (xf XField) Release()
 ```
 - **Purpose:** Returns buffer to pool (critical for high-throughput)
 - **Usage:** Call when field is no longer needed
 - **Performance:** Essential for maintaining 104M+ ops/sec
 
-### 3. Context (`BContext`)
+### 3. Context (`XContext`)
 
 Represents a logging context with pre-allocated fields for efficient logging operations.
 
 #### Context Creation
 
 ```go
-func (bl *BLogger) WithBFields(fields ...BField) *BContext
+func (il *XLogger) XFields(fields ...XField) *XContext
 ```
-- **Purpose:** Creates logging context with specified fields
+- **Purpose:** Creates logging context with specified fields using eXtreme performance API
 - **Performance:** Uses field pool for zero allocation
 - **Pattern:** Variadic arguments for fluent API
+- **Design:** Short, memorable method name for high-frequency use
 
 #### Logging Methods
 
 ```go
-func (bc *BContext) Info(message string)
+func (xc *XContext) Info(message string)
 ```
 - **Purpose:** Logs at INFO level with context fields
 - **Performance:** Binary encoding, zero JSON marshaling
 - **Behavior:** No-op if logger level > InfoLevel
 
 ```go
-func (bc *BContext) InfoWithCaller(message string)
+func (xc *XContext) InfoWithCaller(message string)
 ```
 - **Purpose:** Logs at INFO level with lazy caller information
 - **Performance:** Optimized caller computation, computed only when needed
 - **Use Case:** Development and debugging scenarios requiring call site information
 
 ```go
-func (bc *BContext) Debug(message string)
+func (xc *XContext) Debug(message string)
 ```
 - **Purpose:** Logs at DEBUG level with context fields
 - **Performance:** Optimized for development scenarios
 - **Behavior:** No-op if logger level > DebugLevel
 
 ```go
-func (bc *BContext) Warn(message string)
+func (xc *XContext) Warn(message string)
 ```
 - **Purpose:** Logs at WARN level with context fields
 - **Use Case:** Non-fatal issues requiring attention
 
 ```go
-func (bc *BContext) Error(message string)
+func (xc *XContext) Error(message string)
 ```
 - **Purpose:** Logs at ERROR level with context fields
 - **Use Case:** Error conditions requiring immediate attention
@@ -204,14 +208,14 @@ func (bc *BContext) Error(message string)
 #### Diagnostic Methods
 
 ```go
-func (bc *BContext) MemoryFootprint() int
+func (xc *XContext) MemoryFootprint() int
 ```
 - **Purpose:** Returns the total memory footprint of the context
 - **Returns:** Memory usage in bytes
 - **Use Case:** Performance profiling and optimization
 
 ```go
-func (bc *BContext) GetBinarySize() int
+func (xc *XContext) GetBinarySize() int
 ```
 - **Purpose:** Returns memory usage in bytes for context and fields
 - **Use Case:** Performance monitoring and memory profiling
@@ -253,13 +257,13 @@ type StringRef struct {
 ### Basic Logging
 
 ```go
-logger := NewBLogger(InfoLevel)
+logger := NewIrisLogger(InfoLevel)
 
 // Single log with fields
-ctx := logger.WithBFields(
-    BStr("user_id", "12345"),
-    BInt("request_size", 1024),
-    BBool("authenticated", true),
+ctx := logger.XFields(
+    XStr("user_id", "12345"),
+    XInt("request_size", 1024),
+    XBool("authenticated", true),
 )
 ctx.Info("Request processed successfully")
 ```
@@ -267,12 +271,12 @@ ctx.Info("Request processed successfully")
 ### High-Performance Pattern
 
 ```go
-logger := NewBLogger(InfoLevel)
+logger := NewIrisLogger(InfoLevel)
 
 // Pre-create context for reuse
-ctx := logger.WithBFields(
-    BStr("service", "api-gateway"),
-    BStr("version", "v2.1.0"),
+ctx := logger.XFields(
+    XStr("service", "api-gateway"),
+    XStr("version", "v2.1.0"),
 )
 
 // Reuse context for multiple logs
@@ -285,11 +289,11 @@ for i := 0; i < 1000000; i++ {
 
 ```go
 // Create fields once, reuse multiple times
-userField := BStr("user", "john_doe")
-serviceField := BStr("service", "auth")
+userField := XStr("user", "john_doe")
+serviceField := XStr("service", "auth")
 
-ctx1 := logger.WithBFields(userField, serviceField, BStr("action", "login"))
-ctx2 := logger.WithBFields(userField, serviceField, BStr("action", "logout"))
+ctx1 := logger.XFields(userField, serviceField, XStr("action", "login"))
+ctx2 := logger.XFields(userField, serviceField, XStr("action", "logout"))
 
 ctx1.Info("User login attempt")
 ctx2.Info("User logout")
@@ -305,10 +309,10 @@ serviceField.Release()
 
 | Operation | ns/op | B/op | allocs/op |
 |-----------|-------|------|-----------|
-| `WithBFields` (3 fields) | 266 | 376 | 3 |
-| `BStr()` creation | 21 | 0 | 0 |
-| `BInt()` creation | 19 | 0 | 0 |
-| `BBool()` creation | 18 | 0 | 0 |
+| `XFields` (3 fields) | 266 | 376 | 3 |
+| `XStr()` creation | 21 | 0 | 0 |
+| `XInt()` creation | 19 | 0 | 0 |
+| `XBool()` creation | 18 | 0 | 0 |
 
 ### Memory Efficiency
 
@@ -347,8 +351,8 @@ serviceField.Release()
 
 ### Development Guidelines
 
-1. **Start with `BStr/BInt/BBool`** constructors for type safety
-2. **Use `WithBFields()`** for context creation
+1. **Start with `XStr/XInt/XBool`** constructors for type safety
+2. **Use `XFields()`** for context creation
 3. **Test with production load** to validate performance characteristics
 4. **Profile regularly** to ensure zero-allocation goals are met
 
@@ -359,7 +363,7 @@ serviceField.Release()
 All binary field operations are nil-safe and return zero values rather than panicking:
 
 ```go
-var field BField  // Zero value
+var field XField  // Zero value
 key := field.GetKey()      // Returns ""
 value := field.GetString() // Returns ""
 field.Release()            // Safe no-op

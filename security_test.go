@@ -62,7 +62,8 @@ func TestSecretFieldRedaction(t *testing.T) {
 
 			// Wait for log to be written
 			logger.Sync()
-			time.Sleep(10 * time.Millisecond) // Give time for async processing
+			time.Sleep(5 * time.Millisecond) // Minimal delay for async processing
+			logger.Close()
 			output := buf.String()
 
 			// Verify secret is redacted
@@ -93,7 +94,6 @@ func TestSecretFieldAnyType(t *testing.T) {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
 	defer logger.Sync()
-	defer logger.Close()
 
 	// Test with different secret types
 	sensitiveData := map[string]interface{}{
@@ -107,7 +107,8 @@ func TestSecretFieldAnyType(t *testing.T) {
 	)
 
 	logger.Sync()
-	time.Sleep(10 * time.Millisecond) // Give time for async processing
+	time.Sleep(5 * time.Millisecond) // Minimal delay for async processing
+	logger.Close()
 	output := buf.String()
 
 	// Verify secret is redacted
@@ -176,7 +177,6 @@ func TestLogInjectionProtection(t *testing.T) {
 				t.Fatalf("Failed to create logger: %v", err)
 			}
 			defer logger.Sync()
-			defer logger.Close()
 
 			// Log with malicious input
 			logger.Info("Security test",
@@ -185,7 +185,8 @@ func TestLogInjectionProtection(t *testing.T) {
 			)
 
 			logger.Sync()
-			time.Sleep(10 * time.Millisecond) // Give time for async processing
+			time.Sleep(5 * time.Millisecond) // Minimal delay for async processing
+			logger.Close()
 			output := buf.String()
 
 			// Check that dangerous characters are properly escaped/sanitized
@@ -220,7 +221,6 @@ func TestBinaryFormatSecretRedaction(t *testing.T) {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
 	defer logger.Sync()
-	defer logger.Close()
 
 	// Log with secret field
 	logger.Info("Database connection",
@@ -230,7 +230,8 @@ func TestBinaryFormatSecretRedaction(t *testing.T) {
 	)
 
 	logger.Sync()
-	time.Sleep(10 * time.Millisecond) // Give time for async processing
+	time.Sleep(5 * time.Millisecond) // Minimal delay for async processing
+	logger.Close()
 	output := buf.Bytes()
 
 	// Convert binary output to string for inspection
@@ -270,7 +271,6 @@ func TestCombinedSecurityFeatures(t *testing.T) {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
 	defer logger.Sync()
-	defer logger.Close()
 
 	// Log with both secret fields and potentially dangerous input
 	maliciousUser := "admin\n{\"fake\":\"injected\"}"
@@ -287,7 +287,8 @@ func TestCombinedSecurityFeatures(t *testing.T) {
 	)
 
 	logger.Sync()
-	time.Sleep(10 * time.Millisecond) // Give time for async processing
+	time.Sleep(5 * time.Millisecond) // Minimal delay for async processing
+	logger.Close()
 	output := buf.String()
 
 	// Verify secrets are redacted
@@ -319,20 +320,31 @@ func TestSecretFieldPerformance(t *testing.T) {
 		t.Skip("Skipping performance test in short mode")
 	}
 
-	var buf bytes.Buffer
+	var buf1, buf2 bytes.Buffer
 
-	config := Config{
+	config1 := Config{
 		Level:  InfoLevel,
 		Format: JSONFormat,
-		Writer: WrapWriter(&buf),
+		Writer: WrapWriter(&buf1),
 	}
 
-	logger, err := New(config)
-	if err != nil {
-		t.Fatalf("Failed to create logger: %v", err)
+	config2 := Config{
+		Level:  InfoLevel,
+		Format: JSONFormat,
+		Writer: WrapWriter(&buf2),
 	}
-	defer logger.Sync()
-	defer logger.Close()
+
+	logger1, err := New(config1)
+	if err != nil {
+		t.Fatalf("Failed to create logger1: %v", err)
+	}
+	defer logger1.Sync()
+
+	logger2, err := New(config2)
+	if err != nil {
+		t.Fatalf("Failed to create logger2: %v", err)
+	}
+	defer logger2.Sync()
 
 	// Benchmark secret field vs normal field performance
 	const iterations = 1000
@@ -340,26 +352,27 @@ func TestSecretFieldPerformance(t *testing.T) {
 	// Test normal field performance
 	start := time.Now()
 	for i := 0; i < iterations; i++ {
-		logger.Info("Performance test",
+		logger1.Info("Performance test",
 			String("normal_field", "normal_value"),
 			String("another_field", "another_value"),
 		)
 	}
 	normalTime := time.Since(start)
 
-	buf.Reset() // Clear buffer
-
 	// Test secret field performance
 	start = time.Now()
 	for i := 0; i < iterations; i++ {
-		logger.Info("Performance test",
+		logger2.Info("Performance test",
 			Secret("secret_field", "secret_value"),
 			String("another_field", "another_value"),
 		)
 	}
 	secretTime := time.Since(start)
 
-	logger.Sync()
+	logger1.Sync()
+	logger1.Close()
+	logger2.Sync()
+	logger2.Close()
 
 	// Secret field logging should not be more than 2x slower than normal
 	if secretTime > normalTime*2 {

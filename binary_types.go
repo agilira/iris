@@ -69,7 +69,13 @@ type BinaryContext struct {
 	fields []BinaryField
 }
 
-// SAFE MIGRATION: Alias per gradual transition (BACKWARD COMPATIBLE)
+// DESIGNER API: eXtreme performance type aliases (PREMIUM BRAND)
+type XField = BinaryField     // eXtreme performance field - zero overhead
+type XContext = BinaryContext // eXtreme performance context - ultra fast
+type XLogger = BinaryLogger   // eXtreme performance logger - premium API
+type XEntry = BinaryEntry     // eXtreme performance entry - compact storage
+
+// LEGACY SUPPORT: Backward compatible aliases (TRANSITIONAL)
 type BField = BinaryField     // Alias to BinaryField - zero overhead
 type BContext = BinaryContext // Alias to BinaryContext - user friendly
 type BLogger = BinaryLogger   // Alias to BinaryLogger - clean API
