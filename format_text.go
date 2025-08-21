@@ -37,7 +37,23 @@ func (e *FastTextEncoder) Bytes() []byte {
 // Format: TIMESTAMP LEVEL MESSAGE [CALLER] field1=value1 field2=value2
 func (e *FastTextEncoder) EncodeLogEntry(timestamp time.Time, level Level, message string, fields []BinaryField, caller Caller, stackTrace string) {
 	e.Reset()
+	
+	// Pre-calculate capacity and prepare buffer
+	e.prepareBuffer(timestamp, level, message, fields, caller, stackTrace)
+	
+	// Encode components in order
+	e.appendTimestamp(timestamp)
+	e.appendLevel(level)
+	e.appendMessage(message)
+	e.appendCaller(caller)
+	e.appendBinaryFields(fields)
+	e.appendStackTrace(stackTrace)
+	
+	e.buf = append(e.buf, '\n')
+}
 
+// prepareBuffer calculates required capacity and ensures buffer size
+func (e *FastTextEncoder) prepareBuffer(timestamp time.Time, level Level, message string, fields []BinaryField, caller Caller, stackTrace string) {
 	// OPTIMIZATION 1: Pre-calculate required capacity to minimize reallocations
 	estimatedSize := len(message) + 50 // base size for timestamp + level
 	for _, field := range fields {
@@ -54,13 +70,18 @@ func (e *FastTextEncoder) EncodeLogEntry(timestamp time.Time, level Level, messa
 	if cap(e.buf) < estimatedSize {
 		e.buf = make([]byte, 0, estimatedSize+100) // some extra margin
 	}
+}
 
-	// OPTIMIZATION 2: Batch timestamp and level in single operation
+// appendTimestamp adds timestamp to buffer
+func (e *FastTextEncoder) appendTimestamp(timestamp time.Time) {
 	if !timestamp.IsZero() {
 		e.buf = timestamp.AppendFormat(e.buf, "15:04:05.000")
 		e.buf = append(e.buf, ' ')
 	}
+}
 
+// appendLevel adds level to buffer with consistent formatting
+func (e *FastTextEncoder) appendLevel(level Level) {
 	// OPTIMIZATION 3: Pre-computed level strings with consistent length
 	switch level {
 	case DebugLevel:
@@ -76,52 +97,78 @@ func (e *FastTextEncoder) EncodeLogEntry(timestamp time.Time, level Level, messa
 	default:
 		e.buf = append(e.buf, "UNKNW "...)
 	}
+}
 
-	// Message - direct append, no intermediate space needed
+// appendMessage adds message to buffer
+func (e *FastTextEncoder) appendMessage(message string) {
 	e.buf = append(e.buf, message...)
+}
 
-	// OPTIMIZATION 4: Optimized caller encoding
-	if caller.Valid {
-		e.buf = append(e.buf, " ["...)
+// appendCaller adds caller information to buffer
+func (e *FastTextEncoder) appendCaller(caller Caller) {
+	if !caller.Valid {
+		return
+	}
+	
+	e.buf = append(e.buf, " ["...)
 
-		// Fast filename extraction using last slash
-		filename := caller.File
-		if idx := lastIndexByte(filename, '/'); idx >= 0 {
-			filename = filename[idx+1:]
-		}
-
-		e.buf = append(e.buf, filename...)
-		e.buf = append(e.buf, ':')
-		e.buf = strconv.AppendInt(e.buf, int64(caller.Line), 10)
-		e.buf = append(e.buf, ']')
+	// Fast filename extraction using last slash
+	filename := caller.File
+	if idx := lastIndexByte(filename, '/'); idx >= 0 {
+		filename = filename[idx+1:]
 	}
 
-	// OPTIMIZATION 5: Batch field encoding
-	if len(fields) > 0 {
-		e.buf = append(e.buf, ' ')
-		for i, field := range fields {
-			if i > 0 {
-				e.buf = append(e.buf, ' ')
-			}
-			e.buf = append(e.buf, field.GetKey()...)
-			e.buf = append(e.buf, '=')
-			e.appendFieldValueFast(field) // Optimized version
-		}
-	}
+	e.buf = append(e.buf, filename...)
+	e.buf = append(e.buf, ':')
+	e.buf = strconv.AppendInt(e.buf, int64(caller.Line), 10)
+	e.buf = append(e.buf, ']')
+}
 
-	// Stack trace (if present)
+// appendBinaryFields adds fields to buffer
+func (e *FastTextEncoder) appendBinaryFields(fields []BinaryField) {
+	if len(fields) == 0 {
+		return
+	}
+	
+	e.buf = append(e.buf, ' ')
+	for i, field := range fields {
+		if i > 0 {
+			e.buf = append(e.buf, ' ')
+		}
+		e.buf = append(e.buf, field.GetKey()...)
+		e.buf = append(e.buf, '=')
+		e.appendFieldValueFast(field) // Optimized version
+	}
+}
+
+// appendStackTrace adds stack trace to buffer
+func (e *FastTextEncoder) appendStackTrace(stackTrace string) {
 	if stackTrace != "" {
 		e.buf = append(e.buf, "\nStack trace:\n"...)
 		e.buf = append(e.buf, stackTrace...)
 	}
-
-	e.buf = append(e.buf, '\n')
 }
 
 // EncodeLogEntryMigration encodes directly from Field slice (MIGRATION METHOD)
 func (e *FastTextEncoder) EncodeLogEntryMigration(timestamp time.Time, level Level, message string, fields []Field, caller Caller, stackTrace string) {
 	e.Reset()
+	
+	// Pre-calculate capacity and prepare buffer  
+	e.prepareBufferForMigration(timestamp, level, message, fields, caller, stackTrace)
+	
+	// Encode components in order (reuse methods where possible)
+	e.appendTimestamp(timestamp)
+	e.appendLevel(level)
+	e.appendMessage(message)
+	e.appendCaller(caller)
+	e.appendMigrationFields(fields)
+	e.appendStackTrace(stackTrace)
+	
+	e.buf = append(e.buf, '\n')
+}
 
+// prepareBufferForMigration calculates required capacity for Field slice
+func (e *FastTextEncoder) prepareBufferForMigration(timestamp time.Time, level Level, message string, fields []Field, caller Caller, stackTrace string) {
 	// OPTIMIZATION 1: Pre-calculate required capacity to minimize reallocations
 	estimatedSize := len(message) + 50 // base size for timestamp + level
 	for _, field := range fields {
@@ -138,68 +185,23 @@ func (e *FastTextEncoder) EncodeLogEntryMigration(timestamp time.Time, level Lev
 	if cap(e.buf) < estimatedSize {
 		e.buf = make([]byte, 0, estimatedSize+100) // some extra margin
 	}
+}
 
-	// OPTIMIZATION 2: Batch timestamp and level in single operation
-	if !timestamp.IsZero() {
-		e.buf = timestamp.AppendFormat(e.buf, "15:04:05.000")
-		e.buf = append(e.buf, ' ')
+// appendMigrationFields adds Field slice to buffer
+func (e *FastTextEncoder) appendMigrationFields(fields []Field) {
+	if len(fields) == 0 {
+		return
 	}
-
-	// OPTIMIZATION 3: Pre-computed level strings with consistent length
-	switch level {
-	case DebugLevel:
-		e.buf = append(e.buf, "DEBUG "...)
-	case InfoLevel:
-		e.buf = append(e.buf, "INFO  "...) // FIXED: Consistent spacing
-	case WarnLevel:
-		e.buf = append(e.buf, "WARN  "...)
-	case ErrorLevel:
-		e.buf = append(e.buf, "ERROR "...)
-	case FatalLevel:
-		e.buf = append(e.buf, "FATAL "...)
-	default:
-		e.buf = append(e.buf, "UNKNW "...)
-	}
-
-	// Message - direct append, no intermediate space needed
-	e.buf = append(e.buf, message...)
-
-	// OPTIMIZATION 4: Optimized caller encoding
-	if caller.Valid {
-		e.buf = append(e.buf, " ["...)
-
-		// Fast filename extraction using last slash
-		filename := caller.File
-		if idx := lastIndexByte(filename, '/'); idx >= 0 {
-			filename = filename[idx+1:]
+	
+	e.buf = append(e.buf, ' ')
+	for i, field := range fields {
+		if i > 0 {
+			e.buf = append(e.buf, ' ')
 		}
-
-		e.buf = append(e.buf, filename...)
-		e.buf = append(e.buf, ':')
-		e.buf = strconv.AppendInt(e.buf, int64(caller.Line), 10)
-		e.buf = append(e.buf, ']')
+		e.buf = append(e.buf, field.Key...)
+		e.buf = append(e.buf, '=')
+		e.appendFieldValueFastMigration(field) // Direct Field version
 	}
-
-	// OPTIMIZATION 5: Batch field encoding (DIRECT FROM FIELD)
-	if len(fields) > 0 {
-		e.buf = append(e.buf, ' ')
-		for i, field := range fields {
-			if i > 0 {
-				e.buf = append(e.buf, ' ')
-			}
-			e.buf = append(e.buf, field.Key...)
-			e.buf = append(e.buf, '=')
-			e.appendFieldValueFastMigration(field) // Direct Field version
-		}
-	}
-
-	// Stack trace (if present)
-	if stackTrace != "" {
-		e.buf = append(e.buf, "\nStack trace:\n"...)
-		e.buf = append(e.buf, stackTrace...)
-	}
-
-	e.buf = append(e.buf, '\n')
 }
 
 // appendFieldValueFast appends field value without quotes (ULTRA-OPTIMIZED)

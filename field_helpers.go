@@ -120,36 +120,76 @@ func FieldsEqual(a, b Field) bool {
 	if a.Key != b.Key || a.Type != b.Type {
 		return false
 	}
+	
+	return compareFieldsByType(a, b)
+}
 
+// compareFieldsByType compares field values based on their type
+func compareFieldsByType(a, b Field) bool {
 	switch a.Type {
 	case StringType:
-		return a.String == b.String
+		return compareStringFields(a, b)
 	case IntType, Int64Type, Int32Type, Int16Type, Int8Type,
 		UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type,
 		TimeType, DurationType:
-		return a.Int == b.Int
+		return compareIntFields(a, b)
 	case Float64Type, Float32Type:
-		return a.Float == b.Float
+		return compareFloatFields(a, b)
 	case BoolType:
-		return a.Bool == b.Bool
+		return compareBoolFields(a, b)
 	case ErrorType:
-		return (a.Err == nil && b.Err == nil) ||
-			(a.Err != nil && b.Err != nil && a.Err.Error() == b.Err.Error())
+		return compareErrorFields(a, b)
 	case BinaryType, ByteStringType:
-		if len(a.Bytes) != len(b.Bytes) {
-			return false
-		}
-		for i := range a.Bytes {
-			if a.Bytes[i] != b.Bytes[i] {
-				return false
-			}
-		}
-		return true
+		return compareByteFields(a, b)
 	case AnyType:
-		return fmt.Sprintf("%v", a.Any) == fmt.Sprintf("%v", b.Any)
+		return compareAnyFields(a, b)
 	default:
 		return false
 	}
+}
+
+// compareStringFields compares string type fields
+func compareStringFields(a, b Field) bool {
+	return a.String == b.String
+}
+
+// compareIntFields compares integer-based type fields
+func compareIntFields(a, b Field) bool {
+	return a.Int == b.Int
+}
+
+// compareFloatFields compares float type fields
+func compareFloatFields(a, b Field) bool {
+	return a.Float == b.Float
+}
+
+// compareBoolFields compares boolean type fields
+func compareBoolFields(a, b Field) bool {
+	return a.Bool == b.Bool
+}
+
+// compareErrorFields compares error type fields
+func compareErrorFields(a, b Field) bool {
+	return (a.Err == nil && b.Err == nil) ||
+		(a.Err != nil && b.Err != nil && a.Err.Error() == b.Err.Error())
+}
+
+// compareByteFields compares byte array type fields
+func compareByteFields(a, b Field) bool {
+	if len(a.Bytes) != len(b.Bytes) {
+		return false
+	}
+	for i := range a.Bytes {
+		if a.Bytes[i] != b.Bytes[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// compareAnyFields compares any type fields
+func compareAnyFields(a, b Field) bool {
+	return fmt.Sprintf("%v", a.Any) == fmt.Sprintf("%v", b.Any)
 }
 
 // CloneField creates a deep copy of a field

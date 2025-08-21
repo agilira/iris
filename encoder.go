@@ -225,23 +225,29 @@ func (e *JSONEncoder) encodeFieldColdPath(field Field) {
 //go:inline
 func (e *JSONEncoder) escapeStringFast(s string) {
 	// ULTRA-OPTIMIZATION: Check for special characters using bytewise AND operation
-	needsEscape := false
-	for i := 0; i < len(s); i++ {
-		// Optimized check: combine multiple conditions in single comparison
-		b := s[i]
-		if b < 32 || b == '"' || b == '\\' {
-			needsEscape = true
-			break
-		}
-	}
-
-	// FAST PATH: No escaping needed (85%+ of strings in real apps)
-	if !needsEscape {
+	if !e.needsEscaping(s) {
+		// FAST PATH: No escaping needed (85%+ of strings in real apps)
 		e.buf = append(e.buf, s...)
 		return
 	}
-
+	
 	// SLOW PATH: Escape special characters with minimal allocations
+	e.escapeStringWithSpecialChars(s)
+}
+
+// needsEscaping checks if a string contains characters that need JSON escaping
+func (e *JSONEncoder) needsEscaping(s string) bool {
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b < 32 || b == '"' || b == '\\' {
+			return true
+		}
+	}
+	return false
+}
+
+// escapeStringWithSpecialChars handles the slow path of string escaping
+func (e *JSONEncoder) escapeStringWithSpecialChars(s string) {
 	start := 0
 	for i := 0; i < len(s); i++ {
 		b := s[i]
@@ -250,30 +256,36 @@ func (e *JSONEncoder) escapeStringFast(s string) {
 			if i > start {
 				e.buf = append(e.buf, s[start:i]...)
 			}
-
-			// ULTRA-OPTIMIZATION: Batch append escaped sequences
-			switch b {
-			case '"':
-				e.buf = append(e.buf, '\\', '"')
-			case '\\':
-				e.buf = append(e.buf, '\\', '\\')
-			case '\n':
-				e.buf = append(e.buf, '\\', 'n')
-			case '\r':
-				e.buf = append(e.buf, '\\', 'r')
-			case '\t':
-				e.buf = append(e.buf, '\\', 't')
-			default:
-				// Skip other control characters for performance
-				e.buf = append(e.buf, b)
-			}
+			
+			// Append the escaped character
+			e.appendEscapedChar(b)
 			start = i + 1
 		}
 	}
-
+	
 	// Append remaining bytes
 	if start < len(s) {
 		e.buf = append(e.buf, s[start:]...)
+	}
+}
+
+// appendEscapedChar appends the escaped version of a character
+func (e *JSONEncoder) appendEscapedChar(b byte) {
+	// ULTRA-OPTIMIZATION: Batch append escaped sequences
+	switch b {
+	case '"':
+		e.buf = append(e.buf, '\\', '"')
+	case '\\':
+		e.buf = append(e.buf, '\\', '\\')
+	case '\n':
+		e.buf = append(e.buf, '\\', 'n')
+	case '\r':
+		e.buf = append(e.buf, '\\', 'r')
+	case '\t':
+		e.buf = append(e.buf, '\\', 't')
+	default:
+		// Skip other control characters for performance
+		e.buf = append(e.buf, b)
 	}
 }
 
