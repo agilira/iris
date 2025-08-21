@@ -15,7 +15,42 @@ import (
 
 // New creates a new Iris logger
 func New(config Config) (*Logger, error) {
-	// Default configuration
+	// Apply default configuration
+	config = applyDefaults(config)
+	
+	// Configure writers and outputs
+	finalWriter, multiWriter, hasTee := configureWriters(config)
+	
+	// Apply ultra-fast mode optimizations
+	config = applyUltraFastMode(config)
+	
+	// Configure caller settings
+	config = configureCallerSettings(config)
+	
+	// Initialize sampler if needed
+	sampler := initializeSampler(config)
+	
+	// Create base logger
+	logger := createBaseLogger(config, finalWriter, multiWriter, hasTee, sampler)
+	
+	// Initialize encoders and functions
+	if err := initializeEncoders(logger, config); err != nil {
+		return nil, err
+	}
+	
+	// Create Zephyros MPSC ring buffer
+	if err := initializeRingBuffer(logger, config); err != nil {
+		return nil, err
+	}
+	
+	// Start consumer goroutine
+	go logger.run()
+	
+	return logger, nil
+}
+
+// applyDefaults sets default configuration values
+func applyDefaults(config Config) Config {
 	if config.BufferSize == 0 {
 		config.BufferSize = 4096 // Default 4K entries
 	}
@@ -28,8 +63,11 @@ func New(config Config) (*Logger, error) {
 	if config.Format == 0 {
 		config.Format = JSONFormat // Default to JSON
 	}
+	return config
+}
 
-	// Handle multiple outputs configuration
+// configureWriters sets up the writer configuration
+func configureWriters(config Config) (Writer, *MultiWriter, bool) {
 	var finalWriter Writer
 	var multiWriter *MultiWriter
 	var hasTee bool
@@ -62,7 +100,11 @@ func New(config Config) (*Logger, error) {
 		finalWriter = config.Writer
 	}
 
-	// Ultra-fast mode overrides
+	return finalWriter, multiWriter, hasTee
+}
+
+// applyUltraFastMode applies ultra-fast mode optimizations
+func applyUltraFastMode(config Config) Config {
 	if config.UltraFast {
 		config.Format = BinaryFormat
 		config.DisableTimestamp = true
@@ -71,7 +113,11 @@ func New(config Config) (*Logger, error) {
 		config.EnableCallerFunction = &falsePtr // Disable function names in ultra-fast mode
 		config.BatchSize = 256                  // Larger batches for max throughput
 	}
+	return config
+}
 
+// configureCallerSettings sets up caller-related configuration
+func configureCallerSettings(config Config) Config {
 	// Set default caller function behavior
 	if config.EnableCaller && !config.UltraFast {
 		// Default to true for backward compatibility
@@ -86,19 +132,26 @@ func New(config Config) (*Logger, error) {
 		config.CallerSkip = 3 // Skip: runtime.Caller, getCaller, log method
 	}
 
-	// Initialize sampler if sampling config is provided
-	var sampler *Sampler
-	if config.SamplingConfig != nil {
-		sampler = NewSampler(*config.SamplingConfig)
-	}
+	return config
+}
 
+// initializeSampler creates sampler if needed
+func initializeSampler(config Config) *Sampler {
+	if config.SamplingConfig != nil {
+		return NewSampler(*config.SamplingConfig)
+	}
+	return nil
+}
+
+// createBaseLogger creates the base logger instance
+func createBaseLogger(config Config, finalWriter Writer, multiWriter *MultiWriter, hasTee bool, sampler *Sampler) *Logger {
 	// Get caller function setting
 	enableCallerFunction := false
 	if config.EnableCallerFunction != nil {
 		enableCallerFunction = *config.EnableCallerFunction
 	}
 
-	logger := &Logger{
+	return &Logger{
 		level:                config.Level,
 		writer:               finalWriter,
 		format:               config.Format,
@@ -113,8 +166,10 @@ func New(config Config) (*Logger, error) {
 		ultraFast:            config.UltraFast,
 		done:                 make(chan struct{}),
 	}
+}
 
-	// Initialize encoders based on format AND set up function pointers
+// initializeEncoders sets up encoders based on format
+func initializeEncoders(logger *Logger, config Config) error {
 	switch config.Format {
 	case JSONFormat:
 		logger.jsonEncoder = NewJSONEncoder()
@@ -146,8 +201,11 @@ func New(config Config) (*Logger, error) {
 			return logger.binaryEncoder.Bytes()
 		}
 	}
+	return nil
+}
 
-	// Create Zephyros MPSC ring buffer with log processor
+// initializeRingBuffer creates and configures the Zephyros ring buffer
+func initializeRingBuffer(logger *Logger, config Config) error {
 	var err error
 	logger.ring, err = zephyros.NewBuilder[LogEntry](config.BufferSize).
 		WithProcessor(logger.processLogEntry).
@@ -155,11 +213,7 @@ func New(config Config) (*Logger, error) {
 		Build()
 
 	if err != nil {
-		return nil, errors.Wrap(err, ErrCodeBufferCreation, "failed to create Zephyros MPSC ring buffer")
+		return errors.Wrap(err, ErrCodeBufferCreation, "failed to create Zephyros MPSC ring buffer")
 	}
-
-	// Start consumer goroutine
-	go logger.run()
-
-	return logger, nil
+	return nil
 }

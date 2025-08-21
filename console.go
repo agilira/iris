@@ -46,73 +46,108 @@ func (e *ConsoleEncoder) EncodeLogEntry(entry *LogEntry, buf []byte) []byte {
 	buf = buf[:0]
 
 	// Format: [TIMESTAMP] LEVEL MESSAGE [CALLER] field1=value1 field2=value2
+	buf = e.appendTimestamp(buf, entry)
+	buf = e.appendLevel(buf, entry)
+	buf = e.appendMessage(buf, entry)
+	buf = e.appendCaller(buf, entry)
+	
+	// Fields
+	if len(entry.Fields) > 0 {
+		buf = append(buf, ' ')
+		buf = e.appendFields(buf, entry.Fields)
+	}
+	
+	buf = e.appendStackTrace(buf, entry)
 
-	// Timestamp formatting - optimize common case of no timestamp
-	if !entry.Timestamp.IsZero() {
-		// Fast path: pre-calculate timestamp size and avoid repeated allocations
-		const timestampSize = 23 // "[2006-01-02 15:04:05.000] "
-		if cap(buf)-len(buf) < timestampSize {
-			// Unlikely path: ensure capacity
-			newBuf := make([]byte, len(buf), len(buf)+timestampSize+256)
-			copy(newBuf, buf)
-			buf = newBuf
-		}
+	buf = append(buf, '\n')
+	return buf
+}
 
-		buf = append(buf, '[')
-		buf = entry.Timestamp.AppendFormat(buf, "2006-01-02 15:04:05.000")
-		buf = append(buf, ']', ' ')
+// appendTimestamp adds formatted timestamp to buffer
+func (e *ConsoleEncoder) appendTimestamp(buf []byte, entry *LogEntry) []byte {
+	if entry.Timestamp.IsZero() {
+		return buf
 	}
 
-	// Level formatting - hot path optimization
+	// Fast path: pre-calculate timestamp size and avoid repeated allocations
+	const timestampSize = 23 // "[2006-01-02 15:04:05.000] "
+	if cap(buf)-len(buf) < timestampSize {
+		// Unlikely path: ensure capacity
+		newBuf := make([]byte, len(buf), len(buf)+timestampSize+256)
+		copy(newBuf, buf)
+		buf = newBuf
+	}
+
+	buf = append(buf, '[')
+	buf = entry.Timestamp.AppendFormat(buf, "2006-01-02 15:04:05.000")
+	buf = append(buf, ']', ' ')
+	return buf
+}
+
+// appendLevel adds formatted level to buffer
+func (e *ConsoleEncoder) appendLevel(buf []byte, entry *LogEntry) []byte {
 	if e.colorize {
-		// Pre-calculate color codes to avoid repeated lookups
-		var levelColor, levelText []byte
-		switch entry.Level {
-		case DebugLevel:
-			levelColor = []byte(Magenta)
-			levelText = []byte("DEBUG")
-		case InfoLevel:
-			levelColor = []byte(Blue)
-			levelText = []byte("INFO ")
-		case WarnLevel:
-			levelColor = []byte(Yellow)
-			levelText = []byte("WARN ")
-		case ErrorLevel:
-			levelColor = []byte(Red)
-			levelText = []byte("ERROR")
-		default:
-			// Cold path: use method calls for uncommon levels
-			color := e.levelColor(entry.Level)
-			buf = append(buf, color...)
-			buf = append(buf, e.levelText(entry.Level)...)
-			buf = append(buf, Reset...)
-			goto afterLevel
-		}
+		return e.appendLevelWithColor(buf, entry.Level)
+	}
+	return e.appendLevelWithoutColor(buf, entry.Level)
+}
 
-		buf = append(buf, levelColor...)
-		buf = append(buf, levelText...)
+// appendLevelWithColor adds colored level text
+func (e *ConsoleEncoder) appendLevelWithColor(buf []byte, level Level) []byte {
+	// Pre-calculate color codes to avoid repeated lookups
+	var levelColor, levelText []byte
+	switch level {
+	case DebugLevel:
+		levelColor = []byte(Magenta)
+		levelText = []byte("DEBUG")
+	case InfoLevel:
+		levelColor = []byte(Blue)
+		levelText = []byte("INFO ")
+	case WarnLevel:
+		levelColor = []byte(Yellow)
+		levelText = []byte("WARN ")
+	case ErrorLevel:
+		levelColor = []byte(Red)
+		levelText = []byte("ERROR")
+	default:
+		// Cold path: use method calls for uncommon levels
+		color := e.levelColor(level)
+		buf = append(buf, color...)
+		buf = append(buf, e.levelText(level)...)
 		buf = append(buf, Reset...)
-	} else {
-		// Fast path: direct level text without method calls
-		switch entry.Level {
-		case DebugLevel:
-			buf = append(buf, "DEBUG"...)
-		case InfoLevel:
-			buf = append(buf, "INFO "...)
-		case WarnLevel:
-			buf = append(buf, "WARN "...)
-		case ErrorLevel:
-			buf = append(buf, "ERROR"...)
-		default:
-			// Cold path: use method call for uncommon levels
-			buf = append(buf, e.levelText(entry.Level)...)
-		}
+		buf = append(buf, ' ')
+		return buf
 	}
 
-afterLevel:
+	buf = append(buf, levelColor...)
+	buf = append(buf, levelText...)
+	buf = append(buf, Reset...)
 	buf = append(buf, ' ')
+	return buf
+}
 
-	// Message
+// appendLevelWithoutColor adds plain level text
+func (e *ConsoleEncoder) appendLevelWithoutColor(buf []byte, level Level) []byte {
+	// Fast path: direct level text without method calls
+	switch level {
+	case DebugLevel:
+		buf = append(buf, "DEBUG"...)
+	case InfoLevel:
+		buf = append(buf, "INFO "...)
+	case WarnLevel:
+		buf = append(buf, "WARN "...)
+	case ErrorLevel:
+		buf = append(buf, "ERROR"...)
+	default:
+		// Cold path: use method call for uncommon levels
+		buf = append(buf, e.levelText(level)...)
+	}
+	buf = append(buf, ' ')
+	return buf
+}
+
+// appendMessage adds formatted message to buffer
+func (e *ConsoleEncoder) appendMessage(buf []byte, entry *LogEntry) []byte {
 	if e.colorize && entry.Level >= ErrorLevel {
 		buf = append(buf, Bold...)
 		buf = append(buf, entry.Message...)
@@ -120,52 +155,54 @@ afterLevel:
 	} else {
 		buf = append(buf, entry.Message...)
 	}
+	return buf
+}
 
-	// Caller information (show abbreviated file path)
-	if entry.Caller.Valid {
-		buf = append(buf, ' ')
-		if e.colorize {
-			buf = append(buf, Cyan...)
-		}
-		buf = append(buf, '[')
-
-		// Show only filename, not full path
-		filename := entry.Caller.File
-		if idx := lastIndex(filename, "/"); idx >= 0 {
-			filename = filename[idx+1:]
-		}
-
-		buf = append(buf, filename...)
-		buf = append(buf, ':')
-		buf = strconv.AppendInt(buf, int64(entry.Caller.Line), 10)
-		buf = append(buf, ']')
-
-		if e.colorize {
-			buf = append(buf, Reset...)
-		}
+// appendCaller adds caller information to buffer
+func (e *ConsoleEncoder) appendCaller(buf []byte, entry *LogEntry) []byte {
+	if !entry.Caller.Valid {
+		return buf
 	}
 
-	// Fields
-	if len(entry.Fields) > 0 {
-		buf = append(buf, ' ')
-		buf = e.appendFields(buf, entry.Fields)
+	buf = append(buf, ' ')
+	if e.colorize {
+		buf = append(buf, Cyan...)
+	}
+	buf = append(buf, '[')
+
+	// Show only filename, not full path
+	filename := entry.Caller.File
+	if idx := lastIndex(filename, "/"); idx >= 0 {
+		filename = filename[idx+1:]
 	}
 
-	// Stack trace
-	if entry.StackTrace != "" {
-		buf = append(buf, '\n')
-		if e.colorize {
-			buf = append(buf, Red...) // Red for stack trace
-		}
-		buf = append(buf, "Stack trace:"...)
-		if e.colorize {
-			buf = append(buf, Reset...)
-		}
-		buf = append(buf, '\n')
-		buf = append(buf, entry.StackTrace...)
+	buf = append(buf, filename...)
+	buf = append(buf, ':')
+	buf = strconv.AppendInt(buf, int64(entry.Caller.Line), 10)
+	buf = append(buf, ']')
+
+	if e.colorize {
+		buf = append(buf, Reset...)
+	}
+	return buf
+}
+
+// appendStackTrace adds stack trace to buffer
+func (e *ConsoleEncoder) appendStackTrace(buf []byte, entry *LogEntry) []byte {
+	if entry.StackTrace == "" {
+		return buf
 	}
 
 	buf = append(buf, '\n')
+	if e.colorize {
+		buf = append(buf, Red...) // Red for stack trace
+	}
+	buf = append(buf, "Stack trace:"...)
+	if e.colorize {
+		buf = append(buf, Reset...)
+	}
+	buf = append(buf, '\n')
+	buf = append(buf, entry.StackTrace...)
 	return buf
 }
 
@@ -247,67 +284,115 @@ func (e *ConsoleEncoder) appendFields(buf []byte, fields []Field) []byte {
 func (e *ConsoleEncoder) appendFieldValue(buf []byte, field Field) []byte {
 	switch field.Type {
 	case StringType:
-		// Optimize string quoting check
-		if needsQuotingFast(field.String) {
-			buf = append(buf, '"')
-			buf = append(buf, field.String...)
-			buf = append(buf, '"')
-		} else {
-			buf = append(buf, field.String...)
-		}
+		return e.appendStringValue(buf, field.String)
 	case IntType, Int64Type, Int32Type, Int16Type, Int8Type:
-		buf = strconv.AppendInt(buf, field.Int, 10)
+		return strconv.AppendInt(buf, field.Int, 10)
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		// Use safe conversion for encoding unsigned integers
-		value, _ := SafeInt64ToUint64ForEncoding(field.Int)
-		buf = strconv.AppendUint(buf, value, 10)
+		return e.appendUintValue(buf, field.Int)
 	case Float64Type, Float32Type:
-		buf = strconv.AppendFloat(buf, field.Float, 'f', -1, 64)
+		return strconv.AppendFloat(buf, field.Float, 'f', -1, 64)
 	case BoolType:
-		if field.Bool {
-			buf = append(buf, "true"...)
-		} else {
-			buf = append(buf, "false"...)
-		}
+		return e.appendBoolValue(buf, field.Bool)
 	case DurationType:
-		dur := time.Duration(field.Int)
-		buf = append(buf, dur.String()...)
+		return e.appendDurationValue(buf, field.Int)
 	case TimeType:
-		t := time.Unix(0, field.Int)
-		buf = t.AppendFormat(buf, time.RFC3339)
+		return e.appendTimeValue(buf, field.Int)
 	case ErrorType:
-		if field.Err != nil {
-			if needsQuoting(field.Err.Error()) {
-				buf = append(buf, '"')
-				buf = append(buf, field.Err.Error()...)
-				buf = append(buf, '"')
-			} else {
-				buf = append(buf, field.Err.Error()...)
-			}
-		}
+		return e.appendErrorValue(buf, field.Err)
 	case ByteStringType:
-		s := string(field.Bytes)
-		if needsQuoting(s) {
-			buf = append(buf, '"')
-			buf = append(buf, s...)
-			buf = append(buf, '"')
-		} else {
-			buf = append(buf, s...)
-		}
+		return e.appendByteStringValue(buf, field.Bytes)
 	case BinaryType:
-		buf = append(buf, "<binary:"...)
-		buf = strconv.AppendInt(buf, int64(len(field.Bytes)), 10)
-		buf = append(buf, " bytes>"...)
+		return e.appendBinaryValue(buf, field.Bytes)
 	case AnyType:
-		if field.Any != nil {
-			buf = append(buf, "<any>"...)
-		} else {
-			buf = append(buf, "<nil>"...)
-		}
+		return e.appendAnyValue(buf, field.Any)
 	default:
-		buf = append(buf, field.String...)
+		return append(buf, field.String...)
+	}
+}
+
+// appendStringValue appends string value with quoting if needed
+func (e *ConsoleEncoder) appendStringValue(buf []byte, s string) []byte {
+	if needsQuotingFast(s) {
+		buf = append(buf, '"')
+		buf = append(buf, s...)
+		buf = append(buf, '"')
+	} else {
+		buf = append(buf, s...)
 	}
 	return buf
+}
+
+// appendUintValue appends unsigned integer using safe conversion
+func (e *ConsoleEncoder) appendUintValue(buf []byte, value int64) []byte {
+	// Use safe conversion for encoding unsigned integers
+	uintValue, _ := SafeInt64ToUint64ForEncoding(value)
+	return strconv.AppendUint(buf, uintValue, 10)
+}
+
+// appendBoolValue appends boolean value
+func (e *ConsoleEncoder) appendBoolValue(buf []byte, b bool) []byte {
+	if b {
+		return append(buf, "true"...)
+	}
+	return append(buf, "false"...)
+}
+
+// appendDurationValue appends duration value
+func (e *ConsoleEncoder) appendDurationValue(buf []byte, nanos int64) []byte {
+	dur := time.Duration(nanos)
+	return append(buf, dur.String()...)
+}
+
+// appendTimeValue appends time value in RFC3339 format
+func (e *ConsoleEncoder) appendTimeValue(buf []byte, nanos int64) []byte {
+	t := time.Unix(0, nanos)
+	return t.AppendFormat(buf, time.RFC3339)
+}
+
+// appendErrorValue appends error value with quoting if needed
+func (e *ConsoleEncoder) appendErrorValue(buf []byte, err error) []byte {
+	if err == nil {
+		return buf
+	}
+	
+	errStr := err.Error()
+	if needsQuoting(errStr) {
+		buf = append(buf, '"')
+		buf = append(buf, errStr...)
+		buf = append(buf, '"')
+	} else {
+		buf = append(buf, errStr...)
+	}
+	return buf
+}
+
+// appendByteStringValue appends byte string with quoting if needed
+func (e *ConsoleEncoder) appendByteStringValue(buf []byte, bytes []byte) []byte {
+	s := string(bytes)
+	if needsQuoting(s) {
+		buf = append(buf, '"')
+		buf = append(buf, s...)
+		buf = append(buf, '"')
+	} else {
+		buf = append(buf, s...)
+	}
+	return buf
+}
+
+// appendBinaryValue appends binary data summary
+func (e *ConsoleEncoder) appendBinaryValue(buf []byte, bytes []byte) []byte {
+	buf = append(buf, "<binary:"...)
+	buf = strconv.AppendInt(buf, int64(len(bytes)), 10)
+	buf = append(buf, " bytes>"...)
+	return buf
+}
+
+// appendAnyValue appends any value representation
+func (e *ConsoleEncoder) appendAnyValue(buf []byte, value interface{}) []byte {
+	if value != nil {
+		return append(buf, "<any>"...)
+	}
+	return append(buf, "<nil>"...)
 }
 
 // needsQuoting returns true if a string needs to be quoted
