@@ -230,7 +230,7 @@ func (e *JSONEncoder) escapeStringFast(s string) {
 		e.buf = append(e.buf, s...)
 		return
 	}
-	
+
 	// SLOW PATH: Escape special characters with minimal allocations
 	e.escapeStringWithSpecialChars(s)
 }
@@ -256,13 +256,13 @@ func (e *JSONEncoder) escapeStringWithSpecialChars(s string) {
 			if i > start {
 				e.buf = append(e.buf, s[start:i]...)
 			}
-			
+
 			// Append the escaped character
 			e.appendEscapedChar(b)
 			start = i + 1
 		}
 	}
-	
+
 	// Append remaining bytes
 	if start < len(s) {
 		e.buf = append(e.buf, s[start:]...)

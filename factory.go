@@ -17,35 +17,35 @@ import (
 func New(config Config) (*Logger, error) {
 	// Apply default configuration
 	config = applyDefaults(config)
-	
+
 	// Configure writers and outputs
 	finalWriter, multiWriter, hasTee := configureWriters(config)
-	
+
 	// Apply ultra-fast mode optimizations
 	config = applyUltraFastMode(config)
-	
+
 	// Configure caller settings
 	config = configureCallerSettings(config)
-	
+
 	// Initialize sampler if needed
 	sampler := initializeSampler(config)
-	
+
 	// Create base logger
 	logger := createBaseLogger(config, finalWriter, multiWriter, hasTee, sampler)
-	
+
 	// Initialize encoders and functions
 	if err := initializeEncoders(logger, config); err != nil {
 		return nil, err
 	}
-	
+
 	// Create Zephyros MPSC ring buffer
 	if err := initializeRingBuffer(logger, config); err != nil {
 		return nil, err
 	}
-	
+
 	// Start consumer goroutine
 	go logger.run()
-	
+
 	return logger, nil
 }
 
@@ -129,7 +129,7 @@ func configureCallerSettings(config Config) Config {
 
 	// Set default caller skip if not specified
 	if config.CallerSkip == 0 {
-		config.CallerSkip = 3 // Skip: runtime.Caller, getCaller, log method
+		config.CallerSkip = 4 // Skip: runtime.Caller, getCaller, captureContext, log method
 	}
 
 	return config

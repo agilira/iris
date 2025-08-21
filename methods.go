@@ -22,33 +22,50 @@ func (l *Logger) log(level Level, message string, fields []Field) {
 		return
 	}
 
-	// FAST PATH: Sampling support with minimal allocation
-	if l.sampler != nil {
-		// OPTIMIZATION: Stack-allocated minimal entry - no heap allocation
-		// Only create what's needed for sampling decision
-		tempEntry := LogEntry{
-			Level:   level,
-			Message: message,
-			Fields:  fields, // Reference only - no copy
-		}
-		if !l.disableTimestamp {
-			tempEntry.Timestamp = CachedTime() // Use cached time (0.36ns)
-		}
-
-		// CRITICAL: Early exit on drop decision saves all subsequent work
-		if l.sampler.Sample(tempEntry) == DropSample {
-			return // Skip completely - ultimate optimization
-		}
+	// Check sampling early to skip expensive operations
+	if l.shouldDropSample(level, message, fields) {
+		return // Skip completely - ultimate optimization
 	}
 
-	// OPTIMIZATION: Conditional caller capture - only when enabled
+	// Capture additional context
+	caller, stackTrace := l.captureContext(level)
+
+	// Write to ring buffer - ULTRA-FAST HOT PATH
+	l.writeToRingBuffer(level, message, fields, caller, stackTrace)
+}
+
+// shouldDropSample checks if this log should be dropped due to sampling
+func (l *Logger) shouldDropSample(level Level, message string, fields []Field) bool {
+	if l.sampler == nil {
+		return false
+	}
+
+	// OPTIMIZATION: Stack-allocated minimal entry - no heap allocation
+	// Only create what's needed for sampling decision
+	tempEntry := LogEntry{
+		Level:   level,
+		Message: message,
+		Fields:  fields, // Reference only - no copy
+	}
+	if !l.disableTimestamp {
+		tempEntry.Timestamp = CachedTime() // Use cached time (0.36ns)
+	}
+
+	// CRITICAL: Early exit on drop decision saves all subsequent work
+	return l.sampler.Sample(tempEntry) == DropSample
+}
+
+// captureContext captures caller and stack trace if needed
+func (l *Logger) captureContext(level Level) (Caller, string) {
 	var caller Caller
+	var stackTrace string
+
+	// OPTIMIZATION: Conditional caller capture - only when enabled
 	if l.enableCaller {
 		caller = l.getCaller() // Ultra-optimized caller capture
 	}
 
 	// OPTIMIZATION: Conditional stack trace - only for qualifying levels
-	var stackTrace string
 	if l.stackTraceLevel != 0 && level >= l.stackTraceLevel {
 		// Use go-errors to capture stack trace
 		stack := errors.CaptureStacktrace(l.callerSkip)
@@ -57,7 +74,11 @@ func (l *Logger) log(level Level, message string, fields []Field) {
 		}
 	}
 
-	// Write to ring buffer - ULTRA-FAST HOT PATH with PRE-BOUND FIELDS OPTIMIZATION
+	return caller, stackTrace
+}
+
+// writeToRingBuffer writes the log entry to the ring buffer
+func (l *Logger) writeToRingBuffer(level Level, message string, fields []Field, caller Caller, stackTrace string) {
 	l.ring.Write(func(entry *LogEntry) {
 		// CRITICAL OPTIMIZATION: Branch-free timestamp
 		if !l.disableTimestamp {
@@ -68,28 +89,32 @@ func (l *Logger) log(level Level, message string, fields []Field) {
 		entry.Caller = caller
 		entry.StackTrace = stackTrace
 
-		// GENIUS OPTIMIZATION: Merge pre-bound fields with new fields
-		var finalFields []Field
-		preFieldCount := len(l.preFields)
-		newFieldCount := len(fields)
-		totalFieldCount := preFieldCount + newFieldCount
-
-		if totalFieldCount == 0 {
-			// FASTEST PATH: Zero fields total
-			entry.Fields = nil
-		} else if totalFieldCount <= 16 {
-			// HOT PATH: Small total field count - use pre-allocated buffer
-			entry.Fields = entry.fieldBuf[:totalFieldCount]
-			copy(entry.Fields[:preFieldCount], l.preFields)
-			copy(entry.Fields[preFieldCount:], fields)
-		} else {
-			// COLD PATH: Large field count - heap allocation
-			finalFields = make([]Field, totalFieldCount)
-			copy(finalFields[:preFieldCount], l.preFields)
-			copy(finalFields[preFieldCount:], fields)
-			entry.Fields = finalFields
-		}
+		// Merge pre-bound fields with new fields
+		l.mergeFields(entry, fields)
 	})
+}
+
+// mergeFields efficiently merges pre-bound fields with new fields
+func (l *Logger) mergeFields(entry *LogEntry, newFields []Field) {
+	preFieldCount := len(l.preFields)
+	newFieldCount := len(newFields)
+	totalFieldCount := preFieldCount + newFieldCount
+
+	if totalFieldCount == 0 {
+		// FASTEST PATH: Zero fields total
+		entry.Fields = nil
+	} else if totalFieldCount <= 16 {
+		// HOT PATH: Small total field count - use pre-allocated buffer
+		entry.Fields = entry.fieldBuf[:totalFieldCount]
+		copy(entry.Fields[:preFieldCount], l.preFields)
+		copy(entry.Fields[preFieldCount:], newFields)
+	} else {
+		// COLD PATH: Large field count - heap allocation
+		finalFields := make([]Field, totalFieldCount)
+		copy(finalFields[:preFieldCount], l.preFields)
+		copy(finalFields[preFieldCount:], newFields)
+		entry.Fields = finalFields
+	}
 }
 
 // Info logs an info message - ULTRA-OPTIMIZED HOT PATH

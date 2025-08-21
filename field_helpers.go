@@ -120,7 +120,7 @@ func FieldsEqual(a, b Field) bool {
 	if a.Key != b.Key || a.Type != b.Type {
 		return false
 	}
-	
+
 	return compareFieldsByType(a, b)
 }
 

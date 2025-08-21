@@ -37,10 +37,10 @@ func (e *FastTextEncoder) Bytes() []byte {
 // Format: TIMESTAMP LEVEL MESSAGE [CALLER] field1=value1 field2=value2
 func (e *FastTextEncoder) EncodeLogEntry(timestamp time.Time, level Level, message string, fields []BinaryField, caller Caller, stackTrace string) {
 	e.Reset()
-	
+
 	// Pre-calculate capacity and prepare buffer
 	e.prepareBuffer(timestamp, level, message, fields, caller, stackTrace)
-	
+
 	// Encode components in order
 	e.appendTimestamp(timestamp)
 	e.appendLevel(level)
@@ -48,7 +48,7 @@ func (e *FastTextEncoder) EncodeLogEntry(timestamp time.Time, level Level, messa
 	e.appendCaller(caller)
 	e.appendBinaryFields(fields)
 	e.appendStackTrace(stackTrace)
-	
+
 	e.buf = append(e.buf, '\n')
 }
 
@@ -109,7 +109,7 @@ func (e *FastTextEncoder) appendCaller(caller Caller) {
 	if !caller.Valid {
 		return
 	}
-	
+
 	e.buf = append(e.buf, " ["...)
 
 	// Fast filename extraction using last slash
@@ -129,7 +129,7 @@ func (e *FastTextEncoder) appendBinaryFields(fields []BinaryField) {
 	if len(fields) == 0 {
 		return
 	}
-	
+
 	e.buf = append(e.buf, ' ')
 	for i, field := range fields {
 		if i > 0 {
@@ -152,10 +152,10 @@ func (e *FastTextEncoder) appendStackTrace(stackTrace string) {
 // EncodeLogEntryMigration encodes directly from Field slice (MIGRATION METHOD)
 func (e *FastTextEncoder) EncodeLogEntryMigration(timestamp time.Time, level Level, message string, fields []Field, caller Caller, stackTrace string) {
 	e.Reset()
-	
-	// Pre-calculate capacity and prepare buffer  
+
+	// Pre-calculate capacity and prepare buffer
 	e.prepareBufferForMigration(timestamp, level, message, fields, caller, stackTrace)
-	
+
 	// Encode components in order (reuse methods where possible)
 	e.appendTimestamp(timestamp)
 	e.appendLevel(level)
@@ -163,7 +163,7 @@ func (e *FastTextEncoder) EncodeLogEntryMigration(timestamp time.Time, level Lev
 	e.appendCaller(caller)
 	e.appendMigrationFields(fields)
 	e.appendStackTrace(stackTrace)
-	
+
 	e.buf = append(e.buf, '\n')
 }
 
@@ -192,7 +192,7 @@ func (e *FastTextEncoder) appendMigrationFields(fields []Field) {
 	if len(fields) == 0 {
 		return
 	}
-	
+
 	e.buf = append(e.buf, ' ')
 	for i, field := range fields {
 		if i > 0 {
@@ -269,61 +269,95 @@ func (e *FastTextEncoder) appendFieldValueFastMigration(field Field) {
 	// OPTIMIZATION: Fast paths for most common types with reduced switch overhead
 	switch field.Type {
 	case StringType:
-		// FAST PATH: Direct string append (most common case)
-		e.buf = append(e.buf, field.String...)
-
+		e.appendStringValue(field.String)
 	case IntType, Int64Type:
-		// FAST PATH: Integer append (second most common)
-		e.buf = strconv.AppendInt(e.buf, field.Int, 10)
-
+		e.appendIntValue(field.Int)
 	case BoolType:
-		// OPTIMIZED: Single conditional append
-		if field.Bool {
-			e.buf = append(e.buf, "true"...)
-		} else {
-			e.buf = append(e.buf, "false"...)
-		}
-
+		e.appendBoolValue(field.Bool)
 	case Float64Type:
-		// OPTIMIZED: Direct float append
-		e.buf = strconv.AppendFloat(e.buf, field.Float, 'f', -1, 64)
-
+		e.appendFloat64Value(field.Float)
 	case Float32Type:
-		e.buf = strconv.AppendFloat(e.buf, field.Float, 'f', -1, 32)
-
-	// OPTIMIZATION: Group similar integer types to reduce switch branches
+		e.appendFloat32Value(field.Float)
 	case Int32Type, Int16Type, Int8Type:
-		e.buf = strconv.AppendInt(e.buf, field.Int, 10)
-
+		e.appendIntValue(field.Int)
 	case UintType, Uint64Type, Uint32Type, Uint16Type, Uint8Type:
-		// Use safe conversion for encoding unsigned integers
-		value, _ := SafeInt64ToUint64ForEncoding(field.Int)
-		e.buf = strconv.AppendUint(e.buf, value, 10)
-
+		e.appendUintValue(field.Int)
 	case DurationType:
-		// OPTIMIZED: Duration formatting
-		duration := time.Duration(field.Int)
-		e.buf = append(e.buf, duration.String()...)
-
+		e.appendDurationValue(field.Int)
 	case TimeType:
-		// Time formatting
-		t := time.Unix(0, field.Int)
-		e.buf = t.AppendFormat(e.buf, time.RFC3339)
-
+		e.appendTimeValue(field.Int)
 	case ByteStringType:
-		// Byte string as string
-		e.buf = append(e.buf, string(field.Bytes)...)
-
+		e.appendByteStringValue(field.Bytes)
 	case ErrorType:
-		// Error formatting
-		if field.Err != nil {
-			e.buf = append(e.buf, field.Err.Error()...)
-		} else {
-			e.buf = append(e.buf, "<nil>"...)
-		}
-
+		e.appendErrorValue(field.Err)
 	default:
-		// Fallback for unknown types
-		e.buf = append(e.buf, "<?>"...)
+		e.appendUnknownValue()
 	}
+}
+
+// appendStringValue appends string value
+func (e *FastTextEncoder) appendStringValue(s string) {
+	e.buf = append(e.buf, s...)
+}
+
+// appendIntValue appends integer value
+func (e *FastTextEncoder) appendIntValue(i int64) {
+	e.buf = strconv.AppendInt(e.buf, i, 10)
+}
+
+// appendBoolValue appends boolean value
+func (e *FastTextEncoder) appendBoolValue(b bool) {
+	if b {
+		e.buf = append(e.buf, "true"...)
+	} else {
+		e.buf = append(e.buf, "false"...)
+	}
+}
+
+// appendFloat64Value appends 64-bit float value
+func (e *FastTextEncoder) appendFloat64Value(f float64) {
+	e.buf = strconv.AppendFloat(e.buf, f, 'f', -1, 64)
+}
+
+// appendFloat32Value appends 32-bit float value  
+func (e *FastTextEncoder) appendFloat32Value(f float64) {
+	e.buf = strconv.AppendFloat(e.buf, f, 'f', -1, 32)
+}
+
+// appendUintValue appends unsigned integer value
+func (e *FastTextEncoder) appendUintValue(i int64) {
+	// Use safe conversion for encoding unsigned integers
+	value, _ := SafeInt64ToUint64ForEncoding(i)
+	e.buf = strconv.AppendUint(e.buf, value, 10)
+}
+
+// appendDurationValue appends duration value
+func (e *FastTextEncoder) appendDurationValue(ns int64) {
+	duration := time.Duration(ns)
+	e.buf = append(e.buf, duration.String()...)
+}
+
+// appendTimeValue appends time value
+func (e *FastTextEncoder) appendTimeValue(ns int64) {
+	t := time.Unix(0, ns)
+	e.buf = t.AppendFormat(e.buf, time.RFC3339)
+}
+
+// appendByteStringValue appends byte string value
+func (e *FastTextEncoder) appendByteStringValue(bytes []byte) {
+	e.buf = append(e.buf, string(bytes)...)
+}
+
+// appendErrorValue appends error value
+func (e *FastTextEncoder) appendErrorValue(err error) {
+	if err != nil {
+		e.buf = append(e.buf, err.Error()...)
+	} else {
+		e.buf = append(e.buf, "<nil>"...)
+	}
+}
+
+// appendUnknownValue appends placeholder for unknown types
+func (e *FastTextEncoder) appendUnknownValue() {
+	e.buf = append(e.buf, "<?>"...)
 }

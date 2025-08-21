@@ -50,13 +50,13 @@ func (e *ConsoleEncoder) EncodeLogEntry(entry *LogEntry, buf []byte) []byte {
 	buf = e.appendLevel(buf, entry)
 	buf = e.appendMessage(buf, entry)
 	buf = e.appendCaller(buf, entry)
-	
+
 	// Fields
 	if len(entry.Fields) > 0 {
 		buf = append(buf, ' ')
 		buf = e.appendFields(buf, entry.Fields)
 	}
-	
+
 	buf = e.appendStackTrace(buf, entry)
 
 	buf = append(buf, '\n')
@@ -354,7 +354,7 @@ func (e *ConsoleEncoder) appendErrorValue(buf []byte, err error) []byte {
 	if err == nil {
 		return buf
 	}
-	
+
 	errStr := err.Error()
 	if needsQuoting(errStr) {
 		buf = append(buf, '"')

@@ -16,6 +16,22 @@ type MultiOutputConfig struct {
 func (m *MultiOutputConfig) ToConfig(baseConfig Config) Config {
 	config := baseConfig
 
+	// Pre-allocate slices to avoid multiple allocations
+	writers, syncers := m.prepareOutputSlices()
+	
+	// Add different types of outputs
+	syncers = m.addConsoleOutputs(syncers)
+	syncers = m.addFileOutputs(syncers)
+	writers, syncers = m.addCustomOutputs(writers, syncers)
+	
+	// Apply to config
+	m.applyOutputsToConfig(&config, writers, syncers)
+
+	return config
+}
+
+// prepareOutputSlices pre-allocates slices with exact capacity
+func (m *MultiOutputConfig) prepareOutputSlices() ([]io.Writer, []WriteSyncer) {
 	// Pre-calculate total capacity to reduce allocations
 	totalWriters := len(m.Writers)
 	totalSyncers := len(m.WriteSyncers) + len(m.Files)
@@ -26,7 +42,6 @@ func (m *MultiOutputConfig) ToConfig(baseConfig Config) Config {
 		totalSyncers++
 	}
 
-	// Pre-allocate slices with exact capacity to avoid multiple allocations
 	var writers []io.Writer
 	var syncers []WriteSyncer
 
@@ -36,7 +51,12 @@ func (m *MultiOutputConfig) ToConfig(baseConfig Config) Config {
 	if totalSyncers > 0 {
 		syncers = make([]WriteSyncer, 0, totalSyncers)
 	}
+	
+	return writers, syncers
+}
 
+// addConsoleOutputs adds console and stderr outputs
+func (m *MultiOutputConfig) addConsoleOutputs(syncers []WriteSyncer) []WriteSyncer {
 	// Add console outputs first (most common case)
 	if m.Console {
 		syncers = append(syncers, StdoutWriteSyncer)
@@ -44,7 +64,11 @@ func (m *MultiOutputConfig) ToConfig(baseConfig Config) Config {
 	if m.ConsoleErr {
 		syncers = append(syncers, StderrWriteSyncer)
 	}
+	return syncers
+}
 
+// addFileOutputs adds file-based outputs
+func (m *MultiOutputConfig) addFileOutputs(syncers []WriteSyncer) []WriteSyncer {
 	// Add file outputs - optimized error handling
 	if len(m.Files) > 0 {
 		for _, filename := range m.Files {
@@ -54,7 +78,11 @@ func (m *MultiOutputConfig) ToConfig(baseConfig Config) Config {
 			// Note: silently skip invalid files to maintain backward compatibility
 		}
 	}
+	return syncers
+}
 
+// addCustomOutputs adds custom writers and syncers
+func (m *MultiOutputConfig) addCustomOutputs(writers []io.Writer, syncers []WriteSyncer) ([]io.Writer, []WriteSyncer) {
 	// Add custom writers and syncers (already allocated exactly)
 	if len(m.Writers) > 0 {
 		writers = append(writers, m.Writers...)
@@ -62,7 +90,11 @@ func (m *MultiOutputConfig) ToConfig(baseConfig Config) Config {
 	if len(m.WriteSyncers) > 0 {
 		syncers = append(syncers, m.WriteSyncers...)
 	}
+	return writers, syncers
+}
 
+// applyOutputsToConfig sets writers and syncers in config
+func (m *MultiOutputConfig) applyOutputsToConfig(config *Config, writers []io.Writer, syncers []WriteSyncer) {
 	// Set in config only if we have writers
 	if len(writers) > 0 {
 		config.Writers = writers
@@ -70,8 +102,6 @@ func (m *MultiOutputConfig) ToConfig(baseConfig Config) Config {
 	if len(syncers) > 0 {
 		config.WriteSyncers = syncers
 	}
-
-	return config
 }
 
 // NewMultiOutputLogger creates a logger with multiple outputs using the convenient config
