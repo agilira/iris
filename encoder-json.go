@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/agilira/go-timecache"
 )
 
 // Record represents a log entry with optimized field storage
@@ -123,8 +125,8 @@ func (e *JSONEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 		buf.WriteByte('"')
 		// SMART TIME HANDLING: Use cache for current time, exact time for tests
 		// If the provided time is close to current time (within 500μs), use cache for performance
-		if cachedTime := CachedTime(); now.Sub(cachedTime).Abs() < 500*time.Microsecond {
-			buf.WriteString(CachedTimeString()) // Use cached formatted time for performance
+		if cachedTime := timecache.CachedTime(); now.Sub(cachedTime).Abs() < 500*time.Microsecond {
+			buf.WriteString(timecache.CachedTimeString()) // Use cached formatted time for performance
 		} else {
 			// Use exact time for testing or historical timestamps
 			buf.WriteString(now.Format(time.RFC3339Nano))
@@ -132,8 +134,8 @@ func (e *JSONEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 		buf.WriteByte('"')
 	} else {
 		// For Unix timestamps, if time is close to current, use cached nano time
-		if cachedTime := CachedTime(); now.Sub(cachedTime).Abs() < 500*time.Microsecond {
-			buf.WriteString(strconv.FormatInt(CachedTimeNano(), 10))
+		if cachedTime := timecache.CachedTime(); now.Sub(cachedTime).Abs() < 500*time.Microsecond {
+			buf.WriteString(strconv.FormatInt(timecache.CachedTimeNano(), 10))
 		} else {
 			// Use exact Unix nanoseconds for testing
 			buf.WriteString(strconv.FormatInt(now.UnixNano(), 10))
@@ -208,8 +210,8 @@ func (e *JSONEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 			// TIMECACHE OPTIMIZATION: Use cached time formatting for field timestamps too
 			timeValue := time.Unix(0, f.I64).UTC()
 			// Check if this timestamp is close to our cached time to use cache
-			if cachedTime := CachedTime(); timeValue.Sub(cachedTime).Abs() < 500*time.Microsecond {
-				buf.WriteString(CachedTimeString())
+			if cachedTime := timecache.CachedTime(); timeValue.Sub(cachedTime).Abs() < 500*time.Microsecond {
+				buf.WriteString(timecache.CachedTimeString())
 			} else {
 				// For older timestamps, still need to format but this should be rare
 				buf.WriteString(timeValue.Format(time.RFC3339Nano))

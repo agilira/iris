@@ -318,7 +318,7 @@ config := iris.Config{
     BatchSize: 32,           // Batch processing size
     Output:    os.Stdout,
     Encoder:   iris.NewJSONEncoder(),
-    TimeFn:    iris.CachedTime,  // 103x faster timestamps
+    TimeFn:    timecache.CachedTime,  // 103x faster timestamps
 }
 
 logger, err := iris.New(config)

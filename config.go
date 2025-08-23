@@ -15,6 +15,8 @@ import (
 	"os"
 	"sync/atomic"
 	"time"
+
+	"github.com/agilira/go-timecache"
 )
 
 // Architecture represents the ring buffer architecture type
@@ -180,7 +182,7 @@ func (c *Config) withDefaults() *Config {
 	// Default time function to system time
 	// Can be overridden for testing or custom time sources
 	if out.TimeFn == nil {
-		out.TimeFn = CachedTime
+		out.TimeFn = timecache.CachedTime
 	}
 
 	// Default batch size for optimal throughput/latency balance

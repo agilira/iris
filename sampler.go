@@ -9,6 +9,8 @@ package iris
 import (
 	"sync/atomic"
 	"time"
+
+	"github.com/agilira/go-timecache"
 )
 
 // Sampler defines the interface for log sampling strategies.
@@ -60,7 +62,7 @@ func NewTokenBucketSampler(capacity, refill int64, every time.Duration) *TokenBu
 
 	// Initialize with full capacity and current time
 	s.tokens.Store(capacity)
-	s.last.Store(CachedTimeNano())
+	s.last.Store(timecache.CachedTimeNano())
 	return s
 }
 
@@ -73,7 +75,7 @@ func NewTokenBucketSampler(capacity, refill int64, every time.Duration) *TokenBu
 //
 // Returns true if logging should proceed, false if rate limited.
 func (s *TokenBucketSampler) Allow(_ Level) bool {
-	now := CachedTimeNano()
+	now := timecache.CachedTimeNano()
 	last := s.last.Load()
 
 	// Calculate tokens to add based on elapsed time
