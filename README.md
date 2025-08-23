@@ -152,7 +152,27 @@ BenchmarkJSONEncoder    2500000       423 ns/op      0 allocs/op
 BenchmarkTextEncoder    2000000       481 ns/op      0 allocs/op
 ```
 
-## 🎯 Advanced Usage
+## � Sugar APIs (Printf-Style)
+
+For developers who prefer familiar printf-style syntax:
+
+```go
+// Printf-style logging (convenience APIs)
+logger.Debugf("Debug: %s = %d", "count", 10)
+logger.Infof("User %s logged in with ID %d", "john", 123)
+logger.Warnf("Warning: %d errors found", 3)
+logger.Errorf("Error: %s failed with code %d", "operation", 500)
+
+// Equivalent structured logging (zero-allocation)
+logger.Debug("Debug", iris.Str("key", "count"), iris.Int("value", 10))
+logger.Info("User login", iris.Str("user", "john"), iris.Int("id", 123))
+```
+
+**Trade-off**: Sugar APIs sacrifice zero-allocation guarantees for developer convenience.
+
+**📖 For complete sugar API documentation, see [docs/SUGAR_API.md](docs/SUGAR_API.md)**
+
+## �🎯 Advanced Usage
 
 ### Hierarchical Loggers
 
@@ -413,6 +433,7 @@ For security vulnerabilities, please see [SECURITY.md](SECURITY.md) for responsi
 
 ### Core Features
 - **[Security Reference](docs/SECURE_BY_DESIGN.md)** - Complete security features guide
+- **[Sugar API Guide](docs/SUGAR_API.md)** - Printf-style logging API documentation
 - **[API Documentation](docs/API.md)** - Full API reference
 - **[Performance Guide](docs/PERFORMANCE.md)** - Optimization tips and benchmarks
 
