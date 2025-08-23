@@ -1,12 +1,12 @@
-# IRIS Sugar API Documentation
+# Iris Sugar API Documentation
 
-## 🍯 Overview
+## Overview
 
 IRIS provides "sugared" APIs for developers who prefer printf-style logging syntax. These convenience methods offer familiar formatting while maintaining IRIS's high performance characteristics.
 
 **Trade-off**: Sugar APIs sacrifice zero-allocation guarantees for developer convenience and familiar syntax.
 
-## 📋 Available Sugar Methods
+## Available Sugar Methods
 
 ### Debug Level
 ```go
@@ -28,7 +28,7 @@ func (l *Logger) Warnf(format string, args ...any) bool
 func (l *Logger) Errorf(format string, args ...any) bool
 ```
 
-## 🚀 Usage Examples
+## Usage Examples
 
 ### Basic Printf-Style Logging
 ```go
@@ -115,7 +115,7 @@ func (l *Logger) logf(level Level, format string, args ...any) bool {
 }
 ```
 
-## 📊 Sugar vs Structured API Comparison
+## Sugar vs Structured API Comparison
 
 | Feature | Sugar API | Structured API |
 |---------|-----------|----------------|
@@ -126,7 +126,7 @@ func (l *Logger) logf(level Level, format string, args ...any) bool {
 | **Parsing** | ❌ Harder to parse logs | ✅ Structured, easy to parse |
 | **Security** | ⚠️ Format string injection risk | ✅ Injection-safe by design |
 
-## 🛡️ Security Considerations
+## Security Considerations
 
 ### Format String Safety
 ```go
@@ -144,7 +144,7 @@ logger.Info("User input received", iris.Str("input", userInput))
 ### Input Sanitization
 Sugar APIs automatically sanitize output through IRIS's encoder, but format strings themselves should never contain user input.
 
-## 🔄 Migration Examples
+## Migration Examples
 
 ### From Standard Log Package
 ```go
@@ -173,7 +173,7 @@ sugar.Infof("Failed to fetch URL: %s", url)
 logger.Infof("Failed to fetch URL: %s", url)
 ```
 
-## 🎯 Best Practices
+## Best Practices
 
 ### When to Use Sugar APIs
 ✅ **Good for:**
@@ -219,7 +219,7 @@ logger.Infof("Database query completed in %v (rows: %d)", duration, rowCount)
 logger.Infof("DB took %v returned %d", duration, rowCount)
 ```
 
-## 🔧 Advanced Usage
+## Advanced Usage
 
 ### Conditional Logging with Sugar
 ```go
@@ -267,7 +267,7 @@ func handleRequest(ctx context.Context, logger *iris.Logger) {
 }
 ```
 
-## 📝 Return Values
+## Return Values
 
 All sugar methods return `bool`:
 - `true`: Message was successfully logged or filtered out
@@ -290,4 +290,4 @@ if !logger.Errorf("Critical error: %v", err) {
 
 ---
 
-**💡 Pro Tip**: Use sugar APIs for development and debugging, structured APIs for production and high-performance scenarios. IRIS makes it easy to mix and match both approaches in the same application.
+**Pro Tip**: Use sugar APIs for development and debugging, structured APIs for production and high-performance scenarios. Iris makes it easy to mix and match both approaches in the same application.

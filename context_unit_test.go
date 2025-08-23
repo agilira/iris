@@ -1,0 +1,1448 @@
+// context_unit_test.go: Comprehensive unit tests for context integration
+//
+// This test suite ensures the context integration maintains zero-allocation
+// performance while providing comprehensive coverage of all functionality.
+// Tests are OS-aware and focus on real-world usage patterns.
+//
+// Copyright (c) 2025 AGILira
+// Series: an AGLIra library
+// SPDX-License-Identifier: MPL-2.0
+
+package iris
+
+import (
+	"bytes"
+	"context"
+	"os"
+	"os/exec"
+	"sync"
+	"testing"
+	"time"
+)
+
+// bufferedTestSyncer wraps a bytes.Buffer to implement WriteSyncer for testing
+type bufferedTestSyncer struct {
+	buf bytes.Buffer
+	mu  sync.Mutex
+}
+
+func (bs *bufferedTestSyncer) Write(p []byte) (n int, err error) {
+	bs.mu.Lock()
+	defer bs.mu.Unlock()
+	return bs.buf.Write(p)
+}
+
+func (bs *bufferedTestSyncer) Sync() error {
+	return nil
+}
+
+func (bs *bufferedTestSyncer) String() string {
+	bs.mu.Lock()
+	defer bs.mu.Unlock()
+	return bs.buf.String()
+}
+
+// TestContextKey_String tests the string representation of ContextKey type
+func TestContextKey_String(t *testing.T) {
+	tests := []struct {
+		name string
+		key  ContextKey
+		want string
+	}{
+		{
+			name: "request_id_key",
+			key:  RequestIDKey,
+			want: "request_id",
+		},
+		{
+			name: "trace_id_key",
+			key:  TraceIDKey,
+			want: "trace_id",
+		},
+		{
+			name: "span_id_key",
+			key:  SpanIDKey,
+			want: "span_id",
+		},
+		{
+			name: "user_id_key",
+			key:  UserIDKey,
+			want: "user_id",
+		},
+		{
+			name: "session_id_key",
+			key:  SessionIDKey,
+			want: "session_id",
+		},
+		{
+			name: "custom_key",
+			key:  ContextKey("custom_field"),
+			want: "custom_field",
+		},
+		{
+			name: "empty_key",
+			key:  ContextKey(""),
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := string(tt.key); got != tt.want {
+				t.Errorf("ContextKey string = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDefaultContextExtractor validates the default configuration
+func TestDefaultContextExtractor(t *testing.T) {
+	if DefaultContextExtractor == nil {
+		t.Fatal("DefaultContextExtractor should not be nil")
+	}
+
+	expectedKeys := map[ContextKey]string{
+		RequestIDKey: "request_id",
+		TraceIDKey:   "trace_id",
+		SpanIDKey:    "span_id",
+		UserIDKey:    "user_id",
+		SessionIDKey: "session_id",
+	}
+
+	if len(DefaultContextExtractor.Keys) != len(expectedKeys) {
+		t.Errorf("DefaultContextExtractor.Keys length = %v, want %v",
+			len(DefaultContextExtractor.Keys), len(expectedKeys))
+	}
+
+	for key, expectedFieldName := range expectedKeys {
+		if fieldName, exists := DefaultContextExtractor.Keys[key]; !exists {
+			t.Errorf("DefaultContextExtractor.Keys missing key %v", key)
+		} else if fieldName != expectedFieldName {
+			t.Errorf("DefaultContextExtractor.Keys[%v] = %v, want %v",
+				key, fieldName, expectedFieldName)
+		}
+	}
+
+	if DefaultContextExtractor.MaxDepth != 10 {
+		t.Errorf("DefaultContextExtractor.MaxDepth = %v, want %v",
+			DefaultContextExtractor.MaxDepth, 10)
+	}
+}
+
+// TestLogger_WithContext tests basic context integration
+func TestLogger_WithContext(t *testing.T) {
+	logger := setupContextTestLogger(t)
+	defer logger.Close()
+
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		wantLen  int
+		validate func(t *testing.T, cl *ContextLogger)
+	}{
+		{
+			name:    "empty_context",
+			ctx:     context.Background(),
+			wantLen: 0,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 0 {
+					t.Errorf("Expected 0 fields for empty context, got %d", len(cl.fields))
+				}
+			},
+		},
+		{
+			name:    "context_with_request_id",
+			ctx:     context.WithValue(context.Background(), RequestIDKey, "req-123"),
+			wantLen: 1,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 1 {
+					t.Errorf("Expected 1 field, got %d", len(cl.fields))
+					return
+				}
+				field := cl.fields[0]
+				if field.Key() != "request_id" {
+					t.Errorf("Expected field key 'request_id', got '%s'", field.Key())
+				}
+				if field.StringValue() != "req-123" {
+					t.Errorf("Expected field value 'req-123', got '%v'", field.StringValue())
+				}
+			},
+		},
+		{
+			name: "context_with_multiple_values",
+			ctx: func() context.Context {
+				ctx := context.Background()
+				ctx = context.WithValue(ctx, RequestIDKey, "req-456")
+				ctx = context.WithValue(ctx, UserIDKey, "user-789")
+				ctx = context.WithValue(ctx, TraceIDKey, "trace-abc")
+				return ctx
+			}(),
+			wantLen: 3,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 3 {
+					t.Errorf("Expected 3 fields, got %d", len(cl.fields))
+					return
+				}
+				// Fields might be in any order, so check by creating a map
+				fieldMap := make(map[string]string)
+				for _, field := range cl.fields {
+					fieldMap[field.Key()] = field.StringValue()
+				}
+
+				expected := map[string]string{
+					"request_id": "req-456",
+					"user_id":    "user-789",
+					"trace_id":   "trace-abc",
+				}
+
+				for key, expectedValue := range expected {
+					if value, exists := fieldMap[key]; !exists {
+						t.Errorf("Missing field %s", key)
+					} else if value != expectedValue {
+						t.Errorf("Field %s = %v, want %v", key, value, expectedValue)
+					}
+				}
+			},
+		},
+		{
+			name:    "context_with_empty_string_value",
+			ctx:     context.WithValue(context.Background(), RequestIDKey, ""),
+			wantLen: 0,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 0 {
+					t.Errorf("Expected 0 fields for empty string value, got %d", len(cl.fields))
+				}
+			},
+		},
+		{
+			name:    "context_with_non_string_value",
+			ctx:     context.WithValue(context.Background(), RequestIDKey, 12345),
+			wantLen: 0,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 0 {
+					t.Errorf("Expected 0 fields for non-string value, got %d", len(cl.fields))
+				}
+			},
+		},
+		{
+			name:    "context_with_nil_value",
+			ctx:     context.WithValue(context.Background(), RequestIDKey, nil),
+			wantLen: 0,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 0 {
+					t.Errorf("Expected 0 fields for nil value, got %d", len(cl.fields))
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cl := logger.WithContext(tt.ctx)
+
+			if cl == nil {
+				t.Fatal("WithContext returned nil")
+			}
+
+			if cl.logger != logger {
+				t.Error("ContextLogger should reference the same logger")
+			}
+
+			tt.validate(t, cl)
+		})
+	}
+}
+
+// TestLogger_WithContextExtractor tests custom context extraction
+func TestLogger_WithContextExtractor(t *testing.T) {
+	logger := setupContextTestLogger(t)
+	defer logger.Close()
+
+	tests := []struct {
+		name      string
+		ctx       context.Context
+		extractor *ContextExtractor
+		wantLen   int
+		validate  func(t *testing.T, cl *ContextLogger)
+	}{
+		{
+			name:      "nil_extractor",
+			ctx:       context.Background(),
+			extractor: &ContextExtractor{},
+			wantLen:   0,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 0 {
+					t.Errorf("Expected 0 fields for nil extractor, got %d", len(cl.fields))
+				}
+			},
+		},
+		{
+			name: "custom_extractor",
+			ctx:  context.WithValue(context.Background(), ContextKey("custom_key"), "custom_value"),
+			extractor: &ContextExtractor{
+				Keys: map[ContextKey]string{
+					ContextKey("custom_key"): "custom_field",
+				},
+				MaxDepth: 5,
+			},
+			wantLen: 1,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 1 {
+					t.Errorf("Expected 1 field, got %d", len(cl.fields))
+					return
+				}
+				field := cl.fields[0]
+				if field.Key() != "custom_field" {
+					t.Errorf("Expected field key 'custom_field', got '%s'", field.Key())
+				}
+				if field.StringValue() != "custom_value" {
+					t.Errorf("Expected field value 'custom_value', got '%v'", field.StringValue())
+				}
+			},
+		},
+		{
+			name: "extractor_with_multiple_keys",
+			ctx: func() context.Context {
+				ctx := context.Background()
+				ctx = context.WithValue(ctx, ContextKey("app_name"), "iris")
+				ctx = context.WithValue(ctx, ContextKey("version"), "1.0.0")
+				return ctx
+			}(),
+			extractor: &ContextExtractor{
+				Keys: map[ContextKey]string{
+					ContextKey("app_name"): "application",
+					ContextKey("version"):  "app_version",
+				},
+				MaxDepth: 10,
+			},
+			wantLen: 2,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 2 {
+					t.Errorf("Expected 2 fields, got %d", len(cl.fields))
+					return
+				}
+
+				fieldMap := make(map[string]string)
+				for _, field := range cl.fields {
+					fieldMap[field.Key()] = field.StringValue()
+				}
+
+				expected := map[string]string{
+					"application": "iris",
+					"app_version": "1.0.0",
+				}
+
+				for key, expectedValue := range expected {
+					if value, exists := fieldMap[key]; !exists {
+						t.Errorf("Missing field %s", key)
+					} else if value != expectedValue {
+						t.Errorf("Field %s = %v, want %v", key, value, expectedValue)
+					}
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cl := logger.WithContextExtractor(tt.ctx, tt.extractor)
+
+			if cl == nil {
+				t.Fatal("WithContextExtractor returned nil")
+			}
+
+			if cl.logger != logger {
+				t.Error("ContextLogger should reference the same logger")
+			}
+
+			tt.validate(t, cl)
+		})
+	}
+}
+
+// TestLogger_WithContextValue tests single value extraction optimization
+func TestLogger_WithContextValue(t *testing.T) {
+	logger := setupContextTestLogger(t)
+	defer logger.Close()
+
+	tests := []struct {
+		name      string
+		ctx       context.Context
+		key       ContextKey
+		fieldName string
+		wantLen   int
+		validate  func(t *testing.T, cl *ContextLogger)
+	}{
+		{
+			name:      "existing_value",
+			ctx:       context.WithValue(context.Background(), RequestIDKey, "req-single"),
+			key:       RequestIDKey,
+			fieldName: "request_id",
+			wantLen:   1,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 1 {
+					t.Errorf("Expected 1 field, got %d", len(cl.fields))
+					return
+				}
+				field := cl.fields[0]
+				if field.Key() != "request_id" {
+					t.Errorf("Expected field key 'request_id', got '%s'", field.Key())
+				}
+				if field.StringValue() != "req-single" {
+					t.Errorf("Expected field value 'req-single', got '%v'", field.StringValue())
+				}
+			},
+		},
+		{
+			name:      "missing_value",
+			ctx:       context.Background(),
+			key:       RequestIDKey,
+			fieldName: "request_id",
+			wantLen:   0,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 0 {
+					t.Errorf("Expected 0 fields for missing value, got %d", len(cl.fields))
+				}
+			},
+		},
+		{
+			name:      "empty_string_value",
+			ctx:       context.WithValue(context.Background(), RequestIDKey, ""),
+			key:       RequestIDKey,
+			fieldName: "request_id",
+			wantLen:   0,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 0 {
+					t.Errorf("Expected 0 fields for empty string, got %d", len(cl.fields))
+				}
+			},
+		},
+		{
+			name:      "non_string_value",
+			ctx:       context.WithValue(context.Background(), RequestIDKey, 42),
+			key:       RequestIDKey,
+			fieldName: "request_id",
+			wantLen:   0,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 0 {
+					t.Errorf("Expected 0 fields for non-string value, got %d", len(cl.fields))
+				}
+			},
+		},
+		{
+			name:      "custom_field_name",
+			ctx:       context.WithValue(context.Background(), UserIDKey, "user-123"),
+			key:       UserIDKey,
+			fieldName: "logged_user",
+			wantLen:   1,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 1 {
+					t.Errorf("Expected 1 field, got %d", len(cl.fields))
+					return
+				}
+				field := cl.fields[0]
+				if field.Key() != "logged_user" {
+					t.Errorf("Expected field key 'logged_user', got '%s'", field.Key())
+				}
+				if field.StringValue() != "user-123" {
+					t.Errorf("Expected field value 'user-123', got '%v'", field.StringValue())
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cl := logger.WithContextValue(tt.ctx, tt.key, tt.fieldName)
+
+			if cl == nil {
+				t.Fatal("WithContextValue returned nil")
+			}
+
+			if cl.logger != logger {
+				t.Error("ContextLogger should reference the same logger")
+			}
+
+			tt.validate(t, cl)
+		})
+	}
+}
+
+// TestLogger_FastRequestID tests the optimized request ID extraction
+func TestLogger_FastRequestID(t *testing.T) {
+	logger := setupContextTestLogger(t)
+	defer logger.Close()
+
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		wantLen  int
+		validate func(t *testing.T, cl *ContextLogger)
+	}{
+		{
+			name:    "with_request_id",
+			ctx:     context.WithValue(context.Background(), RequestIDKey, "fast-req-123"),
+			wantLen: 1,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 1 {
+					t.Errorf("Expected 1 field, got %d", len(cl.fields))
+					return
+				}
+				field := cl.fields[0]
+				if field.Key() != "request_id" {
+					t.Errorf("Expected field key 'request_id', got '%s'", field.Key())
+				}
+				if field.StringValue() != "fast-req-123" {
+					t.Errorf("Expected field value 'fast-req-123', got '%v'", field.StringValue())
+				}
+			},
+		},
+		{
+			name:    "without_request_id",
+			ctx:     context.Background(),
+			wantLen: 0,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 0 {
+					t.Errorf("Expected 0 fields, got %d", len(cl.fields))
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cl := logger.WithRequestID(tt.ctx)
+
+			if cl == nil {
+				t.Fatal("WithRequestID returned nil")
+			}
+
+			tt.validate(t, cl)
+		})
+	}
+}
+
+// TestLogger_FastTraceID tests the optimized trace ID extraction
+func TestLogger_FastTraceID(t *testing.T) {
+	logger := setupContextTestLogger(t)
+	defer logger.Close()
+
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		wantLen  int
+		validate func(t *testing.T, cl *ContextLogger)
+	}{
+		{
+			name:    "with_trace_id",
+			ctx:     context.WithValue(context.Background(), TraceIDKey, "trace-xyz789"),
+			wantLen: 1,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 1 {
+					t.Errorf("Expected 1 field, got %d", len(cl.fields))
+					return
+				}
+				field := cl.fields[0]
+				if field.Key() != "trace_id" {
+					t.Errorf("Expected field key 'trace_id', got '%s'", field.Key())
+				}
+				if field.StringValue() != "trace-xyz789" {
+					t.Errorf("Expected field value 'trace-xyz789', got '%v'", field.StringValue())
+				}
+			},
+		},
+		{
+			name:    "without_trace_id",
+			ctx:     context.Background(),
+			wantLen: 0,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 0 {
+					t.Errorf("Expected 0 fields, got %d", len(cl.fields))
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cl := logger.WithTraceID(tt.ctx)
+
+			if cl == nil {
+				t.Fatal("WithTraceID returned nil")
+			}
+
+			tt.validate(t, cl)
+		})
+	}
+}
+
+// TestLogger_FastUserID tests the optimized user ID extraction
+func TestLogger_FastUserID(t *testing.T) {
+	logger := setupContextTestLogger(t)
+	defer logger.Close()
+
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		wantLen  int
+		validate func(t *testing.T, cl *ContextLogger)
+	}{
+		{
+			name:    "with_user_id",
+			ctx:     context.WithValue(context.Background(), UserIDKey, "user-admin"),
+			wantLen: 1,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 1 {
+					t.Errorf("Expected 1 field, got %d", len(cl.fields))
+					return
+				}
+				field := cl.fields[0]
+				if field.Key() != "user_id" {
+					t.Errorf("Expected field key 'user_id', got '%s'", field.Key())
+				}
+				if field.StringValue() != "user-admin" {
+					t.Errorf("Expected field value 'user-admin', got '%v'", field.StringValue())
+				}
+			},
+		},
+		{
+			name:    "without_user_id",
+			ctx:     context.Background(),
+			wantLen: 0,
+			validate: func(t *testing.T, cl *ContextLogger) {
+				if len(cl.fields) != 0 {
+					t.Errorf("Expected 0 fields, got %d", len(cl.fields))
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cl := logger.WithUserID(tt.ctx)
+
+			if cl == nil {
+				t.Fatal("WithUserID returned nil")
+			}
+
+			tt.validate(t, cl)
+		})
+	}
+}
+
+// TestContextLogger_With tests field addition to context logger
+func TestContextLogger_With(t *testing.T) {
+	logger := setupContextTestLogger(t)
+	defer logger.Close()
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "with-test")
+	cl := logger.WithContext(ctx)
+
+	// Add additional fields
+	cl2 := cl.With(Str("component", "auth"), Int("version", 2))
+
+	if cl2 == nil {
+		t.Fatal("With() returned nil")
+	}
+
+	if len(cl2.fields) != 3 {
+		t.Errorf("Expected 3 fields (1 context + 2 added), got %d", len(cl2.fields))
+	}
+
+	// Verify original context logger is unchanged
+	if len(cl.fields) != 1 {
+		t.Errorf("Original context logger should have 1 field, got %d", len(cl.fields))
+	}
+
+	// Check field contents
+	fieldMap := make(map[string]interface{})
+	for _, field := range cl2.fields {
+		key := field.Key()
+		switch field.Type() {
+		case kindString:
+			fieldMap[key] = field.StringValue()
+		case kindInt64:
+			fieldMap[key] = field.IntValue()
+		}
+	}
+
+	expected := map[string]interface{}{
+		"request_id": "with-test",
+		"component":  "auth",
+		"version":    int64(2),
+	}
+
+	for key, expectedValue := range expected {
+		if value, exists := fieldMap[key]; !exists {
+			t.Errorf("Missing field %s", key)
+		} else if value != expectedValue {
+			t.Errorf("Field %s = %v, want %v", key, value, expectedValue)
+		}
+	}
+}
+
+// TestContextLogger_WithAdditionalContext tests context merging
+func TestContextLogger_WithAdditionalContext(t *testing.T) {
+	logger := setupContextTestLogger(t)
+	defer logger.Close()
+
+	// Create first context with request ID
+	ctx1 := context.WithValue(context.Background(), RequestIDKey, "req-123")
+	cl1 := logger.WithContext(ctx1)
+
+	// Create second context with user ID
+	ctx2 := context.WithValue(context.Background(), UserIDKey, "user-456")
+
+	// Merge contexts
+	cl2 := cl1.WithAdditionalContext(ctx2, DefaultContextExtractor)
+
+	if cl2 == nil {
+		t.Fatal("WithAdditionalContext returned nil")
+	}
+
+	if len(cl2.fields) != 2 {
+		t.Errorf("Expected 2 fields after merging contexts, got %d", len(cl2.fields))
+	}
+
+	// Check both fields are present
+	fieldMap := make(map[string]string)
+	for _, field := range cl2.fields {
+		fieldMap[field.Key()] = field.StringValue()
+	}
+
+	expected := map[string]string{
+		"request_id": "req-123",
+		"user_id":    "user-456",
+	}
+
+	for key, expectedValue := range expected {
+		if value, exists := fieldMap[key]; !exists {
+			t.Errorf("Missing field %s", key)
+		} else if value != expectedValue {
+			t.Errorf("Field %s = %v, want %v", key, value, expectedValue)
+		}
+	}
+}
+
+// TestContextLogger_LoggingMethods tests all logging methods with context
+func TestContextLogger_LoggingMethods(t *testing.T) {
+	buf := &bufferedTestSyncer{}
+	logger, err := New(Config{
+		Level:   Debug,
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test logger: %v", err)
+	}
+	logger.Start()
+	defer logger.Close()
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "test-req-123")
+	cl := logger.WithContext(ctx)
+
+	tests := []struct {
+		name    string
+		logFunc func()
+		wantMsg string
+		level   Level
+	}{
+		{
+			name: "debug_log",
+			logFunc: func() {
+				cl.Debug("debug message", Str("extra", "field"))
+			},
+			wantMsg: "debug message",
+			level:   Debug,
+		},
+		{
+			name: "info_log",
+			logFunc: func() {
+				cl.Info("info message", Int("count", 42))
+			},
+			wantMsg: "info message",
+			level:   Info,
+		},
+		{
+			name: "warn_log",
+			logFunc: func() {
+				cl.Warn("warning message", Bool("urgent", true))
+			},
+			wantMsg: "warning message",
+			level:   Warn,
+		},
+		{
+			name: "error_log",
+			logFunc: func() {
+				cl.Error("error message", Str("error_code", "E001"))
+			},
+			wantMsg: "error message",
+			level:   Error,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear buffer before each test
+			buf.buf.Reset()
+
+			// Execute the logging function
+			tt.logFunc()
+
+			// Wait a bit for async processing
+			logger.Close()
+			logger, err = New(Config{
+				Level:   Debug,
+				Encoder: NewJSONEncoder(),
+				Output:  buf,
+			})
+			if err != nil {
+				t.Fatalf("Failed to recreate logger: %v", err)
+			}
+			logger.Start()
+
+			// Recreate context logger
+			cl = logger.WithContext(ctx)
+
+			// Verify the log was written
+			output := buf.String()
+			if output == "" {
+				t.Errorf("Expected log output, got empty string")
+				return
+			}
+
+			// Check that the output contains the expected message
+			if !containsMessage(output, tt.wantMsg) {
+				t.Errorf("Expected message '%s' not found in output: %s", tt.wantMsg, output)
+			}
+
+			// Check that context field is included
+			if !containsField(output, "request_id", "test-req-123") {
+				t.Errorf("Context field 'request_id' not found in output: %s", output)
+			}
+		})
+	}
+}
+
+// TestContextLogger_OutputBufferBug investigates potential output buffer bug
+func TestContextLogger_OutputBufferBug(t *testing.T) {
+	t.Log("=== INVESTIGATING OUTPUT BUFFER BUG ===")
+
+	buf := &bufferedTestSyncer{}
+	logger, err := New(Config{
+		Level:   Debug, // Allow all levels
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test logger: %v", err)
+	}
+
+	t.Log("Logger created successfully")
+	logger.Start()
+	t.Log("Logger started")
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "bug-investigation")
+	cl := logger.WithContext(ctx)
+	t.Log("Context logger created")
+
+	// Clear buffer and check it's empty
+	buf.buf.Reset()
+	initialOutput := buf.String()
+	t.Logf("Initial buffer content: '%s' (length: %d)", initialOutput, len(initialOutput))
+
+	// Test 1: Simple log without context logger first
+	logger.Info("direct logger test", Str("test", "direct"))
+	t.Log("Direct logger call made")
+
+	// Test 2: Context logger call
+	cl.Info("context logger test", Str("test", "context"))
+	t.Log("Context logger call made")
+
+	// Test 3: Multiple calls
+	cl.Warn("warn test")
+	cl.Error("error test")
+	t.Log("Multiple context logger calls made")
+
+	// CRITICAL: Give time for async processing (like other working tests)
+	time.Sleep(50 * time.Millisecond)
+	t.Log("Waited for async processing")
+
+	// CRITICAL: Force sync to flush buffers (like other working tests)
+	logger.Sync()
+	t.Log("Forced sync")
+
+	// Check buffer after sync
+	afterSyncOutput := buf.String()
+	t.Logf("After sync buffer content: '%s' (length: %d)", afterSyncOutput, len(afterSyncOutput))
+
+	// Close logger to flush
+	t.Log("Closing logger to flush...")
+	logger.Close()
+
+	// Check buffer after close
+	finalOutput := buf.String()
+	t.Logf("Final buffer content: '%s' (length: %d)", finalOutput, len(finalOutput))
+
+	// Analyze the output
+	if len(finalOutput) == 0 {
+		t.Error("BUG CONFIRMED: No output written to buffer even after Sync() and Close()")
+
+		// Let's check if the issue is with our buffer implementation
+		t.Log("Testing buffer implementation directly...")
+		testData := []byte(`{"level":"info","msg":"test"}` + "\n")
+		n, err := buf.Write(testData)
+		if err != nil {
+			t.Errorf("Direct buffer write failed: %v", err)
+		} else {
+			t.Logf("Direct buffer write successful: %d bytes", n)
+			directOutput := buf.String()
+			t.Logf("Buffer after direct write: '%s'", directOutput)
+		}
+	} else {
+		t.Logf("SUCCESS: Output detected after proper async handling: %s", finalOutput)
+
+		// Check for expected content
+		if !containsString(finalOutput, "context logger test") {
+			t.Error("ISSUE: Context logger message not found in output")
+		} else {
+			t.Log("✓ Context logger message found")
+		}
+		if !containsString(finalOutput, "bug-investigation") {
+			t.Error("ISSUE: Context field not found in output")
+		} else {
+			t.Log("✓ Context field found")
+		}
+		if !containsString(finalOutput, "direct logger test") {
+			t.Error("ISSUE: Direct logger message not found in output")
+		} else {
+			t.Log("✓ Direct logger message found")
+		}
+	}
+}
+
+// TestContextLogger_LevelFiltering tests that level filtering works correctly
+func TestContextLogger_LevelFiltering(t *testing.T) {
+	buf := &bufferedTestSyncer{}
+	logger, err := New(Config{
+		Level:   Warn, // Only Warn and above should be logged
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test logger: %v", err)
+	}
+	logger.Start()
+	defer logger.Close()
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "filter-test")
+	cl := logger.WithContext(ctx)
+
+	// Clear buffer
+	buf.buf.Reset()
+
+	// These should be filtered out (not logged due to level)
+	cl.Debug("debug message")
+	cl.Info("info message")
+
+	// These should be logged
+	cl.Warn("warn message")
+	cl.Error("error message")
+
+	// Handle async processing properly
+	time.Sleep(50 * time.Millisecond)
+	logger.Sync()
+
+	output := buf.String()
+	t.Logf("Level filtering output: %s", output)
+
+	// Debug and Info should NOT be in output (filtered by level)
+	if containsString(output, "debug message") {
+		t.Error("Debug message should be filtered out but was found in output")
+	}
+	if containsString(output, "info message") {
+		t.Error("Info message should be filtered out but was found in output")
+	}
+
+	// Warn and Error should be in output
+	if !containsString(output, "warn message") {
+		t.Error("Warn message should be logged but was not found in output")
+	}
+	if !containsString(output, "error message") {
+		t.Error("Error message should be logged but was not found in output")
+	}
+
+	// Context field should be present in logged messages
+	if !containsString(output, "filter-test") {
+		t.Error("Context field should be present in logged messages")
+	}
+}
+
+// TestContextLogger_Fatal tests Fatal method behavior using subprocess
+func TestContextLogger_Fatal(t *testing.T) {
+	t.Run("ContextLogger_Fatal_Exits_Process", func(t *testing.T) {
+		// Test ContextLogger.Fatal using subprocess to catch os.Exit
+		if os.Getenv("TEST_CONTEXT_FATAL") == "1" {
+			syncer := &bufferedTestSyncer{}
+			logger, err := New(Config{
+				Level:   Debug,
+				Encoder: NewTextEncoder(),
+				Output:  syncer,
+			})
+			if err != nil {
+				t.Fatalf("Failed to create logger: %v", err)
+			}
+
+			logger.Start()
+			defer logger.Close()
+
+			// Create context logger with some context fields
+			ctx := context.WithValue(context.Background(), RequestIDKey, "fatal-test")
+			cl := logger.WithContext(ctx).With(String("service", "test"))
+
+			// This should call os.Exit(1) via the underlying logger.Fatal
+			cl.Fatal("test context fatal message", String("key", "value"))
+			return
+		}
+
+		// Run subprocess to test exit behavior
+		cmd := exec.Command(os.Args[0], "-test.run=TestContextLogger_Fatal/ContextLogger_Fatal_Exits_Process")
+		cmd.Env = append(os.Environ(), "TEST_CONTEXT_FATAL=1")
+		err := cmd.Run()
+
+		// Verify the subprocess exited with code 1
+		if exitError, ok := err.(*exec.ExitError); ok {
+			if exitError.ExitCode() != 1 {
+				t.Errorf("Expected ContextLogger Fatal to exit with code 1, got: %d", exitError.ExitCode())
+			}
+		} else if err == nil {
+			t.Error("Expected ContextLogger Fatal to exit the process")
+		}
+	})
+
+	if testing.Short() {
+		t.Skip("Skipping Fatal compilation test in short mode")
+	}
+
+	// Additional compilation verification test
+	logger := setupContextTestLogger(t)
+	defer logger.Close()
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "fatal-test")
+	cl := logger.WithContext(ctx)
+
+	// We can't actually call Fatal as it would exit the test
+	// Just verify it exists and has the right signature by referencing it
+	// This is just a compilation test to ensure the method exists
+	_ = cl.Fatal
+
+	// Test that we can reference it in a function without panicking
+	_ = func() { cl.Fatal("test fatal message") }
+
+	// If we reach here, the method exists and compiles correctly
+}
+
+// TestLogger_WithContextValueSingle tests WithContextValue method on Logger for single value
+func TestLogger_WithContextValueSingle(t *testing.T) {
+	buf := &bufferedTestSyncer{}
+	logger, err := New(Config{
+		Level:   Debug,
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test logger: %v", err)
+	}
+	logger.Start()
+	defer logger.Close()
+
+	// Create context with UserID value
+	ctx := context.WithValue(context.Background(), UserIDKey, "user123")
+
+	// Create ContextLogger with UserID using WithContextValue
+	newCl := logger.WithContextValue(ctx, UserIDKey, "user_id")
+
+	// Log with the new context logger
+	newCl.Info("test message with user context")
+
+	// Allow async processing
+	time.Sleep(50 * time.Millisecond)
+	logger.Sync()
+
+	output := buf.String()
+
+	// Should contain the user_id field
+	if !containsField(output, "user_id", "user123") {
+		t.Error("User ID context value should be present in output")
+	}
+}
+
+// TestLogger_WithRequestID tests WithRequestID convenience method on Logger
+func TestLogger_WithRequestID(t *testing.T) {
+	buf := &bufferedTestSyncer{}
+	logger, err := New(Config{
+		Level:   Debug,
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test logger: %v", err)
+	}
+	logger.Start()
+	defer logger.Close()
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "req-456")
+	clWithReq := logger.WithRequestID(ctx)
+
+	clWithReq.Info("test message with request ID")
+
+	// Allow async processing
+	time.Sleep(50 * time.Millisecond)
+	logger.Sync()
+
+	output := buf.String()
+
+	if !containsField(output, "request_id", "req-456") {
+		t.Error("Request ID should be present in log output")
+	}
+}
+
+// TestLogger_WithTraceID tests WithTraceID convenience method on Logger
+func TestLogger_WithTraceID(t *testing.T) {
+	buf := &bufferedTestSyncer{}
+	logger, err := New(Config{
+		Level:   Debug,
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test logger: %v", err)
+	}
+	logger.Start()
+	defer logger.Close()
+
+	ctx := context.WithValue(context.Background(), TraceIDKey, "trace-789")
+	clWithTrace := logger.WithTraceID(ctx)
+
+	clWithTrace.Info("test message with trace ID")
+
+	// Allow async processing
+	time.Sleep(50 * time.Millisecond)
+	logger.Sync()
+
+	output := buf.String()
+
+	if !containsField(output, "trace_id", "trace-789") {
+		t.Error("Trace ID should be present in log output")
+	}
+}
+
+// TestLogger_WithUserID tests WithUserID convenience method on Logger
+func TestLogger_WithUserID(t *testing.T) {
+	buf := &bufferedTestSyncer{}
+	logger, err := New(Config{
+		Level:   Debug,
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test logger: %v", err)
+	}
+	logger.Start()
+	defer logger.Close()
+
+	ctx := context.WithValue(context.Background(), UserIDKey, "user-999")
+	clWithUser := logger.WithUserID(ctx)
+
+	clWithUser.Info("test message with user ID")
+
+	// Allow async processing
+	time.Sleep(50 * time.Millisecond)
+	logger.Sync()
+
+	output := buf.String()
+
+	if !containsField(output, "user_id", "user-999") {
+		t.Error("User ID should be present in log output")
+	}
+}
+
+// TestContextLogger_WarnErrorEdgeCases tests edge cases for Warn and Error methods
+func TestContextLogger_WarnErrorEdgeCases(t *testing.T) {
+	buf := &bufferedTestSyncer{}
+	logger, err := New(Config{
+		Level:   Debug,
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test logger: %v", err)
+	}
+	logger.Start()
+	defer logger.Close()
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "edge-test")
+	cl := logger.WithContext(ctx)
+
+	// Test Warn with empty message
+	cl.Warn("")
+
+	// Test Error with empty message
+	cl.Error("")
+
+	// Test Warn with special characters
+	cl.Warn("special chars: àáâãäåæçèéêëìíîïðñòóôõö")
+
+	// Test Error with special characters
+	cl.Error("special chars: ÷øùúûüýþÿ")
+
+	// Allow async processing
+	time.Sleep(50 * time.Millisecond)
+	logger.Sync()
+
+	output := buf.String()
+
+	// Should contain context field in all cases
+	if !containsField(output, "request_id", "edge-test") {
+		t.Error("Context field should be present in all logged messages")
+	}
+
+	// Should contain special characters
+	if !containsString(output, "àáâãäåæçèéêëìíîïðñòóôõö") {
+		t.Error("Special characters should be logged correctly in warn")
+	}
+	if !containsString(output, "÷øùúûüýþÿ") {
+		t.Error("Special characters should be logged correctly in error")
+	}
+}
+
+// Helper functions for testing log output
+func containsMessage(output, message string) bool {
+	return len(output) > 0 && (len(message) == 0 ||
+		(len(message) > 0 && containsString(output, message)))
+}
+
+func containsField(output, key, value string) bool {
+	return len(output) > 0 &&
+		containsString(output, key) &&
+		containsString(output, value)
+}
+
+func containsString(haystack, needle string) bool {
+	if needle == "" {
+		return true
+	}
+	return len(haystack) >= len(needle) &&
+		findSubstring(haystack, needle) >= 0
+}
+
+func findSubstring(haystack, needle string) int {
+	if len(needle) == 0 {
+		return 0
+	}
+	if len(haystack) < len(needle) {
+		return -1
+	}
+
+	for i := 0; i <= len(haystack)-len(needle); i++ {
+		match := true
+		for j := 0; j < len(needle); j++ {
+			if haystack[i+j] != needle[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i
+		}
+	}
+	return -1
+} // Test helper function to create a test logger for context tests
+func setupContextTestLogger(t *testing.T) *Logger {
+	t.Helper()
+	buf := &bufferedTestSyncer{}
+	logger, err := New(Config{
+		Level:   Debug,
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test logger: %v", err)
+	}
+	logger.Start()
+	return logger
+}
+
+// Benchmark tests for performance verification
+
+// BenchmarkContextLogger_WithContext benchmarks context field extraction
+func BenchmarkContextLogger_WithContext(b *testing.B) {
+	buf := &bufferedTestSyncer{}
+	logger, err := New(Config{
+		Level:   Info,
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		b.Fatalf("Failed to create logger: %v", err)
+	}
+	logger.Start()
+	defer logger.Close()
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "bench-req-123")
+	ctx = context.WithValue(ctx, UserIDKey, "bench-user-456")
+	ctx = context.WithValue(ctx, TraceIDKey, "bench-trace-789")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		cl := logger.WithContext(ctx)
+		_ = cl // Prevent optimization
+	}
+}
+
+// BenchmarkContextLogger_WithContextValue benchmarks single value extraction
+func BenchmarkContextLogger_WithContextValue(b *testing.B) {
+	buf := &bufferedTestSyncer{}
+	logger, err := New(Config{
+		Level:   Info,
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		b.Fatalf("Failed to create logger: %v", err)
+	}
+	logger.Start()
+	defer logger.Close()
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "bench-req-fast")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		cl := logger.WithContextValue(ctx, RequestIDKey, "request_id")
+		_ = cl // Prevent optimization
+	}
+}
+
+// BenchmarkContextLogger_FastRequestID benchmarks the optimized path
+func BenchmarkContextLogger_FastRequestID(b *testing.B) {
+	buf := &bufferedTestSyncer{}
+	logger, err := New(Config{
+		Level:   Info,
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		b.Fatalf("Failed to create logger: %v", err)
+	}
+	logger.Start()
+	defer logger.Close()
+
+	ctx := context.WithValue(context.Background(), RequestIDKey, "bench-fast-req")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		cl := logger.WithRequestID(ctx)
+		_ = cl // Prevent optimization
+	}
+}
+
+// TestContextLogger_AdvancedLevelFiltering tests advanced level filtering scenarios
+func TestContextLogger_AdvancedLevelFiltering(t *testing.T) {
+	buf := &bufferedTestSyncer{}
+
+	tests := []struct {
+		name        string
+		loggerLevel Level
+		testFunc    func(*ContextLogger)
+		shouldLog   bool
+		message     string
+	}{
+		{
+			name:        "Warn_Above_Logger_Level",
+			loggerLevel: Error, // Logger at Error level
+			testFunc: func(cl *ContextLogger) {
+				cl.Warn("warn message should be filtered")
+			},
+			shouldLog: false,
+			message:   "warn message should be filtered",
+		},
+		{
+			name:        "Warn_At_Logger_Level",
+			loggerLevel: Warn, // Logger at Warn level
+			testFunc: func(cl *ContextLogger) {
+				cl.Warn("warn message should appear")
+			},
+			shouldLog: true,
+			message:   "warn message should appear",
+		},
+		{
+			name:        "Error_Above_Logger_Level",
+			loggerLevel: Fatal, // Logger at Fatal level
+			testFunc: func(cl *ContextLogger) {
+				cl.Error("error message should be filtered")
+			},
+			shouldLog: false,
+			message:   "error message should be filtered",
+		},
+		{
+			name:        "Error_At_Logger_Level",
+			loggerLevel: Error, // Logger at Error level
+			testFunc: func(cl *ContextLogger) {
+				cl.Error("error message should appear")
+			},
+			shouldLog: true,
+			message:   "error message should appear",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear buffer
+			buf.mu.Lock()
+			buf.buf.Reset()
+			buf.mu.Unlock()
+
+			// Create logger with specific level
+			logger, err := New(Config{
+				Level:   tt.loggerLevel,
+				Encoder: NewJSONEncoder(),
+				Output:  buf,
+			})
+			if err != nil {
+				t.Fatalf("Failed to create logger: %v", err)
+			}
+			logger.Start()
+			defer logger.Close()
+
+			// Create context logger with some fields
+			cl := logger.WithContext(context.Background()).With(Str("test", "value"))
+
+			// Execute test function
+			tt.testFunc(cl)
+
+			// Wait for async processing
+			time.Sleep(50 * time.Millisecond)
+
+			output := buf.String()
+
+			if tt.shouldLog {
+				if output == "" {
+					t.Errorf("Expected log output but got empty string")
+				}
+				if !bytes.Contains([]byte(output), []byte(tt.message)) {
+					t.Errorf("Expected message %q in output but not found. Output: %s", tt.message, output)
+				}
+			} else {
+				if output != "" {
+					t.Errorf("Expected no log output but got: %s", output)
+				}
+			}
+		})
+	}
+}

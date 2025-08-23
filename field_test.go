@@ -8,6 +8,7 @@ package iris
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -432,5 +433,60 @@ func TestFieldMemoryLayout(t *testing.T) {
 	// Fields should be comparable for key equality
 	if f1.Key() != f2.Key() {
 		t.Errorf("Field Key() methods should return equal values")
+	}
+}
+
+// TestNamedErr tests the NamedErr function with various error scenarios
+func TestNamedErr(t *testing.T) {
+	tests := []struct {
+		name         string
+		key          string
+		err          error
+		expectedKey  string
+		expectedStr  string
+		expectedType kind
+	}{
+		{
+			name:         "Nil_Error",
+			key:          "my_error",
+			err:          nil,
+			expectedKey:  "my_error",
+			expectedStr:  "",
+			expectedType: kindString,
+		},
+		{
+			name:         "Non_Nil_Error",
+			key:          "custom_error",
+			err:          fmt.Errorf("something went wrong"),
+			expectedKey:  "custom_error",
+			expectedStr:  "something went wrong",
+			expectedType: kindString,
+		},
+		{
+			name:         "Empty_Key",
+			key:          "",
+			err:          fmt.Errorf("error with empty key"),
+			expectedKey:  "",
+			expectedStr:  "error with empty key",
+			expectedType: kindString,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			field := NamedErr(tt.key, tt.err)
+
+			if field.K != tt.expectedKey {
+				t.Errorf("Expected key %q, got %q", tt.expectedKey, field.K)
+			}
+
+			if field.T != tt.expectedType {
+				t.Errorf("Expected type %v, got %v", tt.expectedType, field.T)
+			}
+
+			if field.Str != tt.expectedStr {
+				t.Errorf("Expected string %q, got %q", tt.expectedStr, field.Str)
+			}
+		})
 	}
 }

@@ -355,3 +355,77 @@ func TestTextEncoder_ComplexInjectionScenario(t *testing.T) {
 		t.Error("Secret not redacted in complex scenario")
 	}
 }
+
+// TestWriteSafeValue tests the writeSafeValue method with various character scenarios
+func TestWriteSafeValue(t *testing.T) {
+	encoder := NewTextEncoder()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "Normal_Text",
+			input:    "hello",
+			expected: "hello",
+		},
+		{
+			name:     "Text_With_Spaces",
+			input:    "hello world",
+			expected: "hello_world",
+		},
+		{
+			name:     "Text_With_Newlines",
+			input:    "hello\nworld",
+			expected: "hello_world",
+		},
+		{
+			name:     "Text_With_CarriageReturn",
+			input:    "hello\rworld",
+			expected: "hello_world",
+		},
+		{
+			name:     "Text_With_Tabs",
+			input:    "hello\tworld",
+			expected: "hello_world",
+		},
+		{
+			name:     "Text_With_Control_Characters",
+			input:    "hello\x01\x02world",
+			expected: "hello__world",
+		},
+		{
+			name:     "Text_With_DEL_Character",
+			input:    "hello\x7Fworld",
+			expected: "hello_world",
+		},
+		{
+			name:     "Mixed_Special_Characters",
+			input:    "hello\n\r\t world\x01\x7F",
+			expected: "hello____world__",
+		},
+		{
+			name:     "Empty_String",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "Only_Special_Characters",
+			input:    "\n\r\t \x01\x7F",
+			expected: "______",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			encoder.writeSafeValue(tt.input, &buf)
+
+			result := buf.String()
+			if result != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}

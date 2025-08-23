@@ -407,3 +407,251 @@ func TestLoggerWithCallerInfo(t *testing.T) {
 		t.Error("Source file not found in caller info")
 	}
 }
+
+// TestShortCaller tests the shortCaller function with various path scenarios
+func TestShortCaller(t *testing.T) {
+	tests := []struct {
+		name         string
+		setupTest    func() (string, bool)
+		expectOK     bool
+		expectFormat string
+	}{
+		{
+			name: "Valid_Caller",
+			setupTest: func() (string, bool) {
+				// This will call shortCaller with skip=1 to get this test function
+				return shortCaller(1)
+			},
+			expectOK:     true,
+			expectFormat: "iris_test.go:",
+		},
+		{
+			name: "Invalid_Skip_Level",
+			setupTest: func() (string, bool) {
+				// Use a very high skip value to trigger the !ok case
+				return shortCaller(100)
+			},
+			expectOK:     false,
+			expectFormat: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			caller, ok := tt.setupTest()
+
+			if ok != tt.expectOK {
+				t.Errorf("Expected ok=%v, got ok=%v", tt.expectOK, ok)
+			}
+
+			if tt.expectOK {
+				if !strings.Contains(caller, tt.expectFormat) {
+					t.Errorf("Expected caller to contain %q, got %q", tt.expectFormat, caller)
+				}
+				// Should contain line number
+				if !strings.Contains(caller, ":") {
+					t.Error("Expected caller to contain line number separator ':'")
+				}
+			} else {
+				if caller != tt.expectFormat {
+					t.Errorf("Expected empty caller %q, got %q", tt.expectFormat, caller)
+				}
+			}
+		})
+	}
+}
+
+// TestLoggerStart tests the Start method with various scenarios
+func TestLoggerStart(t *testing.T) {
+	buf := &bufferedSyncer{}
+	logger, err := New(Config{
+		Level:   Info,
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create logger: %v", err)
+	}
+	defer logger.Close()
+
+	// Test multiple Start calls (should be idempotent)
+	logger.Start()
+	logger.Start() // Second call should be ignored
+	logger.Start() // Third call should be ignored
+
+	// Verify logger is working after multiple Start calls
+	logger.Info("test message after multiple starts")
+
+	// Wait for async processing
+	time.Sleep(50 * time.Millisecond)
+
+	output := buf.String()
+	if !strings.Contains(output, "test message after multiple starts") {
+		t.Error("Logger not working after multiple Start calls")
+	}
+}
+
+// TestDPanic tests the DPanic method in both development and production modes
+func TestDPanic(t *testing.T) {
+	tests := []struct {
+		name        string
+		development bool
+		expectPanic bool
+	}{
+		{
+			name:        "Development_Mode_Should_Panic",
+			development: true,
+			expectPanic: true,
+		},
+		{
+			name:        "Production_Mode_No_Panic",
+			development: false,
+			expectPanic: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := &bufferedSyncer{}
+
+			var config Config
+			if tt.development {
+				config = Config{
+					Level:   Debug,
+					Encoder: NewJSONEncoder(),
+					Output:  buf,
+				}
+			} else {
+				config = Config{
+					Level:   Debug,
+					Encoder: NewJSONEncoder(),
+					Output:  buf,
+				}
+			}
+
+			logger, err := New(config, func() Option {
+				if tt.development {
+					return Development()
+				}
+				// Return a no-op option for production (default)
+				return Option(func(o *loggerOptions) {})
+			}())
+			if err != nil {
+				t.Fatalf("Failed to create logger: %v", err)
+			}
+			defer logger.Close()
+			logger.Start()
+
+			// Test the DPanic function
+			defer func() {
+				r := recover()
+				if tt.expectPanic && r == nil {
+					t.Error("Expected DPanic to panic in development mode, but it didn't")
+				}
+				if !tt.expectPanic && r != nil {
+					t.Errorf("Expected DPanic not to panic in production mode, but it panicked with: %v", r)
+				}
+			}()
+
+			logger.DPanic("test dpanic message", Str("mode", "test"))
+
+			// If we reach here, no panic occurred
+			if tt.expectPanic {
+				t.Error("DPanic should have panicked but didn't")
+			}
+		})
+	}
+}
+
+// TestSync tests the Sync method with different output types
+func TestSync(t *testing.T) {
+	tests := []struct {
+		name     string
+		setupOut func() WriteSyncer
+		testFunc func(t *testing.T, logger *Logger, out WriteSyncer)
+	}{
+		{
+			name: "Sync_With_Syncer_Output",
+			setupOut: func() WriteSyncer {
+				return &bufferedSyncer{}
+			},
+			testFunc: func(t *testing.T, logger *Logger, out WriteSyncer) {
+				// Log something
+				logger.Info("test sync message")
+
+				// Wait for async processing before sync
+				time.Sleep(50 * time.Millisecond)
+
+				// Call Sync
+				err := logger.Sync()
+				if err != nil {
+					t.Errorf("Sync returned error: %v", err)
+				}
+
+				// Wait a bit more after sync
+				time.Sleep(10 * time.Millisecond)
+
+				// Verify output was synced
+				if bs, ok := out.(*bufferedSyncer); ok {
+					output := bs.String()
+					if !strings.Contains(output, "test sync message") {
+						t.Error("Message not found after sync")
+					}
+				}
+			},
+		},
+		{
+			name: "Sync_With_Non_Syncer_Output",
+			setupOut: func() WriteSyncer {
+				// Create a simple writer that doesn't implement Sync
+				return &simpleWriter{buf: &bytes.Buffer{}}
+			},
+			testFunc: func(t *testing.T, logger *Logger, out WriteSyncer) {
+				// Log something
+				logger.Info("test sync message")
+
+				// Call Sync - should not return error even if output doesn't support sync
+				err := logger.Sync()
+				if err != nil {
+					t.Errorf("Sync should not return error for non-syncer output, got: %v", err)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := tt.setupOut()
+
+			logger, err := New(Config{
+				Level:   Info,
+				Encoder: NewJSONEncoder(),
+				Output:  out,
+			})
+			if err != nil {
+				t.Fatalf("Failed to create logger: %v", err)
+			}
+			defer logger.Close()
+			logger.Start()
+
+			// Wait for logger to start
+			time.Sleep(10 * time.Millisecond)
+
+			// Run the specific test
+			tt.testFunc(t, logger, out)
+		})
+	}
+}
+
+// simpleWriter implements WriteSyncer without the Sync method for testing
+type simpleWriter struct {
+	buf *bytes.Buffer
+}
+
+func (sw *simpleWriter) Write(p []byte) (n int, err error) {
+	return sw.buf.Write(p)
+}
+
+func (sw *simpleWriter) Sync() error {
+	return nil
+}
