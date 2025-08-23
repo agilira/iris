@@ -1,0 +1,11 @@
+{
+  "level": "info",
+  "format": "json",
+  "output": "stdout",
+  "capacity": 16384,
+  "batch_size": 512,
+  "backpressure_policy": "drop_on_full",
+  "name": "high-performance-logger",
+  "development": false,
+  "enable_caller": false
+}

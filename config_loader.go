@@ -12,6 +12,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/agilira/iris/internal/zephyroslite"
 )
 
 // LoadConfigFromJSON loads logger configuration from a JSON file
@@ -25,14 +27,15 @@ func LoadConfigFromJSON(filename string) (*Config, error) {
 
 	// Parse JSON into a temporary structure
 	var jsonConfig struct {
-		Level        string `json:"level"`
-		Format       string `json:"format"`
-		Output       string `json:"output"`
-		Capacity     int64  `json:"capacity"`
-		BatchSize    int64  `json:"batch_size"`
-		EnableCaller bool   `json:"enable_caller"`
-		Development  bool   `json:"development"`
-		Name         string `json:"name"`
+		Level              string `json:"level"`
+		Format             string `json:"format"`
+		Output             string `json:"output"`
+		Capacity           int64  `json:"capacity"`
+		BatchSize          int64  `json:"batch_size"`
+		EnableCaller       bool   `json:"enable_caller"`
+		Development        bool   `json:"development"`
+		Name               string `json:"name"`
+		BackpressurePolicy string `json:"backpressure_policy"`
 	}
 
 	if err := json.Unmarshal(data, &jsonConfig); err != nil {
@@ -83,6 +86,9 @@ func LoadConfigFromJSON(filename string) (*Config, error) {
 	if jsonConfig.Name != "" {
 		config.Name = jsonConfig.Name
 	}
+
+	// Set backpressure policy
+	config.BackpressurePolicy = parseBackpressurePolicy(jsonConfig.BackpressurePolicy)
 
 	return &config, nil
 }
@@ -144,6 +150,11 @@ func LoadConfigFromEnv() (*Config, error) {
 		config.Name = name
 	}
 
+	// BackpressurePolicy from IRIS_BACKPRESSURE_POLICY
+	if policyStr := os.Getenv("IRIS_BACKPRESSURE_POLICY"); policyStr != "" {
+		config.BackpressurePolicy = parseBackpressurePolicy(policyStr)
+	}
+
 	return &config, nil
 }
 
@@ -181,6 +192,9 @@ func LoadConfigMultiSource(jsonFile string) (*Config, error) {
 			if jsonConfig.Name != "" {
 				config.Name = jsonConfig.Name
 			}
+			if jsonConfig.BackpressurePolicy != zephyroslite.DropOnFull {
+				config.BackpressurePolicy = jsonConfig.BackpressurePolicy
+			}
 		}
 	}
 
@@ -209,6 +223,9 @@ func LoadConfigMultiSource(jsonFile string) (*Config, error) {
 	if name := os.Getenv("IRIS_NAME"); name != "" {
 		config.Name = envConfig.Name
 	}
+	if policyStr := os.Getenv("IRIS_BACKPRESSURE_POLICY"); policyStr != "" {
+		config.BackpressurePolicy = envConfig.BackpressurePolicy
+	}
 
 	return &config, nil
 }
@@ -230,5 +247,17 @@ func parseLevel(levelStr string) Level {
 		return Fatal
 	default:
 		return Info // Default level
+	}
+}
+
+// parseBackpressurePolicy converts a string to a BackpressurePolicy enum
+func parseBackpressurePolicy(policyStr string) zephyroslite.BackpressurePolicy {
+	switch strings.ToLower(policyStr) {
+	case "drop", "drop_on_full", "droponful":
+		return zephyroslite.DropOnFull
+	case "block", "block_on_full", "blockonful":
+		return zephyroslite.BlockOnFull
+	default:
+		return zephyroslite.DropOnFull // Default policy
 	}
 }

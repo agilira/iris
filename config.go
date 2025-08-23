@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/agilira/go-timecache"
+	"github.com/agilira/iris/internal/zephyroslite"
 )
 
 // Architecture represents the ring buffer architecture type
@@ -92,6 +93,11 @@ type Config struct {
 	// Higher values provide better parallelism but use more memory
 	// Default: 4 (optimal for most multi-core systems)
 	NumRings int
+
+	// BackpressurePolicy determines the behavior when the ring buffer is full
+	// DropOnFull: Drops new messages for maximum performance (default)
+	// BlockOnFull: Blocks caller until space is available (guaranteed delivery)
+	BackpressurePolicy zephyroslite.BackpressurePolicy
 
 	// Output and formatting configuration
 	// Output specifies where log entries are written. Must implement WriteSyncer
@@ -207,6 +213,12 @@ func (c *Config) withDefaults() *Config {
 	// Default encoder if not specified
 	if out.Encoder == nil {
 		out.Encoder = NewJSONEncoder()
+	}
+
+	// Default backpressure policy to DropOnFull (high performance default)
+	// BackpressurePolicy uses int type where 0 = DropOnFull by design
+	if out.BackpressurePolicy != zephyroslite.DropOnFull && out.BackpressurePolicy != zephyroslite.BlockOnFull {
+		out.BackpressurePolicy = zephyroslite.DropOnFull
 	}
 
 	// TODO: Add default sampler when sampling system is implemented

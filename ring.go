@@ -78,7 +78,7 @@ type Ring struct {
 // Returns:
 //   - *Ring: Configured ring buffer with embedded Zephyros Light engine
 //   - error: Configuration error if parameters are invalid
-func newRing(capacity, batchSize int64, architecture Architecture, numRings int, processor ProcessorFunc) (*Ring, error) {
+func newRing(capacity, batchSize int64, architecture Architecture, numRings int, backpressurePolicy zephyroslite.BackpressurePolicy, processor ProcessorFunc) (*Ring, error) {
 	// Params architecture and numRings are kept for API compatibility but not used
 	// as this simplified version always uses the embedded Zephyros Light engine
 	_ = architecture // Explicitly mark as unused (kept for API compatibility)
@@ -128,7 +128,8 @@ func newRing(capacity, batchSize int64, architecture Architecture, numRings int,
 	// Create embedded Zephyros Light ring buffer
 	builder := zephyroslite.NewBuilder[Record](capacity).
 		WithProcessor(zephyrosProcessor).
-		WithBatchSize(batchSize)
+		WithBatchSize(batchSize).
+		WithBackpressurePolicy(backpressurePolicy)
 
 	var err error
 	ring.z, err = builder.Build()
@@ -186,9 +187,9 @@ func (r *Ring) Write(fill func(*Record)) bool {
 //
 // Note: In normal operation, flushing is automatic and this method exists
 // primarily for API compatibility and testing scenarios.
-func (r *Ring) Flush() {
+func (r *Ring) Flush() error {
 	// Simplified: Direct flush to embedded ZephyrosLight
-	r.z.Flush()
+	return r.z.Flush()
 }
 
 // Loop starts the record processing loop (CONSUMER THREAD ONLY)

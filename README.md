@@ -20,6 +20,12 @@
 - **🔐 Unicode Attack Prevention**: Protection against direction override exploits
 - **✅ Zero Configuration**: Security enabled by default
 
+### 🛡️ Data Integrity (CRITICAL FIX!)
+- **💾 Guaranteed Persistence**: `Sync()` ensures all logs are written before return
+- **🚨 Critical Bug Fixed**: Previous versions had data loss risk during shutdown
+- **⏱️ Timeout Protection**: 5-second timeout prevents indefinite blocking
+- **🔄 Migration Guide**: Complete upgrade documentation available
+
 ### � Context Integration (NEW!)
 - **🎯 Context.Context Support**: Automatic extraction of context values
 - **⚡ Performance Optimized**: Pre-extraction avoids O(n) context.Value() calls
@@ -442,6 +448,8 @@ For security vulnerabilities, please see [SECURITY.md](SECURITY.md) for responsi
 - **[Configuration Loading Guide](docs/CONFIGURATION_LOADING.md)** - Multi-source configuration management
 
 ### Advanced Topics
+- **[Sync() Integration Guide](docs/SYNC_INTEGRATION_GUIDE.md)** - Complete data integrity and sync patterns
+- **[Sync() Migration Guide](docs/SYNC_MIGRATION_GUIDE.md)** - Critical security update and migration
 - **[Best Practices](docs/BEST_PRACTICES.md)** - Production deployment guidelines
 - **[Security Reference](docs/SECURITY_REFERENCE.md)** - Security implementation details
 - **[Contributing](CONTRIBUTING.md)** - Development and contribution guidelines

@@ -1,0 +1,11 @@
+{
+  "level": "debug",
+  "format": "json",
+  "output": "app.log",
+  "capacity": 8192,
+  "batch_size": 256,
+  "backpressure_policy": "block_on_full",
+  "name": "reliable-logger",
+  "development": true,
+  "enable_caller": true
+}

@@ -181,7 +181,7 @@ func New(cfg Config, opts ...Option) (*Logger, error) {
 	// The architecture can be configured via the Config.Architecture field to match
 	// your application's performance profile: SingleRing for maximum single-thread
 	// performance or ThreadedRings for multi-producer scaling.
-	rg, err := newRing(c.Capacity, c.BatchSize, c.Architecture, c.NumRings, proc)
+	rg, err := newRing(c.Capacity, c.BatchSize, c.Architecture, c.NumRings, c.BackpressurePolicy, proc)
 	if err != nil {
 		return nil, errors.Wrap(err, ErrCodeLoggerCreation, "failed to create ring buffer").
 			WithContext("capacity", c.Capacity).
@@ -716,7 +716,9 @@ func (l *Logger) Fatal(msg string, fields ...Field) {
 // Thread Safety: Safe to call from multiple goroutines
 func (l *Logger) Sync() error {
 	// Flush the ring buffer to ensure all records are processed
-	l.r.Flush()
+	if err := l.r.Flush(); err != nil {
+		return fmt.Errorf("ring buffer flush failed: %w", err)
+	}
 
 	// Sync the output if it supports synchronization
 	if syncer, ok := l.out.(interface{ Sync() error }); ok {

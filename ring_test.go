@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/agilira/iris/internal/zephyroslite"
 )
 
 func TestNewRing_ValidConfiguration(t *testing.T) {
@@ -19,7 +21,7 @@ func TestNewRing_ValidConfiguration(t *testing.T) {
 		atomic.AddInt64(&processed, 1)
 	}
 
-	ring, err := newRing(1024, 128, SingleRing, 1, processor)
+	ring, err := newRing(1024, 128, SingleRing, 1, zephyroslite.DropOnFull, processor)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -53,7 +55,7 @@ func TestNewRing_AutoBatchSizing(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		ring, err := newRing(tc.capacity, 0, SingleRing, 1, processor) // 0 = auto-size
+		ring, err := newRing(tc.capacity, 0, SingleRing, 1, zephyroslite.DropOnFull, processor) // 0 = auto-size
 		if err != nil {
 			t.Fatalf("Expected no error for capacity %d, got: %v", tc.capacity, err)
 		}
@@ -74,7 +76,7 @@ func TestNewRing_InvalidCapacity(t *testing.T) {
 	invalidCapacities := []int64{0, -1, 3, 5, 6, 7, 9, 15, 17, 100, 1000}
 
 	for _, capacity := range invalidCapacities {
-		ring, err := newRing(capacity, 64, SingleRing, 1, processor)
+		ring, err := newRing(capacity, 64, SingleRing, 1, zephyroslite.DropOnFull, processor)
 		if err == nil {
 			t.Errorf("Expected error for invalid capacity %d, got nil", capacity)
 			if ring != nil {
@@ -100,7 +102,7 @@ func TestNewRing_InvalidBatchSize(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		ring, err := newRing(tc.capacity, tc.batchSize, SingleRing, 1, processor)
+		ring, err := newRing(tc.capacity, tc.batchSize, SingleRing, 1, zephyroslite.DropOnFull, processor)
 		if tc.batchSize == 0 {
 			// Zero batch size should auto-size, not error
 			if err != nil {
@@ -118,7 +120,7 @@ func TestNewRing_InvalidBatchSize(t *testing.T) {
 }
 
 func TestNewRing_MissingProcessor(t *testing.T) {
-	ring, err := newRing(1024, 128, SingleRing, 1, nil)
+	ring, err := newRing(1024, 128, SingleRing, 1, zephyroslite.DropOnFull, nil)
 	if err == nil {
 		t.Error("Expected error for missing processor, got nil")
 		if ring != nil {
@@ -142,7 +144,7 @@ func TestRing_Write(t *testing.T) {
 		mu.Unlock()
 	}
 
-	ring, err := newRing(64, 16, SingleRing, 1, processor)
+	ring, err := newRing(64, 16, SingleRing, 1, zephyroslite.DropOnFull, processor)
 	if err != nil {
 		t.Fatalf("Failed to create ring: %v", err)
 	}
@@ -193,7 +195,7 @@ func TestRing_HighThroughput(t *testing.T) {
 		atomic.AddInt64(&processed, 1)
 	}
 
-	ring, err := newRing(8192, 512, SingleRing, 1, processor)
+	ring, err := newRing(8192, 512, SingleRing, 1, zephyroslite.DropOnFull, processor)
 	if err != nil {
 		t.Fatalf("Failed to create ring: %v", err)
 	}
@@ -257,7 +259,7 @@ func TestRing_Stats(t *testing.T) {
 		time.Sleep(time.Millisecond) // Slow processing to build up buffer
 	}
 
-	ring, err := newRing(256, 32, SingleRing, 1, processor)
+	ring, err := newRing(256, 32, SingleRing, 1, zephyroslite.DropOnFull, processor)
 	if err != nil {
 		t.Fatalf("Failed to create ring: %v", err)
 	}
@@ -307,11 +309,14 @@ func TestRing_Flush(t *testing.T) {
 		atomic.AddInt64(&processed, 1)
 	}
 
-	ring, err := newRing(64, 16, SingleRing, 1, processor)
+	ring, err := newRing(64, 16, SingleRing, 1, zephyroslite.DropOnFull, processor)
 	if err != nil {
 		t.Fatalf("Failed to create ring: %v", err)
 	}
 	defer ring.Close()
+
+	// Start processing
+	go ring.Loop()
 
 	// Write a record
 	ring.Write(func(r *Record) {
@@ -333,7 +338,7 @@ func TestRing_ProcessBatch(t *testing.T) {
 		atomic.AddInt64(&processed, 1)
 	}
 
-	ring, err := newRing(64, 8, SingleRing, 1, processor)
+	ring, err := newRing(64, 8, SingleRing, 1, zephyroslite.DropOnFull, processor)
 	if err != nil {
 		t.Fatalf("Failed to create ring: %v", err)
 	}
@@ -365,7 +370,7 @@ func TestRing_CloseGracefully(t *testing.T) {
 		time.Sleep(time.Millisecond) // Simulate processing time
 	}
 
-	ring, err := newRing(64, 16, SingleRing, 1, processor)
+	ring, err := newRing(64, 16, SingleRing, 1, zephyroslite.DropOnFull, processor)
 	if err != nil {
 		t.Fatalf("Failed to create ring: %v", err)
 	}
