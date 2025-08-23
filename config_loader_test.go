@@ -20,7 +20,8 @@ func TestLoadConfigFromJSON(t *testing.T) {
   "capacity": 8192,
   "batch_size": 16,
   "enable_caller": true,
-  "development": true
+  "development": true,
+  "idle_strategy": "efficient"
 }`
 
 	tmpFile, err := os.CreateTemp("", "iris_config_*.json")
@@ -49,6 +50,11 @@ func TestLoadConfigFromJSON(t *testing.T) {
 	}
 	if config.BatchSize != 16 {
 		t.Errorf("Expected batch size 16, got %d", config.BatchSize)
+	}
+	if config.IdleStrategy == nil {
+		t.Error("Expected idle strategy to be set")
+	} else if config.IdleStrategy.String() != "sleeping" {
+		t.Errorf("Expected 'sleeping' idle strategy, got %q", config.IdleStrategy.String())
 	}
 
 	// Test invalid file path
@@ -170,4 +176,99 @@ func TestLevelParsing(t *testing.T) {
 			t.Errorf("parseLevel(%q) = %v, want %v", test.input, result, test.expected)
 		}
 	}
+}
+
+func TestIdleStrategyParsing(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"spinning", "spinning"},
+		{"SPINNING", "spinning"},
+		{"sleeping", "sleeping"},
+		{"SLEEPING", "sleeping"},
+		{"yielding", "yielding"},
+		{"YIELDING", "yielding"},
+		{"channel", "channel"},
+		{"CHANNEL", "channel"},
+		{"progressive", "progressive"},
+		{"PROGRESSIVE", "progressive"},
+		{"balanced", "progressive"}, // BalancedStrategy is NewProgressiveIdleStrategy()
+		{"BALANCED", "progressive"},
+		{"invalid", "progressive"}, // Default fallback to BalancedStrategy (progressive)
+		{"", "progressive"},        // Default fallback to BalancedStrategy (progressive)
+	}
+
+	for _, test := range tests {
+		result := parseIdleStrategy(test.input)
+		if result.String() != test.expected {
+			t.Errorf("parseIdleStrategy(%q) = %s, want %s", test.input, result.String(), test.expected)
+		}
+	}
+}
+
+func TestIdleStrategyConfiguration(t *testing.T) {
+	// Test JSON configuration
+	t.Run("JSON", func(t *testing.T) {
+		configJSON := `{
+  "level": "info",
+  "idle_strategy": "yielding"
+}`
+
+		tmpFile, err := os.CreateTemp("", "iris_config_idle_*.json")
+		if err != nil {
+			t.Fatalf("Failed to create temp file: %v", err)
+		}
+		defer os.Remove(tmpFile.Name())
+
+		if _, err := tmpFile.WriteString(configJSON); err != nil {
+			t.Fatalf("Failed to write config: %v", err)
+		}
+		tmpFile.Close()
+
+		config, err := LoadConfigFromJSON(tmpFile.Name())
+		if err != nil {
+			t.Fatalf("LoadConfigFromJSON failed: %v", err)
+		}
+
+		if config.IdleStrategy == nil {
+			t.Error("Expected idle strategy to be set")
+		} else if config.IdleStrategy.String() != "yielding" {
+			t.Errorf("Expected 'yielding' idle strategy, got %q", config.IdleStrategy.String())
+		}
+	})
+
+	// Test environment variable configuration
+	t.Run("Environment", func(t *testing.T) {
+		os.Setenv("IRIS_IDLE_STRATEGY", "channel")
+		defer os.Unsetenv("IRIS_IDLE_STRATEGY")
+
+		config, err := LoadConfigFromEnv()
+		if err != nil {
+			t.Fatalf("LoadConfigFromEnv failed: %v", err)
+		}
+
+		if config.IdleStrategy == nil {
+			t.Error("Expected idle strategy to be set")
+		} else if config.IdleStrategy.String() != "channel" {
+			t.Errorf("Expected 'channel' idle strategy, got %q", config.IdleStrategy.String())
+		}
+	})
+
+	// Test invalid values fallback to default
+	t.Run("InvalidValues", func(t *testing.T) {
+		os.Setenv("IRIS_IDLE_STRATEGY", "invalid_strategy")
+		defer os.Unsetenv("IRIS_IDLE_STRATEGY")
+
+		config, err := LoadConfigFromEnv()
+		if err != nil {
+			t.Fatalf("LoadConfigFromEnv failed: %v", err)
+		}
+
+		if config.IdleStrategy == nil {
+			t.Error("Expected idle strategy to be set")
+		} else if config.IdleStrategy.String() != "progressive" {
+			t.Errorf("Expected 'progressive' idle strategy for invalid input (BalancedStrategy), got %q", config.IdleStrategy.String())
+		}
+	})
 }

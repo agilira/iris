@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/agilira/iris/internal/zephyroslite"
 )
@@ -36,6 +37,7 @@ func LoadConfigFromJSON(filename string) (*Config, error) {
 		Development        bool   `json:"development"`
 		Name               string `json:"name"`
 		BackpressurePolicy string `json:"backpressure_policy"`
+		IdleStrategy       string `json:"idle_strategy"`
 	}
 
 	if err := json.Unmarshal(data, &jsonConfig); err != nil {
@@ -89,6 +91,11 @@ func LoadConfigFromJSON(filename string) (*Config, error) {
 
 	// Set backpressure policy
 	config.BackpressurePolicy = parseBackpressurePolicy(jsonConfig.BackpressurePolicy)
+
+	// Set idle strategy
+	if jsonConfig.IdleStrategy != "" {
+		config.IdleStrategy = parseIdleStrategy(jsonConfig.IdleStrategy)
+	}
 
 	return &config, nil
 }
@@ -155,6 +162,11 @@ func LoadConfigFromEnv() (*Config, error) {
 		config.BackpressurePolicy = parseBackpressurePolicy(policyStr)
 	}
 
+	// IdleStrategy from IRIS_IDLE_STRATEGY
+	if strategyStr := os.Getenv("IRIS_IDLE_STRATEGY"); strategyStr != "" {
+		config.IdleStrategy = parseIdleStrategy(strategyStr)
+	}
+
 	return &config, nil
 }
 
@@ -195,6 +207,9 @@ func LoadConfigMultiSource(jsonFile string) (*Config, error) {
 			if jsonConfig.BackpressurePolicy != zephyroslite.DropOnFull {
 				config.BackpressurePolicy = jsonConfig.BackpressurePolicy
 			}
+			if jsonConfig.IdleStrategy != nil {
+				config.IdleStrategy = jsonConfig.IdleStrategy
+			}
 		}
 	}
 
@@ -225,6 +240,9 @@ func LoadConfigMultiSource(jsonFile string) (*Config, error) {
 	}
 	if policyStr := os.Getenv("IRIS_BACKPRESSURE_POLICY"); policyStr != "" {
 		config.BackpressurePolicy = envConfig.BackpressurePolicy
+	}
+	if strategyStr := os.Getenv("IRIS_IDLE_STRATEGY"); strategyStr != "" {
+		config.IdleStrategy = envConfig.IdleStrategy
 	}
 
 	return &config, nil
@@ -259,5 +277,27 @@ func parseBackpressurePolicy(policyStr string) zephyroslite.BackpressurePolicy {
 		return zephyroslite.BlockOnFull
 	default:
 		return zephyroslite.DropOnFull // Default policy
+	}
+}
+
+// parseIdleStrategy converts a string to an IdleStrategy
+func parseIdleStrategy(strategyStr string) IdleStrategy {
+	switch strings.ToLower(strategyStr) {
+	case "spinning":
+		return NewSpinningIdleStrategy()
+	case "sleeping":
+		return NewSleepingIdleStrategy(1*time.Millisecond, 0) // Default 1ms sleep, no spin
+	case "yielding":
+		return NewYieldingIdleStrategy(1000) // Default 1000 spins before yield
+	case "channel":
+		return NewChannelIdleStrategy(100 * time.Millisecond) // Default 100ms timeout
+	case "progressive", "balanced":
+		return NewProgressiveIdleStrategy()
+	case "efficient":
+		return EfficientStrategy
+	case "hybrid":
+		return HybridStrategy
+	default:
+		return BalancedStrategy // Default strategy
 	}
 }

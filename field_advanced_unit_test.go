@@ -34,12 +34,6 @@ func (cs customStringer) String() string {
 	return fmt.Sprintf("CustomStringer{id=%d, name=%s}", cs.id, cs.name)
 }
 
-// Test struct for Object tests
-type testStruct struct {
-	Name string `json:"name"`
-	ID   int    `json:"id"`
-}
-
 // User type for integration tests
 type testUser struct {
 	ID   int

@@ -181,7 +181,10 @@ func New(cfg Config, opts ...Option) (*Logger, error) {
 	// The architecture can be configured via the Config.Architecture field to match
 	// your application's performance profile: SingleRing for maximum single-thread
 	// performance or ThreadedRings for multi-producer scaling.
-	rg, err := newRing(c.Capacity, c.BatchSize, c.Architecture, c.NumRings, c.BackpressurePolicy, proc)
+	//
+	// IdleStrategy controls CPU usage when no work is available, providing different
+	// trade-offs between latency and CPU consumption.
+	rg, err := newRing(c.Capacity, c.BatchSize, c.Architecture, c.NumRings, c.BackpressurePolicy, c.IdleStrategy, proc)
 	if err != nil {
 		return nil, errors.Wrap(err, ErrCodeLoggerCreation, "failed to create ring buffer").
 			WithContext("capacity", c.Capacity).

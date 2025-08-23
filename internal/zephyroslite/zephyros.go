@@ -97,6 +97,7 @@ type ZephyrosLight[T any] struct {
 	processor          ProcessorFunc[T]
 	batchSize          int64
 	backpressurePolicy BackpressurePolicy
+	idleStrategy       IdleStrategy
 
 	// Control
 	closed AtomicPaddedInt64 // 0 = open, 1 = closed
@@ -115,6 +116,7 @@ type Builder[T any] struct {
 	processor          ProcessorFunc[T]
 	batchSize          int64
 	backpressurePolicy BackpressurePolicy
+	idleStrategy       IdleStrategy
 }
 
 // NewBuilder creates a new builder for ZephyrosLight with specified capacity
@@ -175,6 +177,25 @@ func (b *Builder[T]) WithBackpressurePolicy(policy BackpressurePolicy) *Builder[
 	return b
 }
 
+// WithIdleStrategy sets the CPU usage strategy when no work is available
+//
+// Parameters:
+//   - strategy: IdleStrategy implementation controlling CPU usage vs latency trade-offs
+//
+// Available strategies:
+//   - NewSpinningIdleStrategy(): Ultra-low latency, ~100% CPU usage
+//   - NewSleepingIdleStrategy(): Balanced CPU/latency, ~1-10% CPU usage
+//   - NewYieldingIdleStrategy(): Moderate reduction, ~10-50% CPU usage
+//   - NewChannelIdleStrategy(): Minimal CPU usage, ~microsecond latency
+//   - NewProgressiveIdleStrategy(): Adaptive strategy for variable workloads
+//
+// Returns:
+//   - *Builder[T]: Builder instance for method chaining
+func (b *Builder[T]) WithIdleStrategy(strategy IdleStrategy) *Builder[T] {
+	b.idleStrategy = strategy
+	return b
+}
+
 // Build creates and initializes the ZephyrosLight ring buffer
 //
 // Returns:
@@ -196,6 +217,12 @@ func (b *Builder[T]) Build() (*ZephyrosLight[T], error) {
 		return nil, ErrInvalidBatchSize
 	}
 
+	// Default idle strategy to progressive for backward compatibility
+	idleStrategy := b.idleStrategy
+	if idleStrategy == nil {
+		idleStrategy = NewProgressiveIdleStrategy() // Balanced default
+	}
+
 	// Create ring buffer
 	z := &ZephyrosLight[T]{
 		buffer:             make([]T, b.capacity),
@@ -205,6 +232,7 @@ func (b *Builder[T]) Build() (*ZephyrosLight[T], error) {
 		processor:          b.processor,
 		batchSize:          b.batchSize,
 		backpressurePolicy: b.backpressurePolicy,
+		idleStrategy:       idleStrategy,
 	}
 
 	// Initialize availability markers to invalid sequence
@@ -359,39 +387,27 @@ func (z *ZephyrosLight[T]) ProcessBatch() int {
 	return processed
 }
 
-// LoopProcess runs the consumer loop with simplified idle strategy
+// LoopProcess runs the consumer loop with configurable idle strategy
 //
-// This uses a basic spinning strategy rather than the advanced
-// adaptive strategies available in commercial Zephyros.
+// This uses the configured IdleStrategy to control CPU usage when no work
+// is available, providing different trade-offs between latency and CPU consumption.
 func (z *ZephyrosLight[T]) LoopProcess() {
-	spins := 0
-
 	for z.closed.Load() == 0 {
 		processed := z.ProcessBatch()
 
 		if processed > 0 {
-			spins = 0 // Reset spin count on work found
+			// Work found - reset idle strategy state
+			z.idleStrategy.Reset()
 		} else {
-			spins++
-
-			// Simplified idle strategy (vs advanced commercial version)
-			if spins < 1000 {
-				// Hot spin for low latency
+			// No work available - use idle strategy
+			if !z.idleStrategy.Idle() {
+				// Strategy indicates we should check for shutdown
 				continue
-			} else if spins < 10000 {
-				// Occasional yield
-				if spins&7 == 0 { // Every 8 iterations
-					runtime.Gosched()
-				}
-			} else {
-				// Microsleep and reset
-				time.Sleep(time.Microsecond)
-				spins = 0
 			}
 		}
 	}
 
-	// Final drain on close - simplified version
+	// Final drain on close - process remaining items
 	for z.ProcessBatch() > 0 {
 		// Keep processing until empty
 	}

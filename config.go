@@ -99,6 +99,15 @@ type Config struct {
 	// BlockOnFull: Blocks caller until space is available (guaranteed delivery)
 	BackpressurePolicy zephyroslite.BackpressurePolicy
 
+	// IdleStrategy controls CPU usage when no log records are being processed
+	// Different strategies provide various trade-offs between latency and CPU usage:
+	// - SpinningIdleStrategy: Ultra-low latency, ~100% CPU usage
+	// - SleepingIdleStrategy: Balanced CPU/latency, ~1-10% CPU usage
+	// - YieldingIdleStrategy: Moderate reduction, ~10-50% CPU usage
+	// - ChannelIdleStrategy: Minimal CPU usage, ~microsecond latency
+	// - ProgressiveIdleStrategy: Adaptive strategy for variable workloads (default)
+	IdleStrategy zephyroslite.IdleStrategy
+
 	// Output and formatting configuration
 	// Output specifies where log entries are written. Must implement WriteSyncer
 	// for proper synchronization guarantees.
@@ -219,6 +228,12 @@ func (c *Config) withDefaults() *Config {
 	// BackpressurePolicy uses int type where 0 = DropOnFull by design
 	if out.BackpressurePolicy != zephyroslite.DropOnFull && out.BackpressurePolicy != zephyroslite.BlockOnFull {
 		out.BackpressurePolicy = zephyroslite.DropOnFull
+	}
+
+	// Default idle strategy to BalancedStrategy (progressive) for good all-around performance
+	// This provides excellent performance for most workloads without manual tuning
+	if out.IdleStrategy == nil {
+		out.IdleStrategy = BalancedStrategy
 	}
 
 	// TODO: Add default sampler when sampling system is implemented

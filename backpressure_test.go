@@ -64,6 +64,7 @@ func TestBackpressureDropOnFull(t *testing.T) {
 		Encoder:            NewTextEncoder(),
 		Capacity:           64, // Small capacity to trigger overflow
 		BackpressurePolicy: zephyroslite.DropOnFull,
+		IdleStrategy:       SpinningStrategy, // Use spinning for low latency in tests
 	})
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
@@ -190,6 +191,7 @@ func TestBackpressurePolicyComparison(t *testing.T) {
 				Encoder:            NewTextEncoder(),
 				Capacity:           test.capacity,
 				BackpressurePolicy: test.policy,
+				IdleStrategy:       SpinningStrategy, // Use spinning for low latency in tests
 			})
 			if err != nil {
 				t.Fatalf("Failed to create logger: %v", err)
@@ -246,10 +248,11 @@ func TestBackpressurePolicyDefault(t *testing.T) {
 
 	// Create logger without specifying BackpressurePolicy
 	logger, err := New(Config{
-		Level:    Debug,
-		Output:   syncer,
-		Encoder:  NewTextEncoder(),
-		Capacity: 64, // Use explicit small capacity like other tests
+		Level:        Debug,
+		Output:       syncer,
+		Encoder:      NewTextEncoder(),
+		Capacity:     64,               // Use explicit small capacity like other tests
+		IdleStrategy: SpinningStrategy, // Use spinning for low latency in tests
 	})
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)

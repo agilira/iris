@@ -61,6 +61,8 @@ type Ring struct {
 //   - batchSize: Processing batch size (0 for auto-sizing based on capacity)
 //   - architecture: Ignored (kept for API compatibility, always uses embedded engine)
 //   - numRings: Ignored (kept for API compatibility, single ring architecture)
+//   - backpressurePolicy: DropOnFull or BlockOnFull behavior when buffer is full
+//   - idleStrategy: Strategy controlling CPU usage when no work is available
 //   - processor: Function to process each log record
 //
 // Embedded Zephyros Light Features:
@@ -68,17 +70,19 @@ type Ring struct {
 //   - Zero allocations for write operations
 //   - Lock-free MPSC operations
 //   - Fixed batch processing optimized for logging
+//   - Configurable idle strategies for CPU usage control
 //   - No external dependencies
 //
 // Performance Recommendations:
 //   - Use capacity 1024-8192 for most applications
 //   - Use batchSize 64-256 for balanced latency/throughput
 //   - Use capacity as power of two for optimal bit masking
+//   - Choose idle strategy based on CPU vs latency requirements
 //
 // Returns:
 //   - *Ring: Configured ring buffer with embedded Zephyros Light engine
 //   - error: Configuration error if parameters are invalid
-func newRing(capacity, batchSize int64, architecture Architecture, numRings int, backpressurePolicy zephyroslite.BackpressurePolicy, processor ProcessorFunc) (*Ring, error) {
+func newRing(capacity, batchSize int64, architecture Architecture, numRings int, backpressurePolicy zephyroslite.BackpressurePolicy, idleStrategy IdleStrategy, processor ProcessorFunc) (*Ring, error) {
 	// Params architecture and numRings are kept for API compatibility but not used
 	// as this simplified version always uses the embedded Zephyros Light engine
 	_ = architecture // Explicitly mark as unused (kept for API compatibility)
@@ -125,11 +129,12 @@ func newRing(capacity, batchSize int64, architecture Architecture, numRings int,
 		processor(record)
 	}
 
-	// Create embedded Zephyros Light ring buffer
+	// Create embedded Zephyros Light ring buffer with idle strategy
 	builder := zephyroslite.NewBuilder[Record](capacity).
 		WithProcessor(zephyrosProcessor).
 		WithBatchSize(batchSize).
-		WithBackpressurePolicy(backpressurePolicy)
+		WithBackpressurePolicy(backpressurePolicy).
+		WithIdleStrategy(idleStrategy)
 
 	var err error
 	ring.z, err = builder.Build()
