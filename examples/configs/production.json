@@ -1,0 +1,9 @@
+{
+  "level": "info",
+  "format": "json",
+  "output": "stdout",
+  "capacity": 32768,
+  "batch_size": 64,
+  "enable_caller": false,
+  "name": "production-service"
+}

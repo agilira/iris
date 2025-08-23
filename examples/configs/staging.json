@@ -1,0 +1,9 @@
+{
+  "level": "warn",
+  "format": "json", 
+  "output": "stdout",
+  "capacity": 16384,
+  "batch_size": 32,
+  "enable_caller": false,
+  "name": "staging-service"
+}

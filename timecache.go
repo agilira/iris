@@ -1,4 +1,4 @@
-// timecache.go: Ultra-fast time caching for IRIS MPSC logger
+// timecache.go: Ultra-fast time caching for high-performance applications
 //
 // Copyright (c) 2025 AGILira
 // Series: an AGLIra fragment
@@ -55,6 +55,12 @@ func CachedTimeNano() int64 {
 func CachedTime() time.Time {
 	nanos := atomic.LoadInt64(&globalTimeCache.cachedTimeNano)
 	return time.Unix(0, nanos)
+}
+
+// CachedTimeString returns cached time formatted as RFC3339Nano string
+func CachedTimeString() string {
+	nanos := atomic.LoadInt64(&globalTimeCache.cachedTimeNano)
+	return time.Unix(0, nanos).UTC().Format(time.RFC3339Nano)
 }
 
 // StopTimeCache stops the global time cache (for testing)

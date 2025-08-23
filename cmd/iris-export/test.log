@@ -1,5 +1,0 @@
-{"timestamp":"2025-08-21T10:30:00Z","level":"info","message":"Application started","component":"main"}
-{"timestamp":"2025-08-21T10:30:01Z","level":"debug","message":"Debugging information","user_id":123}
-{"timestamp":"2025-08-21T10:30:02Z","level":"error","message":"Failed to connect to database","error":"connection timeout"}
-{"timestamp":"2025-08-21T10:30:03Z","level":"warn","message":"Retrying operation","attempt":2}
-{"timestamp":"2025-08-21T10:30:04Z","level":"info","message":"Operation completed successfully","duration":"2.5s"}

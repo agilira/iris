@@ -1,0 +1,9 @@
+{
+  "level": "debug",
+  "format": "text",
+  "output": "stdout",
+  "capacity": 1024,
+  "batch_size": 1,
+  "enable_caller": true,
+  "name": "development-service"
+}

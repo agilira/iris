@@ -1,0 +1,332 @@
+// zephyroslite.go: Simplified MPSC ring buffer for IRIS internal use
+//
+// This is a lightweight version of Zephyros MPSC ring buffer,
+// embedded directly in IRIS to eliminate external dependencies
+// while maintaining core performance characteristics.
+//
+// Features included:
+//   - Lock-free MPSC ring buffer
+//   - Zero-allocation write operations
+//   - Basic atomic operations with cache-line padding
+//   - Fixed batch processing (no adaptive batching)
+//   - Essential performance monitoring
+//
+// Features removed (kept in commercial Zephyros):
+//   - Dynamic adaptive batching
+//   - Advanced performance statistics
+//   - Multi-ring ThreadedZephyros architecture
+//   - Gemini strategy optimizations
+//   - Extended monitoring and profiling
+//   - Advanced idle strategies
+//
+// Performance target: ~15-20ns/op (vs 9ns commercial, 25ns current IRIS)
+//
+// Copyright (c) 2025 AGILira
+// Series: IRIS Logging Library - Internal Zephyros Light
+// SPDX-License-Identifier: MPL-2.0
+
+package zephyroslite
+
+import (
+	"runtime"
+	"time"
+)
+
+// ProcessorFunc is the processing function signature for log records
+type ProcessorFunc[T any] func(*T)
+
+// ZephyrosLight is the simplified MPSC lock-free ring buffer for IRIS
+//
+// This implementation focuses on core MPSC performance while removing
+// advanced features that are reserved for commercial Zephyros.
+//
+// Core Features:
+//   - Lock-free MPSC operations
+//   - Zero-allocation write path
+//   - Cache-line padded atomic operations
+//   - Fixed batch processing
+//   - Essential statistics
+//
+// Simplified Design:
+//   - Single ring only (no ThreadedZephyros)
+//   - Fixed batch size (no adaptive batching)
+//   - Basic padding (no advanced CPU-specific optimizations)
+//   - Simplified idle strategy (no complex spinning algorithms)
+type ZephyrosLight[T any] struct {
+	// Ring buffer core
+	buffer   []T
+	capacity int64
+	mask     int64 // capacity - 1 for bit masking
+
+	// MPSC atomic cursors (cache-line padded)
+	writerCursor AtomicPaddedInt64 // Producer claim sequence
+	readerCursor AtomicPaddedInt64 // Consumer sequence
+
+	// Availability tracking for MPSC coordination
+	availableBuffer []AtomicPaddedInt64 // Per-slot availability markers
+
+	// Configuration
+	processor ProcessorFunc[T]
+	batchSize int64
+
+	// Control
+	closed AtomicPaddedInt64 // 0 = open, 1 = closed
+
+	// Basic statistics (simplified)
+	processed AtomicPaddedInt64 // Total processed count
+	dropped   AtomicPaddedInt64 // Total dropped count
+
+	// Cache line padding to prevent false sharing
+	_ [64]byte
+}
+
+// Builder provides a fluent interface for creating ZephyrosLight instances
+type Builder[T any] struct {
+	capacity  int64
+	processor ProcessorFunc[T]
+	batchSize int64
+}
+
+// NewBuilder creates a new builder for ZephyrosLight with specified capacity
+//
+// Parameters:
+//   - capacity: Ring buffer size (must be power of two, e.g., 1024, 2048, 4096)
+//
+// Returns:
+//   - *Builder[T]: Builder instance for fluent configuration
+func NewBuilder[T any](capacity int64) *Builder[T] {
+	return &Builder[T]{
+		capacity:  capacity,
+		batchSize: 64, // Reasonable default, simpler than adaptive
+	}
+}
+
+// WithProcessor sets the processor function for log records
+//
+// Parameters:
+//   - processor: Function to process each log record
+//
+// Returns:
+//   - *Builder[T]: Builder instance for method chaining
+func (b *Builder[T]) WithProcessor(processor ProcessorFunc[T]) *Builder[T] {
+	b.processor = processor
+	return b
+}
+
+// WithBatchSize sets the fixed batch size for processing
+//
+// Unlike commercial Zephyros, this uses a fixed batch size rather
+// than adaptive batching for simplicity.
+//
+// Parameters:
+//   - batchSize: Fixed number of items to process per batch
+//
+// Returns:
+//   - *Builder[T]: Builder instance for method chaining
+func (b *Builder[T]) WithBatchSize(batchSize int64) *Builder[T] {
+	b.batchSize = batchSize
+	return b
+}
+
+// Build creates and initializes the ZephyrosLight ring buffer
+//
+// Returns:
+//   - *ZephyrosLight[T]: Configured ring buffer ready for use
+//   - error: Configuration validation error
+func (b *Builder[T]) Build() (*ZephyrosLight[T], error) {
+	// Validate capacity (must be power of two)
+	if b.capacity <= 0 || (b.capacity&(b.capacity-1)) != 0 {
+		return nil, ErrInvalidCapacity
+	}
+
+	// Validate processor
+	if b.processor == nil {
+		return nil, ErrMissingProcessor
+	}
+
+	// Validate batch size
+	if b.batchSize <= 0 || b.batchSize > b.capacity {
+		return nil, ErrInvalidBatchSize
+	}
+
+	// Create ring buffer
+	z := &ZephyrosLight[T]{
+		buffer:          make([]T, b.capacity),
+		capacity:        b.capacity,
+		mask:            b.capacity - 1,
+		availableBuffer: make([]AtomicPaddedInt64, b.capacity),
+		processor:       b.processor,
+		batchSize:       b.batchSize,
+	}
+
+	// Initialize availability markers to invalid sequence
+	for i := range z.availableBuffer {
+		z.availableBuffer[i].Store(-1)
+	}
+
+	return z, nil
+}
+
+// Write adds an item to the ring buffer using zero-allocation pattern
+//
+// This method provides the core MPSC write operation optimized for
+// high-frequency logging. Multiple producers can call this concurrently.
+//
+// Parameters:
+//   - writerFunc: Function to populate the allocated slot (zero allocations)
+//
+// Returns:
+//   - bool: true if successfully written, false if ring full or closed
+//
+// Performance: Target ~15-20ns/op (simplified vs 9ns commercial Zephyros)
+func (z *ZephyrosLight[T]) Write(writerFunc func(*T)) bool {
+	// Quick closed check
+	if z.closed.Load() != 0 {
+		z.dropped.Add(1)
+		return false
+	}
+
+	// MPSC: Claim sequence number atomically
+	sequence := z.writerCursor.Add(1) - 1
+
+	// Check if we're about to lap the reader (buffer full check)
+	if sequence >= z.readerCursor.Load()+z.capacity {
+		// Buffer full - we need to rollback the claim
+		// Note: This is a simplified approach vs commercial Zephyros
+		z.dropped.Add(1)
+		return false
+	}
+
+	// Write to allocated slot
+	slot := &z.buffer[sequence&z.mask]
+	writerFunc(slot)
+
+	// Mark slot as available for reading
+	z.availableBuffer[sequence&z.mask].Store(sequence)
+
+	return true
+}
+
+// ProcessBatch processes available items in a single batch
+//
+// This is a simplified version that uses fixed batch size rather than
+// the dynamic adaptive batching available in commercial Zephyros.
+//
+// Returns:
+//   - int: Number of items processed in this batch
+//
+// Performance: Optimized for zero-allocation batch processing
+func (z *ZephyrosLight[T]) ProcessBatch() int {
+	current := z.readerCursor.Load()
+	writerPos := z.writerCursor.Load()
+
+	if current >= writerPos {
+		return 0 // Nothing to process
+	}
+
+	// Use fixed batch size (simplified vs adaptive)
+	maxProcess := min(z.batchSize, writerPos-current)
+
+	// Scan for contiguous available sequences
+	available := current - 1
+	maxScan := current + maxProcess
+
+	for seq := current; seq < maxScan; seq++ {
+		if z.availableBuffer[seq&z.mask].Load() == seq {
+			available = seq
+		} else {
+			break // Stop at first gap
+		}
+	}
+
+	if available < current {
+		return 0 // No contiguous sequence found
+	}
+
+	// Process the batch
+	processed := int(available - current + 1)
+
+	for seq := current; seq <= available; seq++ {
+		idx := seq & z.mask
+		z.processor(&z.buffer[idx])
+		z.availableBuffer[idx].Store(-1) // Reset availability
+	}
+
+	// Update reader position
+	z.readerCursor.Store(available + 1)
+	z.processed.Add(int64(processed))
+
+	return processed
+}
+
+// LoopProcess runs the consumer loop with simplified idle strategy
+//
+// This uses a basic spinning strategy rather than the advanced
+// adaptive strategies available in commercial Zephyros.
+func (z *ZephyrosLight[T]) LoopProcess() {
+	spins := 0
+
+	for z.closed.Load() == 0 {
+		processed := z.ProcessBatch()
+
+		if processed > 0 {
+			spins = 0 // Reset spin count on work found
+		} else {
+			spins++
+
+			// Simplified idle strategy (vs advanced commercial version)
+			if spins < 1000 {
+				// Hot spin for low latency
+				continue
+			} else if spins < 10000 {
+				// Occasional yield
+				if spins&7 == 0 { // Every 8 iterations
+					runtime.Gosched()
+				}
+			} else {
+				// Microsleep and reset
+				time.Sleep(time.Microsecond)
+				spins = 0
+			}
+		}
+	}
+
+	// Final drain on close - simplified version
+	for z.ProcessBatch() > 0 {
+		// Keep processing until empty
+	}
+}
+
+// Close gracefully shuts down the ring buffer
+func (z *ZephyrosLight[T]) Close() {
+	z.closed.Store(1)
+}
+
+// Flush ensures pending writes are visible (simplified version)
+func (z *ZephyrosLight[T]) Flush() {
+	// Simplified flush - the availability markers provide ordering
+	// No additional flush logic needed for this implementation
+}
+
+// Stats returns basic performance statistics
+//
+// This provides essential metrics without the comprehensive
+// monitoring available in commercial Zephyros.
+//
+// Returns:
+//   - map[string]int64: Basic performance metrics
+func (z *ZephyrosLight[T]) Stats() map[string]int64 {
+	writerPos := z.writerCursor.Load()
+	readerPos := z.readerCursor.Load()
+
+	return map[string]int64{
+		"writer_position": writerPos,
+		"reader_position": readerPos,
+		"buffer_size":     z.capacity,
+		"items_buffered":  writerPos - readerPos,
+		"items_processed": z.processed.Load(),
+		"items_dropped":   z.dropped.Load(),
+		"closed":          z.closed.Load(),
+		"batch_size":      z.batchSize,
+	}
+}
