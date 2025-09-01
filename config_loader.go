@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agilira/argus"
 	"github.com/agilira/iris/internal/zephyroslite"
 )
 
@@ -300,4 +301,157 @@ func parseIdleStrategy(strategyStr string) IdleStrategy {
 	default:
 		return BalancedStrategy // Default strategy
 	}
+}
+
+// DynamicConfigWatcher manages dynamic configuration changes using Argus
+// Provides real-time hot reload of Iris logger configuration with audit trail
+type DynamicConfigWatcher struct {
+	configPath  string
+	atomicLevel *AtomicLevel
+	watcher     *argus.Watcher
+	enabled     bool
+}
+
+// NewDynamicConfigWatcher creates a new dynamic config watcher for iris logger
+// This enables runtime log level changes by watching the configuration file
+//
+// Parameters:
+//   - configPath: Path to the JSON configuration file to watch
+//   - atomicLevel: The atomic level instance from iris logger
+//
+// Example usage:
+//
+//	logger, err := iris.New(config)
+//	if err != nil {
+//	    return err
+//	}
+//
+//	watcher, err := iris.NewDynamicConfigWatcher("config.json", logger.Level())
+//	if err != nil {
+//	    return err
+//	}
+//	defer watcher.Stop()
+//
+//	if err := watcher.Start(); err != nil {
+//	    return err
+//	}
+//
+// Now when you modify config.json and change the "level" field,
+// the logger will automatically update its level without restart!
+func NewDynamicConfigWatcher(configPath string, atomicLevel *AtomicLevel) (*DynamicConfigWatcher, error) {
+	// Check if config file exists
+	if _, err := os.Stat(configPath); err != nil {
+		return nil, fmt.Errorf("config file does not exist: %w", err)
+	}
+
+	// Create Argus watcher with production-ready configuration
+	config := argus.Config{
+		PollInterval:         2 * time.Second, // Fast response for dev, efficient for prod
+		OptimizationStrategy: argus.OptimizationAuto,
+
+		// Enable audit trail for configuration changes
+		Audit: argus.AuditConfig{
+			Enabled:       true,
+			OutputFile:    "iris-config-audit.jsonl",
+			MinLevel:      argus.AuditInfo, // Capture all config changes
+			BufferSize:    1000,
+			FlushInterval: 5 * time.Second, // Faster flush for testing
+		},
+
+		// Error handling for config watcher
+		ErrorHandler: func(err error, path string) {
+			// Log errors through our own error system
+			loggerErr := NewLoggerError(ErrCodeFileOpen,
+				fmt.Sprintf("Config watcher error for %s: %v", path, err))
+			GetErrorHandler()(loggerErr)
+		},
+	}
+
+	watcher := argus.New(*config.WithDefaults())
+
+	return &DynamicConfigWatcher{
+		configPath:  configPath,
+		atomicLevel: atomicLevel,
+		watcher:     watcher,
+		enabled:     false,
+	}, nil
+}
+
+// Start begins watching the configuration file for changes
+func (w *DynamicConfigWatcher) Start() error {
+	if w.enabled {
+		return fmt.Errorf("watcher is already started")
+	}
+
+	// Set up config file watcher with hot reload callback
+	w.watcher.Watch(w.configPath, func(event argus.ChangeEvent) {
+		// Load and parse the updated configuration
+		newConfig, err := LoadConfigFromJSON(event.Path)
+		if err != nil {
+			loggerErr := NewLoggerError(ErrCodeInvalidConfig,
+				fmt.Sprintf("Failed to reload config from %s: %v", event.Path, err))
+			GetErrorHandler()(loggerErr)
+			return
+		}
+
+		// Update the atomic level with the new configuration
+		w.atomicLevel.SetLevel(newConfig.Level)
+
+		// Log successful config reload (using our own logger would create a loop!)
+		// Instead we write to stderr for safety
+		fmt.Fprintf(os.Stderr, "[IRIS] Configuration reloaded from %s - Level: %s\n",
+			event.Path, newConfig.Level.String())
+	})
+
+	// Start the Argus watcher
+	w.watcher.Start()
+	w.enabled = true
+	return nil
+}
+
+// Stop stops watching the configuration file
+func (w *DynamicConfigWatcher) Stop() error {
+	if !w.enabled {
+		return fmt.Errorf("watcher is not started")
+	}
+
+	// Stop the Argus watcher
+	w.watcher.Stop()
+	w.enabled = false
+	return nil
+}
+
+// IsRunning returns true if the watcher is currently active
+func (w *DynamicConfigWatcher) IsRunning() bool {
+	return w.enabled
+}
+
+// EnableDynamicLevel creates and starts a config watcher for the given logger and config file
+// This is a convenience function that combines NewDynamicConfigWatcher + Start
+//
+// Example:
+//
+//	logger, err := iris.New(config)
+//	if err != nil {
+//	    return err
+//	}
+//
+//	watcher, err := iris.EnableDynamicLevel(logger, "config.json")
+//	if err != nil {
+//	    log.Printf("Dynamic level disabled: %v", err)
+//	} else {
+//	    defer watcher.Stop()
+//	    log.Println("✅ Dynamic level changes enabled!")
+//	}
+func EnableDynamicLevel(logger *Logger, configPath string) (*DynamicConfigWatcher, error) {
+	watcher, err := NewDynamicConfigWatcher(configPath, &logger.level)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create dynamic config watcher: %w", err)
+	}
+
+	if err := watcher.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start dynamic config watcher: %w", err)
+	}
+
+	return watcher, nil
 }

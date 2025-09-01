@@ -227,23 +227,3 @@ func TestArchitecture_RoundTrip(t *testing.T) {
 		})
 	}
 }
-
-// BenchmarkArchitecture_String benchmarks Architecture.String() performance
-func BenchmarkArchitecture_String(b *testing.B) {
-	arch := ThreadedRings
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		_ = arch.String()
-	}
-}
-
-// BenchmarkParseArchitecture benchmarks ParseArchitecture() performance
-func BenchmarkParseArchitecture(b *testing.B) {
-	input := "threaded"
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		_, _ = ParseArchitecture(input)
-	}
-}

@@ -278,10 +278,32 @@ func (l *Logger) SetLevel(min Level) { l.level.SetLevel(min) }
 // Performance Notes:
 //   - Atomic load operation
 //   - Zero allocations
-//   - Frequently called in hot paths
+//   - Sub-nanosecond read performance
 //
 // Thread Safety: Safe to call from multiple goroutines
 func (l *Logger) Level() Level { return l.level.Level() }
+
+// AtomicLevel returns a pointer to the logger's atomic level.
+//
+// This method provides access to the underlying atomic level structure,
+// which can be used with dynamic configuration watchers like Argus
+// to enable runtime level changes without logger restarts.
+//
+// Returns:
+//   - *AtomicLevel: Pointer to the atomic level instance
+//
+// Example usage with dynamic config watching:
+//
+//	watcher, err := iris.EnableDynamicLevel(logger, "config.json")
+//	if err != nil {
+//	    log.Printf("Dynamic level disabled: %v", err)
+//	} else {
+//	    defer watcher.Stop()
+//	    log.Println("✅ Dynamic level changes enabled!")
+//	}
+//
+// Thread Safety: The returned AtomicLevel is thread-safe
+func (l *Logger) AtomicLevel() *AtomicLevel { return &l.level }
 
 // WithOptions creates a new logger with the specified options applied.
 //

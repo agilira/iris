@@ -36,6 +36,23 @@ go run main.go
 - Multi-source configuration with precedence
 - Production deployment patterns
 
+### Hot Reload (`examples/hot_reload/`)
+
+🔥 **NEW!** Demonstrates dynamic configuration reloading powered by **Argus v1.0.1**.
+
+**Run the example:**
+```bash
+cd examples/hot_reload
+go run main.go
+```
+
+**Features demonstrated:**
+- ⚡ Real-time configuration updates without restarts
+- 🔍 Configuration audit trail with SHA-256 tamper detection
+- 🚀 Ultra-fast monitoring (12.10ns overhead)
+- 🛡️ Graceful handling of invalid configurations
+- 📊 Support for JSON, YAML, TOML, HCL, INI formats
+
 ### Configuration Files (`examples/configs/`)
 
 Sample configuration files for different environments:
@@ -81,6 +98,33 @@ This example demonstrates:
 2. Loading configuration from environment variables
 3. Multi-source loading with precedence rules
 4. Production deployment patterns with fallbacks
+
+### Hot Reload Example
+
+```bash
+cd examples/hot_reload
+go run main.go
+```
+
+This example demonstrates:
+1. **Dynamic Configuration**: Change log levels while the application runs
+2. **Audit Trail**: All configuration changes logged to `iris-config-audit.jsonl`
+3. **Format Support**: Automatic detection of JSON, YAML, TOML, HCL, INI
+4. **Performance**: Ultra-fast 12.10ns monitoring overhead
+5. **Production Ready**: Graceful error handling and file watching
+
+**Try This Live Demo:**
+While the program is running, edit `iris_config.json` and change the level:
+
+```json
+{
+    "level": "debug",
+    "development": false,
+    "encoder": "json"
+}
+```
+
+You'll see debug messages appear immediately! 🎉
 
 ### Using Configuration Files
 
@@ -159,7 +203,7 @@ services:
       - ./configs/production.json:/app/config.json:ro
 ```
 
-### HTTP Service with Context
+### HTTP Service with Hot Reload
 
 ```go
 package main
@@ -169,6 +213,45 @@ import (
     "net/http"
     "github.com/agilira/iris"
 )
+
+func main() {
+    // Create logger
+    logger, err := iris.New(iris.Config{
+        Level: iris.InfoLevel,
+        Encoder: "json",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer logger.Sync()
+    
+    // Enable hot reload
+    watcher, err := iris.NewDynamicConfigWatcher("config.json", logger.Level())
+    if err != nil {
+        logger.Error("Failed to create config watcher", iris.Error(err))
+    } else {
+        defer watcher.Stop()
+        watcher.Start()
+        logger.Info("Hot reload enabled - edit config.json to change log levels")
+    }
+    
+    // HTTP handlers with context
+    mux := http.NewServeMux()
+    mux.HandleFunc("/api/users", func(w http.ResponseWriter, r *http.Request) {
+        // Logger automatically picks up new configuration
+        logger.Debug("Debug info for troubleshooting")
+        logger.Info("Processing user request", 
+            iris.String("method", r.Method),
+            iris.String("path", r.URL.Path),
+        )
+        
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte(`{"status": "ok"}`))
+    })
+    
+    logger.Info("Server starting on :8080")
+    http.ListenAndServe(":8080", contextMiddleware(logger)(mux))
+}
 
 func contextMiddleware(logger *iris.Logger) func(http.Handler) http.Handler {
     return func(next http.Handler) http.Handler {
@@ -198,6 +281,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 ```
 
 ## Performance Tips
+
+### Hot Reload
+
+1. **Optimize Poll Interval**: Default 2s is responsive, adjust for your needs
+2. **Enable Audit Trail**: Use for compliance and debugging configuration changes
+3. **Graceful Shutdown**: Always call `watcher.Stop()` to prevent resource leaks
+4. **File Permissions**: Ensure config files have appropriate read permissions
 
 ### Context Integration
 

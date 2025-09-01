@@ -355,32 +355,3 @@ func TestLoadConfigMultiSource_EnvironmentIntegration(t *testing.T) {
 		}
 	})
 }
-
-// BenchmarkLoadConfigMultiSource benchmarks LoadConfigMultiSource performance
-func BenchmarkLoadConfigMultiSource(b *testing.B) {
-	// Create a test JSON file
-	tmpDir := b.TempDir()
-	jsonFile := filepath.Join(tmpDir, "bench_config.json")
-
-	testConfig := map[string]interface{}{
-		"level":    "info",
-		"format":   "json",
-		"output":   "stdout",
-		"capacity": 1024,
-	}
-
-	data, err := json.Marshal(testConfig)
-	if err != nil {
-		b.Fatalf("Failed to marshal bench config: %v", err)
-	}
-
-	if err := os.WriteFile(jsonFile, data, 0644); err != nil {
-		b.Fatalf("Failed to write bench config: %v", err)
-	}
-
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		_, _ = LoadConfigMultiSource(jsonFile)
-	}
-}
