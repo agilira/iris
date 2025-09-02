@@ -1,8 +1,8 @@
 # Iris Quick Start Guide
 
-## Getting Started in 2 Minutes
+## Getting Started in 30 Seconds
 
-Iris is designed to be the fastest and most secure logging library for Go with **zero configuration complexity**. Follow this guide to get started quickly and understand the core concepts.
+Iris features a Smart API that automatically configures itself for optimal performance. No complex setup, no manual tuning - just ultra-fast logging that works perfectly out-of-the-box.
 
 ## Installation
 
@@ -10,45 +10,124 @@ Iris is designed to be the fastest and most secure logging library for Go with *
 go get github.com/agilira/iris
 ```
 
-## Core Concept: Automatic Everything
+## Core Concept: Smart Auto-Configuration
 
-**Key Principle**: Iris handles performance optimization automatically. You **never** need to manually configure async/sync modes, buffer sizes, or scaling parameters.
+**Key Principle**: Iris intelligently detects and configures everything automatically. You **never** need to manually configure architectures, buffer sizes, encoders, or performance settings.
 
 ```go
-// ❌ WRONG: Don't try to manually configure performance
-// ❌ WRONG: Don't worry about async/sync settings
-// ❌ WRONG: Don't set buffer sizes manually
+// ✅ RIGHT: Smart API handles everything automatically
+logger, _ := iris.New(iris.Config{})
+logger.Start()
 
-// ✅ RIGHT: Let IRIS handle everything automatically
-autoLogger, _ := iris.NewAutoScalingLogger(config, iris.DefaultAutoScalingConfig())
-autoLogger.Start() // 🤖 Auto-scaling system activates
-// Use normally - IRIS optimizes automatically!
+// Iris automatically:
+// - Detects optimal architecture (Single vs Multi-threaded)
+// - Calculates optimal capacity (8KB per CPU core)
+// - Selects best encoder (JSON for production)
+// - Sets appropriate level (Info default)
+// - Enables time caching for performance
 ```
 
 ## Quick Start Examples
 
-### 1. Basic Logger (Development/Simple Use Cases)
+### 1. Simplest Possible Setup (Production Ready)
+
+```go
+package main
+
+import "github.com/agilira/iris"
+
+func main() {
+    // One line setup - production ready!
+    logger, _ := iris.New(iris.Config{})
+    defer logger.Close()
+    logger.Start()
+    
+    // ⚡ Ultra-fast structured logging
+    logger.Info("Service started", iris.Str("version", "1.0.0"))
+}
+```
+
+### 2. Development Mode (Human Readable)
+
+```go
+// Development mode: auto-selects TextEncoder
+logger, _ := iris.New(iris.Config{}, iris.Development())
+logger.Start()
+
+logger.Info("Debug info", iris.Str("component", "auth"))
+// Output: time=2025-09-02T12:00:00Z level=info msg="Debug info" component="auth"
+```
+
+### 3. Environment-Aware Level Setting
+
+```go
+// Environment variable support: IRIS_LEVEL=debug
+logger, _ := iris.New(iris.Config{})
+logger.Start()
+
+// Automatically reads IRIS_LEVEL environment variable
+// Supports: debug, info, warn, error
+```
+
+### 4. Web Application Example
 
 ```go
 package main
 
 import (
-    "os"
+    "net/http"
     "github.com/agilira/iris"
 )
 
 func main() {
-    // Simple logger for development or basic use cases
-    logger, err := iris.New(iris.Config{
-        Level:  iris.Debug,
-        Output: os.Stdout,
-    })
-    if err != nil {
-        panic(err)
-    }
+    // Production-ready web app logging
+    logger, _ := iris.New(iris.Config{})
     defer logger.Close()
-    
     logger.Start()
+    
+    http.HandleFunc("/api/users", func(w http.ResponseWriter, r *http.Request) {
+        logger.Info("API request",
+            iris.Str("method", r.Method),
+            iris.Str("path", r.URL.Path),
+            iris.Str("user_agent", r.UserAgent()))
+    })
+    
+    logger.Info("Server starting", iris.Int("port", 8080))
+    http.ListenAndServe(":8080", nil)
+}
+```
+
+## Smart Auto-Detection Features
+
+### Architecture Detection
+```go
+// Automatically selects optimal architecture:
+// - SingleRing: For systems with < 4 CPU cores
+// - ThreadedRings: For systems with >= 4 CPU cores
+logger, _ := iris.New(iris.Config{}) // Smart choice made automatically
+```
+
+### Capacity Optimization
+```go
+// Auto-calculates optimal buffer capacity:
+// - 8KB per CPU core
+// - Minimum: 8KB
+// - Maximum: 64KB
+// No manual tuning required!
+```
+
+### Encoder Selection
+```go
+// Smart encoder selection:
+
+// Production (default): JSON for structured logging
+logger, _ := iris.New(iris.Config{})
+// Output: {"ts":"2025-09-02T12:00:00Z","level":"info","msg":"Hello"}
+
+// Development: Human-readable text
+logger, _ := iris.New(iris.Config{}, iris.Development())
+// Output: time=2025-09-02T12:00:00Z level=info msg="Hello"
+```
     
     // Zero-allocation structured logging
     logger.Info("Application started",
@@ -207,21 +286,20 @@ func main() {
 
 ```go
 func main() {
-    // Production microservice setup
-    autoLogger, _ := iris.NewAutoScalingLogger(
-        iris.Config{
-            Level:   iris.Info,
-            Output:  os.Stdout,
-            Encoder: iris.NewJSONEncoder(), // Structured logs for aggregation
-        },
-        iris.DefaultAutoScalingConfig(),
-    )
-    autoLogger.Start()
-    defer autoLogger.Close()
+    // Production microservice setup (Smart API)
+    logger, _ := iris.New(iris.Config{})
+    logger.Start()
+    defer logger.Close()
     
-    // Component-specific loggers (inherit auto-scaling)
-    authLogger := autoLogger.With(iris.Str("component", "auth"))
-    dbLogger := autoLogger.With(iris.Str("component", "database"))
+    // Smart API automatically optimizes for microservices:
+    // - JSON encoder for structured logs (aggregation-ready)
+    // - Info level (production safe)
+    // - Multi-threaded architecture for high throughput
+    // - Optimal capacity based on system resources
+    
+    // Component-specific loggers (inherit Smart API optimization)
+    authLogger := logger.With(iris.Str("component", "auth"))
+    dbLogger := logger.With(iris.Str("component", "database"))
     
     // Each component uses optimized logging automatically
     authLogger.Info("Authentication service started")

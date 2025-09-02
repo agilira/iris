@@ -1,5 +1,20 @@
 # Backpressure Policies Tutorial
 
+Most users don't need to configure backpressure policies manually. The Smart API automatically selects optimal policies based on your workload. This guide is for advanced users who need specific behavior overrides.
+
+## Quick Start (Recommended)
+
+```go
+// Most users: Smart API handles everything automatically
+logger, _ := iris.New(iris.Config{})
+logger.Start()
+
+// Smart API automatically:
+// - Selects optimal backpressure policy
+// - Configures buffer sizes
+// - Optimizes for your hardware
+```
+
 ## 1. Overview
 
 Iris provides configurable backpressure policies to handle different use cases when the ring buffer becomes full. This tutorial explains when and how to use each policy.
@@ -57,31 +72,28 @@ import (
 )
 
 func main() {
-    // High-performance configuration (default)
-    fastLogger, err := iris.New(iris.Config{
-        Level:              iris.Info,
-        Output:             iris.WrapWriter(os.Stdout),
-        Encoder:            iris.NewJSONEncoder(),
-        BackpressurePolicy: zephyroslite.DropOnFull,
-        Capacity:           8192, // Tune for your workload
-    })
+    // Smart API: Optimal backpressure policy auto-selected
+    logger, err := iris.New(iris.Config{})
     if err != nil {
         panic(err)
     }
     
-    // Guaranteed delivery configuration
+    // Smart API automatically chooses optimal policy based on:
+    // - System characteristics (CPU cores, memory)
+    // - Workload patterns (detected at runtime)
+    // - Output destination characteristics
+    
+    logger.Start()
+    
+    // For specific requirements, override only what you need:
     auditLogger, err := iris.New(iris.Config{
-        Level:              iris.Debug,
-        Output:             iris.WrapWriter(auditFile),
-        Encoder:            iris.NewJSONEncoder(),
-        BackpressurePolicy: zephyroslite.BlockOnFull,
-        Capacity:           4096, // Smaller buffer for faster flushing
+        BackpressurePolicy: zephyroslite.BlockOnFull, // Override only policy
+        // Everything else: auto-detected optimally
     })
     if err != nil {
         panic(err)
     }
     
-    fastLogger.Start()
     auditLogger.Start()
     defer fastLogger.Close()
     defer auditLogger.Close()

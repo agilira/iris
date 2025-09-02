@@ -2,7 +2,7 @@
 
 ## Overview
 
-Following the wise counsel of the ancient Gemini, we have implemented a comprehensive system of configurable **Idle Strategies** for the Iris logging library. This addresses the critical issue of CPU consumption when the consumer loop has no work to process.
+We have implemented a comprehensive system of configurable **Idle Strategies** for Iris. This addresses the critical issue of CPU consumption when the consumer loop has no work to process.
 
 ## The Problem
 
@@ -212,9 +212,3 @@ Idle strategies are lightweight and don't impact the zero-allocation write path.
 
 ### Thread Safety
 All idle strategies are designed for single-consumer use (as per Iris architecture) and don't require additional synchronization.
-
-## Conclusion
-
-This implementation successfully addresses Gemini's concern about CPU consumption while maintaining the ultra-high performance characteristics of Iris. Users can now choose the appropriate trade-off between latency and CPU usage based on their specific requirements.
-
-The default `ProgressiveIdleStrategy` provides excellent performance for most use cases without requiring manual tuning, while advanced users can fine-tune their configuration for specific requirements.

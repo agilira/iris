@@ -24,51 +24,52 @@ The `Sync()` method in Iris ensures data integrity by guaranteeing that all buff
 
 **Debugging**: Critical error logs must be persisted to aid in post-mortem analysis.
 
-## Production Pattern (Auto-Scaling Logger)
+## Production Pattern (Smart API)
 
-For production environments, use the AutoScalingLogger which automatically handles performance optimization:
+For production environments, use the Smart API which automatically configures optimal settings:
 
 ```go
 func main() {
-    // Production pattern: Auto-scaling logger
-    autoLogger, err := iris.NewAutoScalingLogger(
-        iris.Config{
-            Level:   iris.Info,
-            Output:  os.Stdout,
-            Encoder: iris.NewJSONEncoder(),
-        },
-        iris.DefaultAutoScalingConfig(), // Handles all optimization automatically
-    )
+    // Production pattern: Smart API (Zero Configuration)
+    logger, err := iris.New(iris.Config{})
     if err != nil {
         panic(err)
     }
     
-    autoLogger.Start() // Auto-scaling system activates
+    logger.Start() // Smart system auto-configures everything
     defer func() {
         // CRITICAL: Always call Sync() before Close()
-        if err := autoLogger.Sync(); err != nil {
+        if err := logger.Sync(); err != nil {
             fmt.Fprintf(os.Stderr, "Failed to sync logs: %v\n", err)
         }
-        autoLogger.Close()
+        logger.Close()
     }()
     
-    // Use normally - auto-scaling optimizes performance automatically
-    autoLogger.Info("Application started")
+    // Smart API automatically configures:
+    // - Architecture: Multi-threaded on multi-core systems
+    // - Capacity: 8KB per CPU core (optimal for your hardware)
+    // - Encoder: JSON for structured logging
+    // - Level: Info (production safe, override with IRIS_LEVEL)
+    // - Performance: Ultra-fast cached timestamps
+    
+    // Your application logic
+    logger.Info("Application started", iris.Str("version", "1.0.0"))
+    }()
+    
+    // Use normally - Smart API optimizes everything automatically
+    logger.Info("Application started")
     // ... work ...
 }
 ```
 
-## Development Pattern (Basic Logger)
+## Development Pattern (Smart API)
 
-For simple use cases or development environments:
+For development environments with human-readable logs:
 
 ```go
 func main() {
-    logger, err := iris.New(iris.Config{
-        Level:   iris.Info,
-        Output:  os.Stdout,
-        Encoder: iris.NewJSONEncoder(),
-    })
+    // Development pattern: Smart API with Development mode
+    logger, err := iris.New(iris.Config{}, iris.Development())
     if err != nil {
         panic(err)
     }
@@ -82,6 +83,19 @@ func main() {
         logger.Close()
     }()
     
+    // Development mode automatically enables:
+    // - Text encoder (human readable)
+    // - Debug level
+    // - Caller information
+    
+    // Your development/testing logic
+    logger.Debug("Debug info", iris.Str("component", "auth"))
+    logger.Info("User login", iris.Str("user", "john"))
+}
+        }
+        logger.Close()
+    }()
+    
     // Your application logic here
     logger.Info("Application started")
     // ... work ...
@@ -91,29 +105,30 @@ func main() {
 
 ## Critical Use Cases
 
-### 1. Production Web Application (Auto-Scaling Pattern)
+### 1. Production Web Application (Smart API Pattern)
 
 ```go
 func main() {
-    // Production-ready auto-scaling logger
-    autoLogger, err := iris.NewAutoScalingLogger(
-        iris.Config{
-            Level:   iris.Info,
-            Output:  os.Stdout,
-            Encoder: iris.NewJSONEncoder(),
-        },
-        iris.DefaultAutoScalingConfig(),
-    )
+    // Production-ready Smart API (zero configuration)
+    logger, err := iris.New(iris.Config{})
     if err != nil {
         panic(err)
     }
     
-    autoLogger.Start()
+    logger.Start()
     defer func() {
         // CRITICAL: Always sync before shutdown
-        if err := autoLogger.Sync(); err != nil {
+        if err := logger.Sync(); err != nil {
             fmt.Fprintf(os.Stderr, "Failed to sync logs: %v\n", err)
         }
+        logger.Close()
+    }()
+    
+    // Smart API automatically optimizes for production:
+    // - Multi-threaded architecture on multi-core systems
+    // - JSON encoder for structured logs
+    // - Info level (safe for production)
+    // - Optimal capacity based on CPU cores
         autoLogger.Close()
     }()
     
@@ -298,16 +313,16 @@ func handleRequest(ctx context.Context, logger *iris.Logger) error {
 
 ### Optimization Guidelines
 
-#### With Auto-Scaling Logger (Production):
-- Use `iris.NewAutoScalingLogger()` for production environments
-- Let the auto-scaling system handle all performance optimization
-- No manual buffer size or batch configuration needed
+#### With Smart API (Production):
+- Use `iris.New(iris.Config{})` for production environments
+- Let the Smart API system handle all performance optimization
+- No manual buffer size, encoder, or architecture configuration needed
 - Focus only on proper Sync() calls during shutdown
 
-#### With Basic Logger (Development):
-- Use periodic sync for high-throughput applications
-- Combine multiple log operations before syncing
-- Suitable for development or simple use cases
+#### With Development Mode:
+- Use `iris.New(iris.Config{}, iris.Development())` for debugging
+- Get human-readable text output and debug level
+- Suitable for development or troubleshooting
 
 #### Universal Guidelines:
 - Always call Sync() before application shutdown
@@ -317,24 +332,22 @@ func handleRequest(ctx context.Context, logger *iris.Logger) error {
 ### Configuration Comparison
 
 ```go
-// PRODUCTION: Auto-scaling handles everything
-autoLogger, _ := iris.NewAutoScalingLogger(
-    iris.Config{
-        Level:   iris.Info,
-        Output:  output,
-        Encoder: iris.NewJSONEncoder(),
-    },
-    iris.DefaultAutoScalingConfig(), // Automatic optimization
-)
-
-// DEVELOPMENT: Manual configuration for simple cases
+// PRODUCTION: Smart API handles everything automatically
 logger, _ := iris.New(iris.Config{
-    Level:     iris.Info,
-    Output:    output,
-    Encoder:   iris.NewJSONEncoder(),
-    Capacity:  4096,  // Manual buffer size
-    BatchSize: 256,   // Manual batch processing
+    // All settings auto-detected optimally:
+    // - Level: Info (production safe)
+    // - Output: os.Stdout (default)
+    // - Encoder: JSON (structured logging)
+    // - Capacity: 8KB per CPU core
+    // - Architecture: Multi-threaded on multi-core
 })
+
+// DEVELOPMENT: Human-readable logs with debug info
+logger, _ := iris.New(iris.Config{}, iris.Development())
+// Development mode auto-enables:
+// - Level: Debug
+// - Encoder: Text (human readable)
+// - Caller: true (show function names)
 ```
 
 ## Common Pitfalls

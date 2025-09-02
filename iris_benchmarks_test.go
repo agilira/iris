@@ -32,12 +32,7 @@ import (
 	"github.com/agilira/iris/internal/zephyroslite"
 )
 
-// Iris benchmark file that replicates zap benchmarks with OPTIMAL Iris configuration
-//
-// Philosophy: Like zap, we configure Iris for MAXIMUM PERFORMANCE, not artificial "fairness"
-// - Iris uses its designed optimal architecture (ThreadedRings, batching, large buffers)
-// - Zap uses its optimal configuration (synchronous, immediate processing)
-// - Both libraries show their true potential rather than handicapped versions
+// Iris benchmark file
 //
 // This approach gives users realistic performance expectations for production use.
 var (
@@ -96,14 +91,13 @@ func (d *Discarder) Sync() error {
 
 // newIrisLogger creates a logger with optimal benchmark configuration
 // Uses SingleRing with minimal overhead to measure pure logging performance
-// This is equivalent to zap's direct synchronous approach for fair comparison
 func newIrisLogger() *Logger {
 	logger, err := New(Config{
 		Level:              Debug,
 		Output:             WrapWriter(io.Discard),
 		Encoder:            NewJSONEncoder(),
-		Capacity:           1, // Minimal capacity for direct processing
-		BatchSize:          1, // No batching overhead
+		Capacity:           64, // Valid power of 2 for benchmark use
+		BatchSize:          1,  // No batching overhead
 		Architecture:       SingleRing,
 		NumRings:           1,
 		BackpressurePolicy: zephyroslite.DropOnFull,

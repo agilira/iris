@@ -1,5 +1,8 @@
 # Configuration Loading Guide
 
+Iris **Smart API** auto-configures everything optimally. For most use cases, you can simply use `iris.New(iris.Config{})` with zero configuration. This guide covers advanced scenarios where you need external configuration files.
+ **Quick Start**: See [SMART_API.md](./SMART_API.md) for the simplified approach.
+
 ## Overview
 
 Iris provides flexible configuration loading from multiple sources including JSON files and environment variables. This enables external configuration management for production deployments without requiring code changes or rebuilds.

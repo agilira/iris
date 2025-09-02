@@ -32,22 +32,27 @@ func (l *Logger) Errorf(format string, args ...any) bool
 
 ### Basic Printf-Style Logging
 ```go
-logger, err := iris.New(iris.Config{
-    Level:   iris.Debug,
-    Output:  os.Stdout,
-    Encoder: iris.NewJSONEncoder(),
-})
+// Smart API: Zero configuration setup
+logger, err := iris.New(iris.Config{})
 if err != nil {
     log.Fatal(err)
 }
 logger.Start()
 defer logger.Close()
 
-// Sugar API examples
-logger.Debugf("Debug: %s = %d", "count", 10)
+// Smart API automatically configures:
+// - JSON encoder (structured logs)
+// - Info level (production safe)
+// - Optimal performance settings
+
+// Sugar API examples (same for all configurations)
+logger.Debugf("Debug: %s = %d", "count", 10)        // Won't show (Info level)
 logger.Infof("User %s logged in with ID %d", "john", 123)
 logger.Warnf("Warning: %d errors found in %s", 3, "database")
 logger.Errorf("Error: %s failed with code %d", "operation", 500)
+
+// For development with debug logs:
+// logger, _ := iris.New(iris.Config{}, iris.Development())
 ```
 
 **Output:**
@@ -290,4 +295,3 @@ if !logger.Errorf("Critical error: %v", err) {
 
 ---
 
-**Pro Tip**: Use sugar APIs for development and debugging, structured APIs for production and high-performance scenarios. Iris makes it easy to mix and match both approaches in the same application.

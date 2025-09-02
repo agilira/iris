@@ -58,13 +58,14 @@ import (
 // newIrisLogger creates a logger with optimal benchmark configuration - copied from iris_benchmarks_test.go
 func newIrisLogger() *iris.Logger {
 	logger, err := iris.New(iris.Config{
-		Level:        iris.Debug,
-		Output:       iris.WrapWriter(io.Discard),
-		Encoder:      iris.NewJSONEncoder(),
-		Capacity:     1, // Minimal capacity for direct processing
-		BatchSize:    1, // No batching overhead
-		Architecture: iris.SingleRing,
-		NumRings:     1,
+		Level:              iris.Debug,
+		Output:             iris.WrapWriter(io.Discard),
+		Encoder:            iris.NewJSONEncoder(),
+		Capacity:           64, // Minimum power of 2 (2^6 = 64)
+		BatchSize:          1,  // No batching overhead
+		Architecture:       iris.SingleRing,
+		NumRings:           1,
+		BackpressurePolicy: 0, // 0 = DropOnFull by design
 	})
 	if err != nil {
 		panic(err)
@@ -110,13 +111,14 @@ func BenchmarkIris_10Fields(b *testing.B) {
 
 func BenchmarkIris_DisabledWithoutFields(b *testing.B) {
 	logger, err := iris.New(iris.Config{
-		Level:        iris.Error, // Disabled level
-		Output:       iris.WrapWriter(io.Discard),
-		Encoder:      iris.NewJSONEncoder(),
-		Capacity:     1,
-		BatchSize:    1,
-		Architecture: iris.SingleRing,
-		NumRings:     1,
+		Level:              iris.Error, // Disabled level
+		Output:             iris.WrapWriter(io.Discard),
+		Encoder:            iris.NewJSONEncoder(),
+		Capacity:           64, // Minimum power of 2 (2^6 = 64)
+		BatchSize:          1,
+		Architecture:       iris.SingleRing,
+		NumRings:           1,
+		BackpressurePolicy: 0, // 0 = DropOnFull by design
 	})
 	if err != nil {
 		panic(err)

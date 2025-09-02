@@ -2,7 +2,7 @@
 
 ## Overview
 
-Iris implements an auto-scaling logging architecture inspired by Lethe's adaptive buffer scaling patterns. The system automatically transitions between SingleRing and MPSC modes based on real-time performance metrics to optimize throughput and latency under varying workload conditions.
+Iris implements an auto-scaling logging architecture inspired by Xantos Core autotuner. The system automatically transitions between SingleRing and MPSC modes based on real-time performance metrics to optimize throughput and latency under varying workload conditions.
 
 ## Architecture Overview
 
@@ -117,27 +117,24 @@ import (
 )
 
 func main() {
-    // Create auto-scaling logger
-    config := iris.Config{
-        Level:   iris.Info,
-        Output:  os.Stdout,
-        Encoder: iris.NewJSONEncoder(),
-    }
-    
-    autoLogger, err := iris.NewAutoScalingLogger(
-        config, 
-        iris.DefaultAutoScalingConfig(),
-    )
+    // Create Smart API logger (auto-scaling built-in)
+    logger, err := iris.New(iris.Config{})
     if err != nil {
         panic(err)
     }
     
-    // Start auto-scaling system
-    autoLogger.Start()
-    defer autoLogger.Close()
+    // Smart API automatically enables auto-scaling:
+    // - Architecture: Detects optimal single/multi-threaded mode
+    // - Capacity: Scales based on CPU cores (8KB per core)
+    // - Encoder: JSON for structured production logs
+    // - Performance: Optimizes based on runtime load patterns
     
-    // Use normally - auto-scaling is transparent
-    autoLogger.Info("Message will auto-scale based on load")
+    // Start Smart API system (auto-scaling is transparent)
+    logger.Start()
+    defer logger.Close()
+    
+    // Use normally - auto-scaling happens automatically
+    logger.Info("Message will auto-scale based on load")
 }
 ```
 

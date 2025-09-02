@@ -12,6 +12,7 @@ package zephyroslite
 
 import (
 	"runtime"
+	"sync/atomic"
 	"time"
 )
 
@@ -225,8 +226,8 @@ func (s *ChannelIdleStrategy) WakeUp() {
 // reduces CPU usage as idle time increases.
 // Best for: Variable workload patterns where both low latency and low CPU usage are important.
 type ProgressiveIdleStrategy struct {
-	spins        int
-	sleepCounter int
+	spins        int64 // atomic counter
+	sleepCounter int64 // atomic counter
 
 	// Configuration thresholds
 	hotSpinThreshold  int           // Spins before first yield
@@ -246,20 +247,21 @@ func NewProgressiveIdleStrategy() *ProgressiveIdleStrategy {
 }
 
 func (s *ProgressiveIdleStrategy) Idle() bool {
-	s.spins++
+	spins := atomic.AddInt64(&s.spins, 1)
 
-	if s.spins < s.hotSpinThreshold {
+	if spins < int64(s.hotSpinThreshold) {
 		// Hot spin for minimum latency
 		return true
-	} else if s.spins < s.warmSpinThreshold {
+	} else if spins < int64(s.warmSpinThreshold) {
 		// Occasional yield
-		if s.spins&7 == 0 { // Every 8 iterations
+		if spins&7 == 0 { // Every 8 iterations
 			runtime.Gosched()
 		}
 		return true
 	} else {
 		// Progressive sleep with backoff
-		shift := s.sleepCounter / 2
+		sleepCounter := atomic.LoadInt64(&s.sleepCounter)
+		shift := sleepCounter / 2
 		if shift > 10 {
 			shift = 10
 		}
@@ -269,15 +271,15 @@ func (s *ProgressiveIdleStrategy) Idle() bool {
 		}
 
 		time.Sleep(sleepDuration)
-		s.sleepCounter++
-		s.spins = 0 // Reset spin count after sleep
+		atomic.AddInt64(&s.sleepCounter, 1)
+		atomic.StoreInt64(&s.spins, 0) // Reset spin count after sleep
 		return true
 	}
 }
 
 func (s *ProgressiveIdleStrategy) Reset() {
-	s.spins = 0
-	s.sleepCounter = 0
+	atomic.StoreInt64(&s.spins, 0)
+	atomic.StoreInt64(&s.sleepCounter, 0)
 }
 
 func (s *ProgressiveIdleStrategy) String() string {

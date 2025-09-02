@@ -2,6 +2,28 @@
 
 **Dynamic configuration updates without service restarts**
 
+Most configuration is automatically optimized. Hot reload is primarily used for runtime adjustments like log levels. The Smart API automatically handles most other settings optimally.
+
+## Quick Start (Smart API + Hot Reload)
+
+```go
+// Smart API with hot reload capability
+logger, _ := iris.New(iris.Config{})
+logger.Start()
+
+// Enable hot reload for runtime adjustments
+watcher, _ := iris.NewDynamicConfigWatcher("config.json", logger)
+watcher.Start()
+defer watcher.Stop()
+
+// config.json only needs runtime-adjustable settings:
+// {
+//   "level": "debug",     // Change log level at runtime
+//   "output": "/var/log/app.log"  // Change output destination
+// }
+// All other settings (encoder, capacity, architecture): auto-optimized by Smart API
+```
+
 ---
 
 ## Overview

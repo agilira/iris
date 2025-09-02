@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-The Iris implements enterprise-grade security features designed to protect sensitive data and prevent log injection attacks in mission-critical applications. This document outlines two major security features that make Iris uniquely suited for high-security environments:
+Iris implements production-grade security features designed to protect sensitive data and prevent log injection attacks in mission-critical applications. This document outlines two major security features that make Iris uniquely suited for high-security environments:
 
 1. **Sensitive Data Masking**: Automatic redaction of sensitive information
 2. **Log Injection Protection**: Comprehensive defense against log manipulation attacks
@@ -113,7 +113,7 @@ Overhead: 2.38ns (+4.9%)
 
 ### Overview
 
-Log injection attacks occur when malicious input manipulates log entries to inject false information, bypass security monitoring, or confuse log analysis systems. IRIS implements comprehensive protection against these attacks through aggressive input sanitization.
+Log injection attacks occur when malicious input manipulates log entries to inject false information, bypass security monitoring, or confuse log analysis systems. Iris implements comprehensive protection against these attacks through aggressive input sanitization.
 
 ### Attack Vectors Addressed
 
@@ -292,7 +292,7 @@ func (e *TextEncoder) writeSafeMultiline(content string, buf *bytes.Buffer) {
 
 ### Security Testing
 
-IRIS includes comprehensive security tests covering various attack scenarios:
+Iris includes comprehensive security tests covering various attack scenarios:
 
 ```go
 func TestComplexInjectionScenario(t *testing.T) {
