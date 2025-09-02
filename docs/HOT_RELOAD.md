@@ -6,7 +6,7 @@
 
 ## Overview
 
-Iris provides enterprise-grade hot reload functionality that enables real-time configuration changes without requiring application restarts. This feature is built into the core logging library and provides immediate configuration updates with comprehensive audit trails for production environments.
+Iris provides production-grade hot reload functionality that enables real-time configuration changes without requiring application restarts. This feature is built into the core logging library and provides immediate configuration updates with comprehensive audit trails for production environments.
 
 ## Table of Contents
 
@@ -814,14 +814,10 @@ func writeConfig(t *testing.T, filename string, config map[string]interface{}) {
 
 ## Conclusion
 
-Iris hot reload provides enterprise-grade dynamic configuration management with:
+Iris hot reload provides production-grade dynamic configuration management with:
 
 - **Zero-downtime updates** for production environments
 - **Comprehensive audit trails** for compliance and security
 - **Multi-format support** for flexible configuration management  
 - **Production-ready performance** with minimal overhead
 - **Robust error handling** and graceful degradation
-
-The feature integrates seamlessly with existing Iris logging infrastructure while providing the flexibility and reliability required for modern cloud-native applications.
-
-For questions or support, please refer to the main Iris documentation or submit an issue to the project repository.

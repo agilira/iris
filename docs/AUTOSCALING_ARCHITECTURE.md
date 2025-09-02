@@ -1,8 +1,8 @@
-# IRIS Auto-Scaling Architecture
+# Iris Auto-Scaling Architecture
 
 ## Overview
 
-IRIS implements an auto-scaling logging architecture inspired by Lethe's adaptive buffer scaling patterns. The system automatically transitions between SingleRing and MPSC modes based on real-time performance metrics to optimize throughput and latency under varying workload conditions.
+Iris implements an auto-scaling logging architecture inspired by Lethe's adaptive buffer scaling patterns. The system automatically transitions between SingleRing and MPSC modes based on real-time performance metrics to optimize throughput and latency under varying workload conditions.
 
 ## Architecture Overview
 
@@ -179,14 +179,6 @@ func highContentionLogging(autoLogger *iris.AutoScalingLogger) {
 3. **Zero Loss**: Atomic transitions with no log message loss
 4. **Adaptive**: Real-time performance monitoring and adjustment
 
-### Benchmarking Results
-
-```
-BenchmarkAutoScaling/SingleProducer    50000000    25.41 ns/op    0 B/op    0 allocs/op
-BenchmarkAutoScaling/MultiProducer     30000000    35.67 ns/op    0 B/op    0 allocs/op
-BenchmarkAutoScaling/ScaleTransition         100    15430 ns/op   0 B/op    0 allocs/op
-```
-
 ## Monitoring and Statistics
 
 ### Real-Time Statistics
@@ -222,15 +214,6 @@ go func() {
 ```
 
 ## Technical Implementation
-
-### Adaptive Scaling Algorithm
-
-The auto-scaling architecture adapts Lethe's `tryAdaptiveResize` and `shouldScaleToMPSC` patterns for logging architecture transitions:
-
-1. **Lethe Pattern**: Adaptive buffer resizing based on contention metrics
-2. **Iris Adaptation**: Adaptive architecture switching based on workload patterns
-3. **Zero Loss**: Atomic transitions using `sync.RWMutex` for consistency
-4. **Performance Metrics**: Real-time monitoring similar to Lethe's latency tracking
 
 ### Scaling Decision Logic
 
@@ -277,7 +260,7 @@ func (asl *AutoScalingLogger) performScaling(targetMode AutoScalingMode) {
 ### Key Features
 
 1. **Auto-Scaling Architecture**: Dynamic transitions between logging architectures based on workload
-2. **Lethe-Inspired Metrics**: Adapts proven adaptive scaling patterns for logging systems
+2. **Metrics**: Adapts proven adaptive scaling patterns for logging systems
 3. **Zero Loss Transitions**: Guaranteed message delivery during scaling operations
 4. **Real-Time Adaptation**: Responds to workload changes with minimal latency
 5. **Performance Optimized**: Automatically selects optimal architecture for current load patterns

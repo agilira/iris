@@ -1,4 +1,4 @@
-# IRIS Security Framework: Secure by Design
+# Iris Security Framework: Secure by Design
 
 ## Executive Summary
 
@@ -173,7 +173,7 @@ logger.Info("Suspicious activity",
 )
 ```
 
-**IRIS Protection:**
+**Iris Protection:**
 ```
 level=info msg="Suspicious activity" user__="value"
 ```
@@ -458,7 +458,7 @@ config := Config{
 
 ### Security Metrics
 
-IRIS provides metrics for security-related events:
+Iris provides metrics for security-related events:
 
 ```go
 stats := logger.Stats()
@@ -480,7 +480,7 @@ logger.Warn("Potential injection attempt detected",
 
 ---
 
-## 7. Migration Guide
+## 7. Integration Guide
 
 ### From Unsafe Logging Libraries
 
@@ -536,7 +536,7 @@ Security features are continuously improved through:
 
 ## 9. Conclusion
 
-The IRIS logging library's security framework provides enterprise-grade protection against data leakage and log injection attacks while maintaining ultra-high performance. The "secure by design" approach ensures that security is not an afterthought but a fundamental characteristic of the library.
+The Iris logging library's security framework provides production-grade protection against data leakage and log injection attacks while maintaining ultra-high performance. The "secure by design" approach ensures that security is not an afterthought but a fundamental characteristic of the library.
 
 Key benefits:
 - **Zero-configuration security**: Protection enabled by default
@@ -544,8 +544,4 @@ Key benefits:
 - **Comprehensive coverage**: Protection against known and emerging threats
 - **Future-proof**: Extensible architecture for new security features
 
-For additional security questions or to report vulnerabilities, please contact the IRIS security team or file an issue in the project repository.
-
 ---
-
-*This document is maintained by the IRIS development team and is updated with each security enhancement. Last updated: August 22, 2025*

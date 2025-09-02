@@ -1,7 +1,9 @@
-# Iris Sync() Integration Guide
+# IRIS Sync() Integration Guide
 
 ## Table of Contents
 - [Overview](#overview)
+- [Production Pattern (Auto-Scaling Logger)](#production-pattern-auto-scaling-logger)
+- [Development Pattern (Basic Logger)](#development-pattern-basic-logger)
 - [Critical Use Cases](#critical-use-cases)
 - [Integration Patterns](#integration-patterns)
 - [Performance Considerations](#performance-considerations)
@@ -12,7 +14,7 @@
 
 ## Overview
 
-The `Sync()` method in Iris is a critical component for ensuring data integrity in logging operations. It guarantees that all buffered log records are written to the output destination before returning.
+The `Sync()` method in IRIS ensures data integrity by guaranteeing that all buffered log records are written to the output destination before returning. With Iris's auto-scaling architecture, sync operations are optimized automatically based on your workload patterns.
 
 ### Why Sync() Matters
 
@@ -22,9 +24,43 @@ The `Sync()` method in Iris is a critical component for ensuring data integrity 
 
 **Debugging**: Critical error logs must be persisted to aid in post-mortem analysis.
 
-## Critical Use Cases
+## Production Pattern (Auto-Scaling Logger)
 
-### 1. Application Shutdown Pattern
+For production environments, use the AutoScalingLogger which automatically handles performance optimization:
+
+```go
+func main() {
+    // Production pattern: Auto-scaling logger
+    autoLogger, err := iris.NewAutoScalingLogger(
+        iris.Config{
+            Level:   iris.Info,
+            Output:  os.Stdout,
+            Encoder: iris.NewJSONEncoder(),
+        },
+        iris.DefaultAutoScalingConfig(), // Handles all optimization automatically
+    )
+    if err != nil {
+        panic(err)
+    }
+    
+    autoLogger.Start() // Auto-scaling system activates
+    defer func() {
+        // CRITICAL: Always call Sync() before Close()
+        if err := autoLogger.Sync(); err != nil {
+            fmt.Fprintf(os.Stderr, "Failed to sync logs: %v\n", err)
+        }
+        autoLogger.Close()
+    }()
+    
+    // Use normally - auto-scaling optimizes performance automatically
+    autoLogger.Info("Application started")
+    // ... work ...
+}
+```
+
+## Development Pattern (Basic Logger)
+
+For simple use cases or development environments:
 
 ```go
 func main() {
@@ -51,6 +87,59 @@ func main() {
     // ... work ...
     logger.Info("Application shutting down")
 }
+```
+
+## Critical Use Cases
+
+### 1. Production Web Application (Auto-Scaling Pattern)
+
+```go
+func main() {
+    // Production-ready auto-scaling logger
+    autoLogger, err := iris.NewAutoScalingLogger(
+        iris.Config{
+            Level:   iris.Info,
+            Output:  os.Stdout,
+            Encoder: iris.NewJSONEncoder(),
+        },
+        iris.DefaultAutoScalingConfig(),
+    )
+    if err != nil {
+        panic(err)
+    }
+    
+    autoLogger.Start()
+    defer func() {
+        // CRITICAL: Always sync before shutdown
+        if err := autoLogger.Sync(); err != nil {
+            fmt.Fprintf(os.Stderr, "Failed to sync logs: %v\n", err)
+        }
+        autoLogger.Close()
+    }()
+    
+    // Use normally - auto-scaling handles optimization
+    autoLogger.Info("Server starting on :8080")
+    
+    // Graceful shutdown with signal handling
+    c := make(chan os.Signal, 1)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+    
+    go func() {
+        http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+            autoLogger.Info("Request received",
+                iris.Str("method", r.Method),
+                iris.Str("path", r.URL.Path),
+            )
+            w.WriteHeader(http.StatusOK)
+        })
+        http.ListenAndServe(":8080", nil)
+    }()
+    
+    <-c
+    autoLogger.Info("Shutting down gracefully")
+    // Sync() called automatically in defer
+}
+```
 ```
 
 ### 2. Fatal Error Handling
@@ -209,32 +298,43 @@ func handleRequest(ctx context.Context, logger *iris.Logger) error {
 
 ### Optimization Guidelines
 
-#### ✅ Do:
+#### With Auto-Scaling Logger (Production):
+- Use `iris.NewAutoScalingLogger()` for production environments
+- Let the auto-scaling system handle all performance optimization
+- No manual buffer size or batch configuration needed
+- Focus only on proper Sync() calls during shutdown
+
+#### With Basic Logger (Development):
 - Use periodic sync for high-throughput applications
 - Combine multiple log operations before syncing
-- Configure appropriate buffer sizes (1024-8192)
-- Use async patterns for non-critical logs
+- Suitable for development or simple use cases
 
-#### ❌ Don't:
-- Call Sync() after every log operation
-- Use Sync() in hot code paths
-- Ignore Sync() errors
-- Call Sync() from multiple goroutines simultaneously
+#### Universal Guidelines:
+- Always call Sync() before application shutdown
+- Handle Sync() errors appropriately
+- Use signal handlers for graceful shutdown
 
-### Buffer Size Tuning
+### Configuration Comparison
 
 ```go
-// High-throughput configuration
-config := iris.Config{
-    Capacity:  4096,  // Larger buffer for batching
-    BatchSize: 256,   // Balanced batch processing
-}
+// PRODUCTION: Auto-scaling handles everything
+autoLogger, _ := iris.NewAutoScalingLogger(
+    iris.Config{
+        Level:   iris.Info,
+        Output:  output,
+        Encoder: iris.NewJSONEncoder(),
+    },
+    iris.DefaultAutoScalingConfig(), // Automatic optimization
+)
 
-// Low-latency configuration  
-config := iris.Config{
-    Capacity:  512,   // Smaller buffer for quick sync
-    BatchSize: 32,    // Smaller batches for lower latency
-}
+// DEVELOPMENT: Manual configuration for simple cases
+logger, _ := iris.New(iris.Config{
+    Level:     iris.Info,
+    Output:    output,
+    Encoder:   iris.NewJSONEncoder(),
+    Capacity:  4096,  // Manual buffer size
+    BatchSize: 256,   // Manual batch processing
+})
 ```
 
 ## Common Pitfalls
@@ -690,5 +790,3 @@ type WorkItem struct {
 6. **Monitor Sync() performance and tune buffer sizes**
 7. **Use context-aware patterns for bounded operations**
 8. **Test your integration under load and failure conditions**
-
-For more advanced usage patterns and performance tuning, see the [Performance Guide](PERFORMANCE_GUIDE.md) and [Architecture Overview](ARCHITECTURE.md).

@@ -2,7 +2,7 @@
 
 ## Overview
 
-IRIS provides optimized `context.Context` integration for structured logging in distributed systems. This feature enables automatic extraction and inclusion of context values in log records while maintaining zero-allocation performance characteristics.
+Iris provides optimized `context.Context` integration for structured logging in distributed systems. This feature enables automatic extraction and inclusion of context values in log records while maintaining zero-allocation performance characteristics.
 
 ## Key Features
 
@@ -282,7 +282,7 @@ contextLogger := logger.WithContext(ctx) // Skips non-string value
 contextLogger.Info("Type safe") // No request_id field
 ```
 
-## Migration Guide
+## Integration Examples
 
 ### From Manual Context Handling
 

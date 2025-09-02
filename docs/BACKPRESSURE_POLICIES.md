@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-IRIS provides configurable backpressure policies to handle different use cases when the ring buffer becomes full. This tutorial explains when and how to use each policy.
+Iris provides configurable backpressure policies to handle different use cases when the ring buffer becomes full. This tutorial explains when and how to use each policy.
 
 ## 2. Available Policies
 
@@ -406,7 +406,7 @@ config.BackpressurePolicy = zephyroslite.DropOnFull
 // Step 4: Add external log aggregation for redundancy
 ```
 
-## 7. Migration Guide
+## 7. Troubleshooting Guide
 
 ### High Drop Rate (DropOnFull)
 

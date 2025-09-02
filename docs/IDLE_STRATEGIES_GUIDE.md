@@ -4,7 +4,7 @@
 
 Following the wise counsel of the ancient Gemini, we have implemented a comprehensive system of configurable **Idle Strategies** for the Iris logging library. This addresses the critical issue of CPU consumption when the consumer loop has no work to process.
 
-## The Problem (Identified by Gemini)
+## The Problem
 
 The original implementation used a hardcoded spinning strategy that consumed ~100% of one CPU core even when no logging was occurring. This was problematic for:
 
@@ -178,12 +178,9 @@ The implementation includes comprehensive tests:
 - **Performance characteristics** verification
 - **Default behavior** validation
 
-## Migration Guide
+## Configuration Guide
 
-### For Existing Users
-No changes required - the default `ProgressiveIdleStrategy` provides similar or better performance than the original implementation.
-
-### For Performance-Critical Applications
+### Strategy Selection
 Choose the appropriate strategy based on your requirements:
 
 - **Need minimum latency**: Use `SpinningStrategy`
@@ -221,5 +218,3 @@ All idle strategies are designed for single-consumer use (as per Iris architectu
 This implementation successfully addresses Gemini's concern about CPU consumption while maintaining the ultra-high performance characteristics of Iris. Users can now choose the appropriate trade-off between latency and CPU usage based on their specific requirements.
 
 The default `ProgressiveIdleStrategy` provides excellent performance for most use cases without requiring manual tuning, while advanced users can fine-tune their configuration for specific requirements.
-
-**Wise words of Gemini implemented with the power and elegance of modern Go! 🌟**

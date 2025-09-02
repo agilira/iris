@@ -2,7 +2,7 @@
 
 ## Overview
 
-IRIS provides flexible configuration loading from multiple sources including JSON files and environment variables. This enables external configuration management for production deployments without requiring code changes or rebuilds.
+Iris provides flexible configuration loading from multiple sources including JSON files and environment variables. This enables external configuration management for production deployments without requiring code changes or rebuilds.
 
 ## Key Features
 
@@ -625,7 +625,7 @@ type ApplicationConfig struct {
 }
 ```
 
-## Migration Guide
+## Configuration Integration
 
 ### From Hardcoded Configuration
 

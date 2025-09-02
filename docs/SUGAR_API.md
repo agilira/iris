@@ -2,7 +2,7 @@
 
 ## Overview
 
-IRIS provides "sugared" APIs for developers who prefer printf-style logging syntax. These convenience methods offer familiar formatting while maintaining IRIS's high performance characteristics.
+Iris provides "sugared" APIs for developers who prefer printf-style logging syntax. These convenience methods offer familiar formatting while maintaining Iris's high performance characteristics.
 
 **Trade-off**: Sugar APIs sacrifice zero-allocation guarantees for developer convenience and familiar syntax.
 
@@ -144,7 +144,7 @@ logger.Info("User input received", iris.Str("input", userInput))
 ### Input Sanitization
 Sugar APIs automatically sanitize output through IRIS's encoder, but format strings themselves should never contain user input.
 
-## Migration Examples
+## Integration Examples
 
 ### From Standard Log Package
 ```go
@@ -179,7 +179,7 @@ logger.Infof("Failed to fetch URL: %s", url)
 ✅ **Good for:**
 - Rapid prototyping and development
 - Simple logging without complex structure
-- Migrating from printf-style loggers
+- Transitioning from printf-style loggers
 - Console/debug output
 - Low-frequency logging
 
@@ -281,7 +281,7 @@ if !logger.Errorf("Critical error: %v", err) {
 }
 ```
 
-## 🔗 Related Documentation
+## Related Documentation
 
 - [IRIS Core API](../README.md) - Main library documentation
 - [Performance Guide](BENCHMARK_NOTES.md) - Performance characteristics

@@ -14,6 +14,12 @@
 - **Lock-free MPSC** ring buffer with adaptive batching
 - **Sub-nanosecond** level checking with atomic operations
 
+### 🤖 Automatic Scaling (NEW!)
+- **🔄 Zero-Configuration Auto-Scaling**: Automatically switches between SingleRing (~25ns) and MPSC (~35ns) modes
+- **📊 Intelligent Load Detection**: Real-time monitoring of contention, latency, and throughput
+- **⚡ Transparent Optimization**: No manual async/sync configuration needed - everything is automatic!
+- **🎯 Production-Ready**: Self-tuning system that adapts to your application's workload patterns
+
 ### 🔒 Enterprise Security (NEW!)
 - **🛡️ Sensitive Data Masking**: Automatic redaction of passwords, API keys, tokens
 - **🚫 Log Injection Protection**: Complete defense against log manipulation attacks
@@ -75,6 +81,8 @@ func main() {
     logger.Start()
     
     // Zero-allocation structured logging
+    // 🤖 AUTOMATIC: No need to configure async/sync - 
+    // Iris automatically optimizes performance based on your workload!
     logger.Info("User authenticated",
         iris.Str("username", "john_doe"),
         iris.Int("user_id", 12345),
@@ -82,6 +90,43 @@ func main() {
     )
 }
 ```
+
+### 🤖 Auto-Scaling Logger (Recommended for Production)
+
+For production environments, use the AutoScalingLogger that automatically optimizes performance:
+
+```go
+package main
+
+import (
+    "github.com/agilira/iris"
+)
+
+func main() {
+    // Create auto-scaling logger with zero configuration
+    autoLogger, err := iris.NewAutoScalingLogger(
+        iris.Config{
+            Level:  iris.Info,
+            Output: os.Stdout,
+        },
+        iris.DefaultAutoScalingConfig(), // 🎯 Production-ready defaults
+    )
+    if err != nil {
+        panic(err)
+    }
+    defer autoLogger.Close()
+    
+    // Start the intelligent auto-scaling system
+    autoLogger.Start()
+    
+    // Use normally - auto-scaling is completely transparent!
+    // 🔄 Low load: Automatically uses SingleRing mode (~25ns)
+    // ⚡ High load: Automatically switches to MPSC mode (~35ns)
+    autoLogger.Info("This message will auto-scale based on your application load")
+}
+```
+
+> **💡 Pro Tip**: Never manually configure async/sync modes! Iris AutoScalingLogger automatically detects your workload patterns and optimizes performance in real-time.
 
 ### 🔒 Secure Logging (Major Feature!)
 
@@ -437,6 +482,10 @@ For security vulnerabilities, please see [SECURITY.md](SECURITY.md) for responsi
 
 ## � Documentation
 
+### Getting Started
+- **[Quick Start Guide](docs/QUICK_START.md)** - 🚀 **START HERE** - Complete beginner's guide with auto-scaling concepts
+- **[Auto-Scaling Architecture](docs/AUTOSCALING_ARCHITECTURE.md)** - Technical deep-dive into automatic performance optimization
+
 ### Core Features
 - **[Security Reference](docs/SECURE_BY_DESIGN.md)** - Complete security features guide
 - **[Sugar API Guide](docs/SUGAR_API.md)** - Printf-style logging API documentation
@@ -477,6 +526,33 @@ IRIS is licensed under the [Mozilla Public License 2.0](LICENSE.md).
 - [ ] **Sampling**: Advanced sampling strategies
 - [ ] **Encryption**: Log encryption at rest
 - [ ] **Digital Signatures**: Log integrity verification
+
+## ❓ Frequently Asked Questions
+
+### Q: Do I need to manually configure async/sync modes for production?
+**A: NO!** This is the most important concept in IRIS. The `AutoScalingLogger` automatically handles all performance optimizations. Never manually configure async/sync modes - the auto-scaling system is designed to be completely transparent and optimal.
+
+### Q: What's the difference between `iris.New()` and `iris.NewAutoScalingLogger()`?
+**A:** 
+- `iris.New()`: Basic logger, good for development or simple use cases
+- `iris.NewAutoScalingLogger()`: **Recommended for production** - automatically optimizes performance based on your workload
+
+### Q: How do I know if auto-scaling is working?
+**A:** You can monitor it with:
+```go
+stats := autoLogger.GetScalingStats()
+fmt.Printf("Current mode: %s, Scale operations: %d\n", 
+    stats.CurrentMode, stats.TotalScaleOperations)
+```
+
+### Q: What performance should I expect?
+**A:** 
+- **Low contention**: ~25ns/op (SingleRing mode)
+- **High contention**: ~35ns/op per thread (MPSC mode)
+- **Automatic transitions**: Zero log loss during mode switches
+
+### Q: Do I need to configure buffer sizes or batch parameters?
+**A: NO!** The auto-scaling system automatically tunes all parameters based on your application's real-time performance metrics.
 
 ---
 

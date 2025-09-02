@@ -90,7 +90,7 @@ Text Encoding          481 ns      0 allocs
 - ✅ **Zero allocations**: No performance penalty for security
 - ✅ **All encoders**: Works with JSON, Text, and future encoders
 
-## Quick Migration
+## Quick Integration
 
 ### Step 1: Replace sensitive fields
 ```go
