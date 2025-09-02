@@ -2,6 +2,7 @@ package benchmarks
 
 import (
 	"io"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -417,6 +418,102 @@ func BenchmarkLogrus_AccumulatedContext(b *testing.B) {
 		"user2_name": "Jane Doe",
 		"error":      "fail",
 	})
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Info("Logging with some accumulated context.")
+		}
+	})
+}
+
+// =============================================================================
+// SLOG BENCHMARKS
+// =============================================================================
+
+// newSlogLogger creates a logger with optimal benchmark configuration
+func newSlogLogger() *slog.Logger {
+	return slog.New(slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+}
+
+// withBenchedSlogLogger replicates the pattern for Slog
+func withBenchedSlogLogger(b *testing.B, f func(*slog.Logger)) {
+	logger := newSlogLogger()
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			f(logger)
+		}
+	})
+}
+
+func BenchmarkSlog_NoContext(b *testing.B) {
+	withBenchedSlogLogger(b, func(log *slog.Logger) {
+		log.Info("No context.")
+	})
+}
+
+func BenchmarkSlog_10Fields(b *testing.B) {
+	withBenchedSlogLogger(b, func(log *slog.Logger) {
+		log.Info("Ten fields, passed at the log site.",
+			slog.Int("one", 1),
+			slog.Int("two", 2),
+			slog.Int("three", 3),
+			slog.Int("four", 4),
+			slog.Int("five", 5),
+			slog.Int("six", 6),
+			slog.Int("seven", 7),
+			slog.Int("eight", 8),
+			slog.Int("nine", 9),
+			slog.Int("ten", 10),
+		)
+	})
+}
+
+func BenchmarkSlog_DisabledWithoutFields(b *testing.B) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{
+		Level: slog.LevelError,
+	}))
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Info("Logging at a disabled level without any structured context.")
+		}
+	})
+}
+
+func BenchmarkSlog_WithoutFields(b *testing.B) {
+	withBenchedSlogLogger(b, func(log *slog.Logger) {
+		log.Info("Logging without any structured context.")
+	})
+}
+
+func BenchmarkSlog_AddingFields(b *testing.B) {
+	withBenchedSlogLogger(b, func(log *slog.Logger) {
+		log.Info("Logging with additional context at each log site.",
+			slog.Int("int", 1),
+			slog.String("string", "value"),
+			slog.Time("time", time.Unix(0, 0)),
+			slog.String("user1_name", "Jane Doe"),
+			slog.String("user2_name", "Jane Doe"),
+			slog.String("error", "fail"),
+		)
+	})
+}
+
+func BenchmarkSlog_AccumulatedContext(b *testing.B) {
+	logger := newSlogLogger().With(
+		slog.Int("int", 1),
+		slog.String("string", "value"),
+		slog.Time("time", time.Unix(0, 0)),
+		slog.String("user1_name", "Jane Doe"),
+		slog.String("user2_name", "Jane Doe"),
+		slog.String("error", "fail"),
+	)
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
