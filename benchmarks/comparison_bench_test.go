@@ -1,3 +1,23 @@
+// Copyright (c) 2016 Uber Technologies, Inc.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
 package benchmarks
 
 import (
@@ -18,6 +38,17 @@ import (
 
 	// Logrus
 	"github.com/sirupsen/logrus"
+
+	// Apex
+	"github.com/apex/log"
+	apexjson "github.com/apex/log/handlers/json"
+
+	// Go-kit
+	kitlog "github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+
+	// Log15
+	log15 "github.com/inconshreveable/log15/v3"
 )
 
 // =============================================================================
@@ -519,6 +550,280 @@ func BenchmarkSlog_AccumulatedContext(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			logger.Info("Logging with some accumulated context.")
+		}
+	})
+}
+
+// =============================================================================
+// APEX BENCHMARKS
+// =============================================================================
+
+// newApexLogger creates a logger with optimal benchmark configuration
+func newApexLogger() *log.Logger {
+	logger := &log.Logger{
+		Handler: apexjson.New(io.Discard),
+		Level:   log.InfoLevel,
+	}
+	return logger
+}
+
+// withBenchedApexLogger replicates the pattern for Apex
+func withBenchedApexLogger(b *testing.B, f func(*log.Logger)) {
+	logger := newApexLogger()
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			f(logger)
+		}
+	})
+}
+
+func BenchmarkApex_NoContext(b *testing.B) {
+	withBenchedApexLogger(b, func(log *log.Logger) {
+		log.Info("No context.")
+	})
+}
+
+func BenchmarkApex_10Fields(b *testing.B) {
+	withBenchedApexLogger(b, func(logger *log.Logger) {
+		logger.WithFields(log.Fields{
+			"one":   1,
+			"two":   2,
+			"three": 3,
+			"four":  4,
+			"five":  5,
+			"six":   6,
+			"seven": 7,
+			"eight": 8,
+			"nine":  9,
+			"ten":   10,
+		}).Info("Ten fields, passed at the log site.")
+	})
+}
+
+func BenchmarkApex_DisabledWithoutFields(b *testing.B) {
+	logger := &log.Logger{
+		Handler: apexjson.New(io.Discard),
+		Level:   log.ErrorLevel,
+	}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Info("Logging at a disabled level without any structured context.")
+		}
+	})
+}
+
+func BenchmarkApex_WithoutFields(b *testing.B) {
+	withBenchedApexLogger(b, func(log *log.Logger) {
+		log.Info("Logging without any structured context.")
+	})
+}
+
+func BenchmarkApex_AddingFields(b *testing.B) {
+	withBenchedApexLogger(b, func(logger *log.Logger) {
+		logger.WithFields(log.Fields{
+			"int":        1,
+			"string":     "value",
+			"time":       time.Unix(0, 0),
+			"user1_name": "Jane Doe",
+			"user2_name": "Jane Doe",
+			"error":      "fail",
+		}).Info("Logging with additional context at each log site.")
+	})
+}
+
+func BenchmarkApex_AccumulatedContext(b *testing.B) {
+	logger := newApexLogger()
+	ctx := logger.WithFields(log.Fields{
+		"int":    1,
+		"string": "value",
+		"time":   time.Unix(0, 0),
+	})
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			ctx.Info("Logging with accumulated context.")
+		}
+	})
+}
+
+// =============================================================================
+// GO-KIT BENCHMARKS
+// =============================================================================
+
+// newGoKitLogger creates a go-kit logger with JSON output to io.Discard
+func newGoKitLogger() kitlog.Logger {
+	return kitlog.NewJSONLogger(io.Discard)
+}
+
+// withBenchedGoKitLogger sets up go-kit logger for benchmarking following the Iris pattern
+func withBenchedGoKitLogger(b *testing.B, fn func(kitlog.Logger)) {
+	logger := newGoKitLogger()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			fn(logger)
+		}
+	})
+}
+
+func BenchmarkGoKit_NoContext(b *testing.B) {
+	withBenchedGoKitLogger(b, func(logger kitlog.Logger) {
+		level.Info(logger).Log("msg", "The quick brown fox jumps over the lazy dog.")
+	})
+}
+
+func BenchmarkGoKit_10Fields(b *testing.B) {
+	withBenchedGoKitLogger(b, func(logger kitlog.Logger) {
+		level.Info(logger).Log(
+			"msg", "The quick brown fox jumps over the lazy dog.",
+			"rate", 15,
+			"low", 16,
+			"high", 123.2,
+			"cog", 999.99,
+			"int", 1,
+			"string", "value",
+			"time", time.Unix(0, 0),
+			"user1_name", "Jane Doe",
+			"user2_name", "Jane Doe",
+			"error", "fail",
+		)
+	})
+}
+
+func BenchmarkGoKit_DisabledWithoutFields(b *testing.B) {
+	logger := kitlog.NewNopLogger() // Disabled logger
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			level.Info(logger).Log("msg", "The quick brown fox jumps over the lazy dog.")
+		}
+	})
+}
+
+func BenchmarkGoKit_WithoutFields(b *testing.B) {
+	withBenchedGoKitLogger(b, func(logger kitlog.Logger) {
+		level.Info(logger).Log("msg", "The quick brown fox jumps over the lazy dog.")
+	})
+}
+
+func BenchmarkGoKit_AddingFields(b *testing.B) {
+	withBenchedGoKitLogger(b, func(logger kitlog.Logger) {
+		level.Info(kitlog.With(logger,
+			"int", 1,
+			"string", "value",
+			"time", time.Unix(0, 0),
+			"user1_name", "Jane Doe",
+			"user2_name", "Jane Doe",
+			"error", "fail",
+		)).Log("msg", "Logging with additional context at each log site.")
+	})
+}
+
+func BenchmarkGoKit_AccumulatedContext(b *testing.B) {
+	logger := newGoKitLogger()
+	ctx := kitlog.With(logger,
+		"int", 1,
+		"string", "value",
+		"time", time.Unix(0, 0),
+	)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			level.Info(ctx).Log("msg", "Logging with accumulated context.")
+		}
+	})
+}
+
+// =============================================================================
+// LOG15 BENCHMARKS
+// =============================================================================
+
+// newLog15Logger creates a log15 logger with JSON output to io.Discard
+func newLog15Logger() log15.Logger {
+	logger := log15.New()
+	logger.SetHandler(log15.StreamHandler(io.Discard, log15.JsonFormat()))
+	return logger
+}
+
+// withBenchedLog15Logger sets up log15 logger for benchmarking following the Iris pattern
+func withBenchedLog15Logger(b *testing.B, fn func(log15.Logger)) {
+	logger := newLog15Logger()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			fn(logger)
+		}
+	})
+}
+
+func BenchmarkLog15_NoContext(b *testing.B) {
+	withBenchedLog15Logger(b, func(logger log15.Logger) {
+		logger.Info("The quick brown fox jumps over the lazy dog.")
+	})
+}
+
+func BenchmarkLog15_10Fields(b *testing.B) {
+	withBenchedLog15Logger(b, func(logger log15.Logger) {
+		logger.Info("The quick brown fox jumps over the lazy dog.",
+			"rate", 15,
+			"low", 16,
+			"high", 123.2,
+			"cog", 999.99,
+			"int", 1,
+			"string", "value",
+			"time", time.Unix(0, 0),
+			"user1_name", "Jane Doe",
+			"user2_name", "Jane Doe",
+			"error", "fail",
+		)
+	})
+}
+
+func BenchmarkLog15_DisabledWithoutFields(b *testing.B) {
+	logger := log15.New()
+	logger.SetHandler(log15.DiscardHandler()) // Disabled logger
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Info("The quick brown fox jumps over the lazy dog.")
+		}
+	})
+}
+
+func BenchmarkLog15_WithoutFields(b *testing.B) {
+	withBenchedLog15Logger(b, func(logger log15.Logger) {
+		logger.Info("The quick brown fox jumps over the lazy dog.")
+	})
+}
+
+func BenchmarkLog15_AddingFields(b *testing.B) {
+	withBenchedLog15Logger(b, func(logger log15.Logger) {
+		logger.Info("Logging with additional context at each log site.",
+			"int", 1,
+			"string", "value",
+			"time", time.Unix(0, 0),
+			"user1_name", "Jane Doe",
+			"user2_name", "Jane Doe",
+			"error", "fail",
+		)
+	})
+}
+
+func BenchmarkLog15_AccumulatedContext(b *testing.B) {
+	logger := newLog15Logger()
+	ctx := logger.New(
+		"int", 1,
+		"string", "value",
+		"time", time.Unix(0, 0),
+	)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			ctx.Info("Logging with accumulated context.")
 		}
 	})
 }
