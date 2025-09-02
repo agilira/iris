@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/agilira/go-timecache"
 )
 
 // TextEncoder provides secure human-readable text encoding for log records.
@@ -47,9 +49,14 @@ func NewTextEncoder() *TextEncoder {
 
 // Encode writes the record to the buffer in secure text format.
 func (e *TextEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
-	// Timestamp
+	// Timestamp with smart caching
 	buf.WriteString("time=")
-	buf.WriteString(now.Format(e.TimeFormat))
+	// Use time cache for performance when timestamp is close to current time
+	if cachedTime := timecache.CachedTime(); now.Sub(cachedTime).Abs() < 500*time.Microsecond {
+		buf.WriteString(timecache.CachedTimeString()) // Fast cached format
+	} else {
+		buf.WriteString(now.Format(e.TimeFormat)) // Exact time for tests/historical
+	}
 
 	// Level
 	buf.WriteString(" level=")

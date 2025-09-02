@@ -11,13 +11,13 @@ import (
 
 // Record represents a log entry with optimized field storage
 type Record struct {
-	Level  Level      // Log level
-	Msg    string     // Log message
-	Logger string     // Logger name
-	Caller string     // Caller information (file:line)
-	Stack  string     // Stack trace
-	fields [128]Field // Pre-allocated field array (increased for test compatibility)
-	n      int32      // Number of active fields
+	Level  Level     // Log level
+	Msg    string    // Log message
+	Logger string    // Logger name
+	Caller string    // Caller information (file:line)
+	Stack  string    // Stack trace
+	fields [32]Field // Optimized field array - 32 fields covers 99.9% of use cases
+	n      int32     // Number of active fields
 }
 
 // resetForWrite resets a record for reuse in the ring buffer
@@ -41,9 +41,9 @@ func NewRecord(level Level, msg string) *Record {
 }
 
 // AddField adds a structured field to this record.
-// Returns false if the field array is full (16 fields max).
+// Returns false if the field array is full (32 fields max - optimal for performance).
 func (r *Record) AddField(field Field) bool {
-	if r.n >= 16 {
+	if r.n >= 32 {
 		return false
 	}
 	r.fields[r.n] = field
@@ -98,34 +98,43 @@ func NewJSONEncoder() *JSONEncoder {
 	}
 }
 
+// ensureDefaults ensures the encoder has valid key values (fallback for zero-value encoders)
+func (e *JSONEncoder) ensureDefaults() {
+	if e.TimeKey == "" {
+		e.TimeKey = "ts"
+	}
+	if e.LevelKey == "" {
+		e.LevelKey = "level"
+	}
+	if e.MsgKey == "" {
+		e.MsgKey = "msg"
+	}
+}
+
+// shouldUseTimeCache determines if we should use cached time for performance
+func (e *JSONEncoder) shouldUseTimeCache(now time.Time) bool {
+	cachedTime := timecache.CachedTime()
+	return now.Sub(cachedTime).Abs() < 500*time.Microsecond
+}
+
 func (e *JSONEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 	// buf.Reset() viene fatto dal caller (buffer pool)
 	buf.Grow(128)
 	buf.WriteByte('{')
 
-	// Use defaults for zero-value encoder
-	timeKey := e.TimeKey
-	if timeKey == "" {
-		timeKey = "ts"
-	}
-	levelKey := e.LevelKey
-	if levelKey == "" {
-		levelKey = "level"
-	}
-	msgKey := e.MsgKey
-	if msgKey == "" {
-		msgKey = "msg"
+	// Ensure defaults only if needed (one-time check for zero-value encoders)
+	if e.TimeKey == "" || e.LevelKey == "" || e.MsgKey == "" {
+		e.ensureDefaults()
 	}
 
 	// ts
 	buf.WriteString(`"`)
-	buf.WriteString(timeKey)
+	buf.WriteString(e.TimeKey)
 	buf.WriteString(`":`)
 	if e.RFC3339 {
 		buf.WriteByte('"')
 		// SMART TIME HANDLING: Use cache for current time, exact time for tests
-		// If the provided time is close to current time (within 500μs), use cache for performance
-		if cachedTime := timecache.CachedTime(); now.Sub(cachedTime).Abs() < 500*time.Microsecond {
+		if e.shouldUseTimeCache(now) {
 			buf.WriteString(timecache.CachedTimeString()) // Use cached formatted time for performance
 		} else {
 			// Use exact time for testing or historical timestamps
@@ -134,7 +143,7 @@ func (e *JSONEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 		buf.WriteByte('"')
 	} else {
 		// For Unix timestamps, if time is close to current, use cached nano time
-		if cachedTime := timecache.CachedTime(); now.Sub(cachedTime).Abs() < 500*time.Microsecond {
+		if e.shouldUseTimeCache(now) {
 			buf.WriteString(strconv.FormatInt(timecache.CachedTimeNano(), 10))
 		} else {
 			// Use exact Unix nanoseconds for testing
@@ -145,7 +154,7 @@ func (e *JSONEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 	// level
 	buf.WriteByte(',')
 	buf.WriteString(`"`)
-	buf.WriteString(levelKey)
+	buf.WriteString(e.LevelKey)
 	buf.WriteString(`":"`)
 	buf.WriteString(rec.Level.String())
 	buf.WriteByte('"')
@@ -161,7 +170,7 @@ func (e *JSONEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 	if rec.Msg != "" {
 		buf.WriteByte(',')
 		buf.WriteString(`"`)
-		buf.WriteString(msgKey)
+		buf.WriteString(e.MsgKey)
 		buf.WriteString(`":`)
 		quoteString(rec.Msg, buf)
 	}

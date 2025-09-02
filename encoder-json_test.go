@@ -90,22 +90,22 @@ func TestRecordAddField(t *testing.T) {
 func TestRecordFieldLimit(t *testing.T) {
 	record := NewRecord(Info, "test")
 
-	// Add exactly 16 fields
-	for i := 0; i < 16; i++ {
+	// Add exactly 32 fields (the new optimized maximum)
+	for i := 0; i < 32; i++ {
 		field := String("field", "value")
 		if !record.AddField(field) {
 			t.Errorf("Failed to add field %d (should succeed)", i)
 		}
 	}
 
-	// Try to add 17th field (should fail)
+	// Try to add 33rd field (should fail)
 	field := String("overflow", "value")
 	if record.AddField(field) {
-		t.Error("Should not be able to add 17th field")
+		t.Error("Should not be able to add 33rd field")
 	}
 
-	if record.FieldCount() != 16 {
-		t.Errorf("Expected 16 fields, got %d", record.FieldCount())
+	if record.FieldCount() != 32 {
+		t.Errorf("Expected 32 fields, got %d", record.FieldCount())
 	}
 }
 

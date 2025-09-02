@@ -14,7 +14,7 @@
 
 ## Overview
 
-The `Sync()` method in IRIS ensures data integrity by guaranteeing that all buffered log records are written to the output destination before returning. With Iris's auto-scaling architecture, sync operations are optimized automatically based on your workload patterns.
+The `Sync()` method in Iris ensures data integrity by guaranteeing that all buffered log records are written to the output destination before returning. With Iris's auto-scaling architecture, sync operations are optimized automatically based on your workload patterns.
 
 ### Why Sync() Matters
 
