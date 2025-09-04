@@ -144,8 +144,8 @@ func TestRing_Write(t *testing.T) {
 	processor := func(r *Record) {
 		mu.Lock()
 		// Create a copy since the original might be reused
-		copy := *r
-		processed = append(processed, &copy)
+		recordCopy := *r
+		processed = append(processed, &recordCopy)
 		mu.Unlock()
 	}
 

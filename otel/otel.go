@@ -112,7 +112,7 @@ func WithBaggage(logger *iris.ContextLogger, ctx context.Context) *iris.ContextL
 		return logger
 	}
 
-	fields := make([]iris.Field, 0, min(bag.Len(), 10)) // Max 10 baggage items
+	fields := make([]iris.Field, 0, minInt(bag.Len(), 10)) // Max 10 baggage items
 	count := 0
 
 	// Iterate through baggage members correctly using Members() slice
@@ -227,8 +227,9 @@ func getEnvironment() string {
 	return ""
 }
 
-// min returns the minimum of two integers (Go 1.21+ has this in stdlib)
-func min(a, b int) int {
+// minInt returns the minimum of two integers
+// Note: Using custom name to avoid built-in min redefinition
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}

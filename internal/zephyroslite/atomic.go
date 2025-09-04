@@ -112,6 +112,7 @@ func (a *AtomicPaddedInt64) CompareAndSwap(old, new int64) bool {
 // helper functions for min/max operations (simplified versions)
 
 // min returns the smaller of two int64 values
+// Performance: Inlined for hot path usage, essential for batch processing
 func min(a, b int64) int64 {
 	if a < b {
 		return a
