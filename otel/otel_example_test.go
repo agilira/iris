@@ -55,7 +55,7 @@ func ExampleWithTracing() {
 	ctx = baggage.ContextWithBaggage(ctx, bag)
 
 	// Create OpenTelemetry-aware logger
-	otelLogger := irisotel.WithTracing(ctx, logger)
+	otelLogger := irisotel.WithTracing(logger, ctx)
 
 	// Log messages - trace information is automatically included
 	otelLogger.Info("Processing user request",

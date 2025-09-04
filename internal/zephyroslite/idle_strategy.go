@@ -50,8 +50,7 @@ func (s *SpinningIdleStrategy) Idle() bool {
 }
 
 func (s *SpinningIdleStrategy) Reset() {
-	// No state to reset for spinning strategy
-	_ = s // Prevent unused receiver warning and ensure coverage
+	// No state to reset
 }
 
 func (s *SpinningIdleStrategy) String() string {

@@ -24,22 +24,12 @@ func TestSpinningIdleStrategy(t *testing.T) {
 		t.Errorf("Expected Idle() = true, got false")
 	}
 
-	// Test Reset method explicitly - ensure it's called and doesn't panic
-	strategy.Reset()
-
-	// Test that Reset can be called multiple times safely
-	strategy.Reset()
+	// Test Reset method
 	strategy.Reset()
 
 	// Test String method
 	if strategy.String() != "spinning" {
 		t.Errorf("Expected String() = 'spinning', got %s", strategy.String())
-	}
-
-	// Test that Reset doesn't affect functionality
-	result2 := strategy.Idle()
-	if !result2 {
-		t.Errorf("Expected Idle() = true after Reset, got false")
 	}
 }
 

@@ -42,7 +42,7 @@ import (
 // WithTracing creates an OpenTelemetry-aware context logger from an IRIS logger.
 // This function extracts trace information from the context and creates a ContextLogger
 // with the appropriate fields pre-populated using IRIS's existing context system.
-func WithTracing(ctx context.Context, logger *iris.Logger) *iris.ContextLogger {
+func WithTracing(logger *iris.Logger, ctx context.Context) *iris.ContextLogger {
 	// Extract OpenTelemetry information and store in context
 	enrichedCtx := ExtractOTelContext(ctx)
 
@@ -53,7 +53,7 @@ func WithTracing(ctx context.Context, logger *iris.Logger) *iris.ContextLogger {
 	otelLogger := logger.WithContextExtractor(enrichedCtx, extractor)
 
 	// Add baggage fields
-	otelLogger = WithBaggage(ctx, otelLogger)
+	otelLogger = WithBaggage(otelLogger, ctx)
 
 	// Add resource fields
 	resourceFields := extractResourceFields()
@@ -106,7 +106,7 @@ func ExtractOTelContext(ctx context.Context) context.Context {
 }
 
 // WithBaggage extracts OpenTelemetry baggage and adds it to the context logger
-func WithBaggage(ctx context.Context, logger *iris.ContextLogger) *iris.ContextLogger {
+func WithBaggage(logger *iris.ContextLogger, ctx context.Context) *iris.ContextLogger {
 	bag := baggage.FromContext(ctx)
 	if bag.Len() == 0 {
 		return logger

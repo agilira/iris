@@ -74,7 +74,7 @@ func TestOpenTelemetryIntegration(t *testing.T) {
 	parentCtx = baggage.ContextWithBaggage(parentCtx, bag)
 
 	// Create OpenTelemetry-aware logger
-	otelLogger := WithTracing(parentCtx, logger)
+	otelLogger := WithTracing(logger, parentCtx)
 
 	// Log business logic events
 	otelLogger.Info("Processing user creation request",
@@ -89,7 +89,7 @@ func TestOpenTelemetryIntegration(t *testing.T) {
 		attribute.Bool("validation.passed", true),
 	)
 
-	childLogger := WithTracing(childCtx, logger)
+	childLogger := WithTracing(logger, childCtx)
 	childLogger.Debug("Email validation completed",
 		iris.Bool("valid", true),
 		iris.Str("provider", "external-validator"),
