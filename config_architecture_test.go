@@ -7,7 +7,7 @@
 // edge cases, invalid inputs, and case-insensitive parsing.
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris

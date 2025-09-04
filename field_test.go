@@ -1,7 +1,7 @@
 // field_test.go: Comprehensive test suite for iris logging field functionality
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris

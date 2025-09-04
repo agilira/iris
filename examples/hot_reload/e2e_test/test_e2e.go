@@ -45,10 +45,12 @@ type SyncBuffer struct {
 	*bytes.Buffer
 }
 
+// Sync implements the iris.WriteSyncer interface
 func (sb *SyncBuffer) Sync() error {
 	return nil
 }
 
+// NewSyncBuffer creates a new SyncBuffer instance
 func NewSyncBuffer() *SyncBuffer {
 	return &SyncBuffer{Buffer: &bytes.Buffer{}}
 }
@@ -86,6 +88,7 @@ func runE2ETests() {
 	fmt.Println("\n🎉 All tests passed! Hot reload is working perfectly!")
 }
 
+// NewE2ETest creates a new E2ETest instance with default configuration
 func NewE2ETest() *E2ETest {
 	return &E2ETest{
 		configFile: "test_config.json",
@@ -96,12 +99,17 @@ func NewE2ETest() *E2ETest {
 	}
 }
 
+// Setup initializes the test environment and creates necessary configuration files
 func (t *E2ETest) Setup() error {
 	fmt.Println("🔧 Setting up test environment...")
 
 	// Clean up any existing files
-	os.Remove(t.configFile)
-	os.Remove(t.auditFile)
+	if err := os.Remove(t.configFile); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("Warning: failed to remove existing config file: %v\n", err)
+	}
+	if err := os.Remove(t.auditFile); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("Warning: failed to remove existing audit file: %v\n", err)
+	}
 
 	// Create initial configuration - use standard Level type
 	config := iris.Config{
@@ -141,6 +149,7 @@ func (t *E2ETest) Setup() error {
 	return nil
 }
 
+// RunAllTests executes the complete test suite for hot reload functionality
 func (t *E2ETest) RunAllTests() {
 	fmt.Println("\n🚀 Running comprehensive test suite...")
 
@@ -198,14 +207,18 @@ func (t *E2ETest) testHotReloadDebug() error {
 	}
 
 	// Force a sync before checking output
-	t.logger.Sync()
+	if err := t.logger.Sync(); err != nil {
+		fmt.Printf("Warning: failed to sync logger: %v\n", err)
+	}
 
 	// Test debug message appears
 	t.logger.Debug("test debug message")
 	t.logger.Info("test info message")
 
 	// Force another sync to ensure messages are flushed
-	t.logger.Sync()
+	if err := t.logger.Sync(); err != nil {
+		fmt.Printf("Warning: failed to sync logger: %v\n", err)
+	}
 
 	output := t.output.String()
 	fmt.Printf("DEBUG OUTPUT: %q\n", output) // Debug print
@@ -234,7 +247,9 @@ func (t *E2ETest) testHotReloadError() error {
 	}
 
 	// Force a sync before checking output
-	t.logger.Sync()
+	if err := t.logger.Sync(); err != nil {
+		fmt.Printf("Warning: failed to sync logger: %v\n", err)
+	}
 
 	// Test only error messages appear
 	t.logger.Debug("should not appear")
@@ -243,7 +258,9 @@ func (t *E2ETest) testHotReloadError() error {
 	t.logger.Error("should appear")
 
 	// Force another sync to ensure messages are flushed
-	t.logger.Sync()
+	if err := t.logger.Sync(); err != nil {
+		fmt.Printf("Warning: failed to sync logger: %v\n", err)
+	}
 
 	output := t.output.String()
 	fmt.Printf("ERROR OUTPUT: %q\n", output) // Debug print
@@ -283,7 +300,7 @@ func (t *E2ETest) testInvalidConfig() error {
 
 	// Write invalid config
 	invalidConfig := `{"level": "invalid_level"}`
-	if err := os.WriteFile(t.configFile, []byte(invalidConfig), 0644); err != nil {
+	if err := os.WriteFile(t.configFile, []byte(invalidConfig), 0600); err != nil {
 		return err
 	}
 
@@ -369,7 +386,9 @@ func (t *E2ETest) testLogOutput() error {
 	t.logger.Error("error message")
 
 	// Force sync to ensure all messages are flushed
-	t.logger.Sync()
+	if err := t.logger.Sync(); err != nil {
+		fmt.Printf("Warning: failed to sync logger: %v\n", err)
+	}
 
 	output := t.output.String()
 	fmt.Printf("LOG OUTPUT: %q\n", output) // Debug print
@@ -412,7 +431,7 @@ func (t *E2ETest) writeConfig(level string) error {
 		return err
 	}
 
-	return os.WriteFile(t.configFile, data, 0644)
+	return os.WriteFile(t.configFile, data, 0600)
 }
 
 func (t *E2ETest) waitForReload(expectedLevel iris.Level, timeout time.Duration) error {
@@ -429,6 +448,7 @@ func (t *E2ETest) waitForReload(expectedLevel iris.Level, timeout time.Duration)
 		expectedLevel, t.logger.Level())
 }
 
+// PrintResults displays a comprehensive summary of all test results
 func (t *E2ETest) PrintResults() {
 	fmt.Println("\n📊 Test Results Summary")
 	fmt.Println("======================")
@@ -476,6 +496,7 @@ func (t *E2ETest) PrintResults() {
 	}
 }
 
+// HasFailures returns true if any test in the suite failed
 func (t *E2ETest) HasFailures() bool {
 	for _, result := range t.results {
 		if !result.Success {
@@ -485,20 +506,29 @@ func (t *E2ETest) HasFailures() bool {
 	return false
 }
 
+// Cleanup removes temporary files and resources created during testing
 func (t *E2ETest) Cleanup() {
 	fmt.Println("\n🧹 Cleaning up test environment...")
 
 	if t.watcher != nil {
-		t.watcher.Stop()
+		if err := t.watcher.Stop(); err != nil {
+			fmt.Printf("Warning: failed to stop watcher: %v\n", err)
+		}
 	}
 
 	if t.logger != nil {
-		t.logger.Sync()
-		t.logger.Close()
+		if err := t.logger.Sync(); err != nil {
+			fmt.Printf("Warning: failed to sync logger: %v\n", err)
+		}
+		if err := t.logger.Close(); err != nil {
+			fmt.Printf("Warning: failed to close logger: %v\n", err)
+		}
 	}
 
 	// Clean up test files
-	os.Remove(t.configFile)
+	if err := os.Remove(t.configFile); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("Warning: failed to remove config file: %v\n", err)
+	}
 	// Keep audit file for inspection
 
 	fmt.Println("✅ Cleanup complete")

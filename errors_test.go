@@ -1,7 +1,7 @@
 // errors_test.go: Comprehensive test suite for Iris logging library error handling
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -68,7 +68,7 @@ func TestErrorCodes(t *testing.T) {
 			// Verify error code contains only uppercase letters, numbers, and underscores
 			codeStr := string(tc.code)
 			for _, char := range codeStr {
-				if !((char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '_') {
+				if (char < 'A' || char > 'Z') && (char < '0' || char > '9') && char != '_' {
 					t.Errorf("Error code %s contains invalid character: %c", tc.code, char)
 				}
 			}
@@ -93,7 +93,9 @@ func TestDefaultErrorHandler(t *testing.T) {
 	defaultErrorHandler(testErr)
 
 	// Close the writer and restore stderr
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Errorf("Failed to close writer: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	// Read the captured output
@@ -102,7 +104,9 @@ func TestDefaultErrorHandler(t *testing.T) {
 	if err != nil && err.Error() != "EOF" {
 		t.Fatalf("Failed to read output: %v", err)
 	}
-	r.Close()
+	if err := r.Close(); err != nil {
+		t.Errorf("Failed to close reader: %v", err)
+	}
 
 	outputStr := string(output[:n])
 	expectedCode := string(ErrCodeLoggerCreation)
@@ -139,7 +143,9 @@ func TestDefaultErrorHandlerWithCause(t *testing.T) {
 	defaultErrorHandler(testErr)
 
 	// Close the writer and restore stderr
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Errorf("Failed to close writer: %v", err)
+	}
 	os.Stderr = oldStderr
 
 	// Read the captured output
@@ -148,7 +154,9 @@ func TestDefaultErrorHandlerWithCause(t *testing.T) {
 	if err != nil && err.Error() != "EOF" {
 		t.Fatalf("Failed to read output: %v", err)
 	}
-	r.Close()
+	if err := r.Close(); err != nil {
+		t.Errorf("Failed to close reader: %v", err)
+	}
 
 	outputStr := string(output[:n])
 
@@ -679,8 +687,8 @@ func TestOSAwareness(t *testing.T) {
 	err := NewLoggerError(ErrCodeLoggerCreation, "OS-aware test")
 
 	// Add OS-specific context
-	err.WithContext("os", currentOS)
-	err.WithContext("arch", runtime.GOARCH)
+	_ = err.WithContext("os", currentOS)
+	_ = err.WithContext("arch", runtime.GOARCH)
 
 	if osValue, ok := err.Context["os"]; !ok || osValue != currentOS {
 		t.Errorf("Expected OS %s in context, got %v", currentOS, osValue)
@@ -835,7 +843,7 @@ func TestSafeExecute_PanicHandling(t *testing.T) {
 			defer func() {
 				if r := recover(); r != nil {
 					err := NewLoggerError(ErrCodeLoggerExecution, fmt.Sprintf("Panic recovered: %v", r))
-					err.WithContext("operation", "test_panic_operation")
+					_ = err.WithContext("operation", "test_panic_operation")
 					handleError(err)
 				}
 			}()

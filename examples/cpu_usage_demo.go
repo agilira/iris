@@ -2,6 +2,10 @@
 //
 // This demo creates loggers with different idle strategies and shows their
 // CPU usage characteristics when the consumer has no work to process.
+//
+// Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
+// SPDX-License-Identifier: MPL-2.0
 
 //go:build ignore
 

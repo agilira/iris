@@ -1,7 +1,7 @@
 // zephyros_test.go: Tests for ZephyrosLight ring buffer
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package zephyroslite
@@ -11,6 +11,24 @@ import (
 	"testing"
 	"time"
 )
+
+// TestBackpressurePolicy_String tests the String method for BackpressurePolicy
+func TestBackpressurePolicy_String(t *testing.T) {
+	tests := []struct {
+		policy   BackpressurePolicy
+		expected string
+	}{
+		{DropOnFull, "DropOnFull"},
+		{BlockOnFull, "BlockOnFull"},
+	}
+
+	for _, test := range tests {
+		result := test.policy.String()
+		if result != test.expected {
+			t.Errorf("Expected %s for policy %v, got %s", test.expected, test.policy, result)
+		}
+	}
+}
 
 // TestRecord simple test record for ring buffer testing
 type TestRecord struct {
@@ -117,6 +135,72 @@ func TestZephyrosLight_Builder(t *testing.T) {
 
 		if err != ErrInvalidBatchSize {
 			t.Errorf("Expected ErrInvalidBatchSize for oversized batch, got %v", err)
+		}
+	})
+}
+
+// TestZephyrosLight_BuilderMethods tests the builder pattern methods
+func TestZephyrosLight_BuilderMethods(t *testing.T) {
+	t.Run("WithBackpressurePolicy", func(t *testing.T) {
+		processed := make([]TestRecord, 0)
+		var mu sync.Mutex
+		processor := func(record *TestRecord) {
+			mu.Lock()
+			processed = append(processed, *record)
+			mu.Unlock()
+		}
+
+		// Test with DropOnFull policy
+		z1, err := NewBuilder[TestRecord](1024).
+			WithProcessor(processor).
+			WithBackpressurePolicy(DropOnFull).
+			Build()
+
+		if err != nil {
+			t.Fatalf("Expected successful build with DropOnFull, got error: %v", err)
+		}
+		z1.Close()
+
+		// Test with BlockOnFull policy
+		z2, err := NewBuilder[TestRecord](1024).
+			WithProcessor(processor).
+			WithBackpressurePolicy(BlockOnFull).
+			Build()
+
+		if err != nil {
+			t.Fatalf("Expected successful build with BlockOnFull, got error: %v", err)
+		}
+		z2.Close()
+	})
+
+	t.Run("WithIdleStrategy", func(t *testing.T) {
+		processed := make([]TestRecord, 0)
+		var mu sync.Mutex
+		processor := func(record *TestRecord) {
+			mu.Lock()
+			processed = append(processed, *record)
+			mu.Unlock()
+		}
+
+		// Test with different idle strategies
+		strategies := []IdleStrategy{
+			NewSpinningIdleStrategy(),
+			NewSleepingIdleStrategy(1*time.Microsecond, 10),
+			NewYieldingIdleStrategy(10),
+			NewChannelIdleStrategy(1 * time.Microsecond),
+			NewProgressiveIdleStrategy(),
+		}
+
+		for i, strategy := range strategies {
+			z, err := NewBuilder[TestRecord](1024).
+				WithProcessor(processor).
+				WithIdleStrategy(strategy).
+				Build()
+
+			if err != nil {
+				t.Fatalf("Expected successful build with strategy %d, got error: %v", i, err)
+			}
+			z.Close()
 		}
 	})
 }
@@ -245,6 +329,130 @@ func TestZephyrosLight_BasicOperations(t *testing.T) {
 	})
 }
 
+// TestZephyrosLight_BackpressurePolicies tests different backpressure behaviors
+func TestZephyrosLight_BackpressurePolicies(t *testing.T) {
+	t.Run("BlockOnFull_Policy", func(t *testing.T) {
+		processed := make([]TestRecord, 0)
+		var mu sync.Mutex
+
+		processor := func(record *TestRecord) {
+			mu.Lock()
+			defer mu.Unlock()
+			processed = append(processed, *record)
+			// Very minimal processing time to avoid deadlock
+		}
+
+		// Use small buffer with BlockOnFull policy to trigger writeBlockOnFull
+		z, err := NewBuilder[TestRecord](4).
+			WithProcessor(processor).
+			WithBackpressurePolicy(BlockOnFull).
+			WithBatchSize(1).
+			Build()
+
+		if err != nil {
+			t.Fatalf("Failed to create ZephyrosLight: %v", err)
+		}
+		defer z.Close()
+
+		// Start processing loop
+		go z.Loop()
+
+		// Write records sequentially to test blocking behavior
+		const numRecords = 8
+		successCount := 0
+
+		for i := 0; i < numRecords; i++ {
+			success := z.Write(func(r *TestRecord) {
+				r.ID = int64(i)
+				r.Message = "blocking test"
+				r.Value = i * 10
+			})
+			if success {
+				successCount++
+			}
+			// Small delay to allow processing
+			time.Sleep(1 * time.Millisecond)
+		}
+
+		// Give time for all records to be processed
+		time.Sleep(50 * time.Millisecond)
+
+		// With BlockOnFull, all writes should eventually succeed
+		if successCount != numRecords {
+			t.Errorf("Expected %d successful writes, got %d", numRecords, successCount)
+		}
+
+		stats := z.Stats()
+		droppedCount := stats["items_dropped"]
+		if droppedCount != 0 {
+			t.Errorf("Expected 0 dropped items with BlockOnFull policy, got %d", droppedCount)
+		}
+	})
+
+	t.Run("DropOnFull_Policy", func(t *testing.T) {
+		processed := make([]TestRecord, 0)
+		var mu sync.Mutex
+
+		processor := func(record *TestRecord) {
+			mu.Lock()
+			defer mu.Unlock()
+			processed = append(processed, *record)
+			// Simulate very slow processing to force buffer full
+			time.Sleep(5 * time.Millisecond)
+		}
+
+		// Use small buffer with DropOnFull policy
+		z, err := NewBuilder[TestRecord](4).
+			WithProcessor(processor).
+			WithBackpressurePolicy(DropOnFull).
+			WithBatchSize(1).
+			Build()
+
+		if err != nil {
+			t.Fatalf("Failed to create ZephyrosLight: %v", err)
+		}
+		defer z.Close()
+
+		// Start processing loop
+		go z.Loop()
+
+		// Write many records quickly to fill buffer and trigger drops
+		const numRecords = 20
+		successCount := 0
+		for i := 0; i < numRecords; i++ {
+			success := z.Write(func(r *TestRecord) {
+				r.ID = int64(i)
+				r.Message = "drop test"
+				r.Value = i * 10
+			})
+			if success {
+				successCount++
+			}
+		}
+
+		// Give time for processing
+		time.Sleep(100 * time.Millisecond)
+
+		stats := z.Stats()
+		droppedCount := stats["items_dropped"]
+
+		// With DropOnFull policy, some items should be dropped
+		if droppedCount == 0 {
+			t.Error("Expected some items to be dropped with DropOnFull policy")
+		}
+
+		// Total processed + dropped should equal attempts
+		mu.Lock()
+		processedCount := len(processed)
+		mu.Unlock()
+
+		if int64(processedCount)+droppedCount > numRecords {
+			t.Errorf("Processed (%d) + Dropped (%d) should not exceed total writes (%d)",
+				processedCount, droppedCount, numRecords)
+		}
+	})
+}
+
 // TestZephyrosLight_Flush tests the Flush method
 func TestZephyrosLight_Flush(t *testing.T) {
 	t.Run("Flush_Operation", func(t *testing.T) {
@@ -264,7 +472,7 @@ func TestZephyrosLight_Flush(t *testing.T) {
 		})
 
 		// Call flush (should not panic or error)
-		z.Flush()
+		_ = z.Flush()
 
 		// Flush is a no-op in this implementation, so just verify it doesn't crash
 		stats := z.Stats()
@@ -461,6 +669,106 @@ func TestZephyrosLight_LoopProcess(t *testing.T) {
 
 		if processedCount != 5 {
 			t.Errorf("Expected 5 items processed, got %d", processedCount)
+		}
+	})
+}
+
+// TestZephyrosLight_Loop tests the Loop method specifically
+func TestZephyrosLight_Loop(t *testing.T) {
+	t.Run("Loop_Processing", func(t *testing.T) {
+		processed := make([]TestRecord, 0)
+		var mu sync.Mutex
+
+		processor := func(record *TestRecord) {
+			mu.Lock()
+			processed = append(processed, *record)
+			mu.Unlock()
+		}
+
+		z, err := NewBuilder[TestRecord](1024).
+			WithProcessor(processor).
+			WithBatchSize(10).
+			Build()
+
+		if err != nil {
+			t.Fatalf("Failed to create ZephyrosLight: %v", err)
+		}
+
+		// Start Loop() method (not LoopProcess)
+		done := make(chan bool)
+		go func() {
+			z.Loop() // This calls LoopProcess internally
+			done <- true
+		}()
+
+		// Write test data
+		const numItems = 20
+		for i := 0; i < numItems; i++ {
+			success := z.Write(func(r *TestRecord) {
+				r.ID = int64(i)
+				r.Message = "loop method test"
+				r.Value = i * 100
+			})
+			if !success {
+				t.Errorf("Write %d failed", i)
+			}
+		}
+
+		// Give time for processing
+		time.Sleep(50 * time.Millisecond)
+
+		// Close the ring buffer
+		z.Close()
+
+		// Wait for Loop to exit
+		select {
+		case <-done:
+			// Loop exited as expected
+		case <-time.After(1 * time.Second):
+			t.Error("Loop() did not exit within timeout")
+		}
+
+		// Verify all items were processed
+		mu.Lock()
+		processedCount := len(processed)
+		mu.Unlock()
+
+		if processedCount != numItems {
+			t.Errorf("Expected %d items processed, got %d", numItems, processedCount)
+		}
+
+		// Verify processed items are correct
+		mu.Lock()
+		for i, record := range processed {
+			if record.Message != "loop method test" {
+				t.Errorf("Record %d: expected message 'loop method test', got '%s'", i, record.Message)
+			}
+		}
+		mu.Unlock()
+	})
+}
+
+// TestZephyrosLight_ResetIdleStrategy tests Reset method on idle strategies
+func TestZephyrosLight_ResetIdleStrategy(t *testing.T) {
+	t.Run("Reset_IdleStrategy", func(t *testing.T) {
+		// Test that Reset is called on idle strategies
+		strategies := []IdleStrategy{
+			NewSpinningIdleStrategy(),
+			NewSleepingIdleStrategy(1*time.Microsecond, 10),
+			NewYieldingIdleStrategy(10),
+			NewChannelIdleStrategy(1 * time.Microsecond),
+			NewProgressiveIdleStrategy(),
+		}
+
+		for i, strategy := range strategies {
+			// Call Reset to ensure it doesn't panic
+			strategy.Reset()
+
+			// Verify String method works (this was also 0% coverage)
+			strRepr := strategy.String()
+			if strRepr == "" {
+				t.Errorf("Strategy %d returned empty string representation", i)
+			}
 		}
 	})
 }

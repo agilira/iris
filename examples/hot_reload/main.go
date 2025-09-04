@@ -4,6 +4,7 @@
 // when the configuration file changes, without requiring a restart.
 //
 // Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package main
@@ -88,7 +89,9 @@ func main() {
 	fmt.Println("\n\n🛑 Shutting down gracefully...")
 
 	// Clean up config file
-	os.Remove(configFile)
+	if err := os.Remove(configFile); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("Warning: Failed to remove config file: %v\n", err)
+	}
 	fmt.Println("✅ Cleanup complete")
 }
 
@@ -100,7 +103,7 @@ func createConfigFile(filename, level string) {
     "encoder": "json"
 }`, level)
 
-	if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filename, []byte(content), 0600); err != nil {
 		panic(fmt.Sprintf("Failed to create config file: %v", err))
 	}
 }

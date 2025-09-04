@@ -345,3 +345,7 @@ otel.SetTracerProvider(tp)
 ## Examples
 
 See the `otel/` directory for complete integration examples and test cases demonstrating real-world usage patterns.
+
+---
+
+Iris • an AGILira fragment

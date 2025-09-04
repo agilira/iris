@@ -1,3 +1,9 @@
+// main.go. Config loader example
+//
+// Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
+// SPDX-License-Identifier: MPL-2.0
+
 package main
 
 import (
@@ -8,6 +14,12 @@ import (
 
 	"github.com/agilira/iris"
 )
+
+// setEnvForDemo sets an environment variable for demo purposes
+// Errors are ignored as this is just for demonstration
+func setEnvForDemo(key, value string) {
+	_ = os.Setenv(key, value)
+}
 
 func main() {
 	fmt.Println("=== Iris Config Loader Demo: Backpressure Policies ===")
@@ -27,7 +39,9 @@ func main() {
 			logger1.Info("High-performance logger initialized",
 				iris.String("policy", config1.BackpressurePolicy.String()),
 				iris.Int64("capacity", config1.Capacity))
-			logger1.Sync()
+			if err := logger1.Sync(); err != nil {
+				fmt.Printf("Warning: failed to sync logger1: %v\n", err)
+			}
 		}
 	}
 
@@ -47,7 +61,9 @@ func main() {
 			logger2.Info("Reliable logger initialized",
 				iris.String("policy", config2.BackpressurePolicy.String()),
 				iris.Int64("capacity", config2.Capacity))
-			logger2.Sync()
+			if err := logger2.Sync(); err != nil {
+				fmt.Printf("Warning: failed to sync logger2: %v\n", err)
+			}
 		}
 	}
 
@@ -55,9 +71,9 @@ func main() {
 
 	// Demo 3: Environment variable override
 	fmt.Println("3. Testing environment variable override...")
-	os.Setenv("IRIS_BACKPRESSURE_POLICY", "block_on_full")
-	os.Setenv("IRIS_LEVEL", "debug")
-	os.Setenv("IRIS_NAME", "env-override-logger")
+	setEnvForDemo("IRIS_BACKPRESSURE_POLICY", "block_on_full")
+	setEnvForDemo("IRIS_LEVEL", "debug")
+	setEnvForDemo("IRIS_NAME", "env-override-logger")
 
 	config3, err := iris.LoadConfigFromEnv()
 	if err != nil {
@@ -72,7 +88,9 @@ func main() {
 			logger3.Debug("Environment-configured logger active",
 				iris.String("source", "environment"),
 				iris.String("policy", config3.BackpressurePolicy.String()))
-			logger3.Sync()
+			if err := logger3.Sync(); err != nil {
+				fmt.Printf("Warning: failed to sync logger3: %v\n", err)
+			}
 		}
 	}
 
@@ -96,7 +114,9 @@ func main() {
 				iris.String("json_base", "high_performance.json"),
 				iris.String("env_override", "true"),
 				iris.String("final_policy", config4.BackpressurePolicy.String()))
-			logger4.Sync()
+			if err := logger4.Sync(); err != nil {
+				fmt.Printf("Warning: failed to sync logger4: %v\n", err)
+			}
 		}
 	}
 
@@ -120,7 +140,9 @@ func main() {
 	for i := 0; i < messageCount; i++ {
 		hpLogger.Info("Performance test message", iris.Int("iteration", i))
 	}
-	hpLogger.Sync()
+	if err := hpLogger.Sync(); err != nil {
+		fmt.Printf("Warning: failed to sync high performance logger: %v\n", err)
+	}
 	hpDuration := time.Since(start)
 
 	// Test reliable logger
@@ -128,7 +150,9 @@ func main() {
 	for i := 0; i < messageCount; i++ {
 		reliableLogger.Info("Performance test message", iris.Int("iteration", i))
 	}
-	reliableLogger.Sync()
+	if err := reliableLogger.Sync(); err != nil {
+		fmt.Printf("Warning: failed to sync reliable logger: %v\n", err)
+	}
 	reliableDuration := time.Since(start)
 
 	fmt.Printf("   ✓ High-performance (DropOnFull): %d messages in %v\n", messageCount, hpDuration)

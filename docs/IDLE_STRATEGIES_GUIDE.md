@@ -212,3 +212,7 @@ Idle strategies are lightweight and don't impact the zero-allocation write path.
 
 ### Thread Safety
 All idle strategies are designed for single-consumer use (as per Iris architecture) and don't require additional synchronization.
+
+---
+
+Iris • an AGILira fragment

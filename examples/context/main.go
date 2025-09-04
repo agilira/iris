@@ -4,6 +4,7 @@
 // tracing and request correlation in web applications.
 //
 // Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package main
@@ -18,18 +19,28 @@ import (
 	"github.com/agilira/iris"
 )
 
+// Context keys to avoid linter warnings (specific to main.go examples)
+const (
+	httpMethodKey   = iris.ContextKey("method")
+	httpPathKey     = iris.ContextKey("path")
+	httpLoggerKey   = iris.ContextKey("logger")
+	httpTenantIDKey = iris.ContextKey("tenant_id")
+	httpOrgIDKey    = iris.ContextKey("organization_id")
+	httpEnvKey      = iris.ContextKey("environment")
+)
+
 func main() {
 	// Create logger
 	logger, err := iris.New(iris.Config{
-		Level:  iris.Debug,
-		Output: iris.WrapWriter(os.Stdout),
+		Level:   iris.Debug,
+		Output:  iris.WrapWriter(os.Stdout),
 		Encoder: iris.NewJSONEncoder(),
 	})
 	if err != nil {
 		panic(err)
 	}
 	defer logger.Close()
-	
+
 	logger.Start()
 
 	// Example 1: Basic context extraction
@@ -84,14 +95,14 @@ func httpMiddlewareExample(logger *iris.Logger) {
 			// Add to context
 			ctx := r.Context()
 			ctx = context.WithValue(ctx, iris.RequestIDKey, requestID)
-			ctx = context.WithValue(ctx, iris.ContextKey("method"), r.Method)
-			ctx = context.WithValue(ctx, iris.ContextKey("path"), r.URL.Path)
+			ctx = context.WithValue(ctx, httpMethodKey, r.Method)
+			ctx = context.WithValue(ctx, httpPathKey, r.URL.Path)
 
 			// Create context logger once
 			contextLogger := logger.WithContext(ctx)
 
 			// Store in context for handlers
-			ctx = context.WithValue(ctx, "logger", contextLogger)
+			ctx = context.WithValue(ctx, httpLoggerKey, contextLogger)
 
 			// Call next handler with enriched context
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -101,7 +112,7 @@ func httpMiddlewareExample(logger *iris.Logger) {
 	// Simulate handler that uses context logger
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		// Get logger from context
-		logger := r.Context().Value("logger").(*iris.ContextLogger)
+		logger := r.Context().Value(httpLoggerKey).(*iris.ContextLogger)
 
 		logger.Info("Handler called")
 		logger.Debug("Processing business logic")
@@ -118,27 +129,20 @@ func httpMiddlewareExample(logger *iris.Logger) {
 }
 
 func customExtractorExample(logger *iris.Logger) {
-	// Define custom context keys
-	const (
-		tenantIDKey = iris.ContextKey("tenant_id")
-		orgIDKey    = iris.ContextKey("organization_id")
-		envKey      = iris.ContextKey("environment")
-	)
-
 	// Create context with custom values
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, iris.RequestIDKey, "req-custom")
-	ctx = context.WithValue(ctx, tenantIDKey, "tenant-abc123")
-	ctx = context.WithValue(ctx, orgIDKey, "org-xyz789")
-	ctx = context.WithValue(ctx, envKey, "production")
+	ctx = context.WithValue(ctx, httpTenantIDKey, "tenant-abc123")
+	ctx = context.WithValue(ctx, httpOrgIDKey, "org-xyz789")
+	ctx = context.WithValue(ctx, httpEnvKey, "production")
 
 	// Create custom extractor with field renaming
 	extractor := &iris.ContextExtractor{
 		Keys: map[iris.ContextKey]string{
-			iris.RequestIDKey: "req_id",        // Rename field
-			tenantIDKey:       "tenant",        // Custom key
-			orgIDKey:          "organization",  // Another custom key
-			envKey:            "env",           // Short name
+			iris.RequestIDKey: "req_id",       // Rename field
+			httpTenantIDKey:   "tenant",       // Custom key
+			httpOrgIDKey:      "organization", // Another custom key
+			httpEnvKey:        "env",          // Short name
 		},
 		MaxDepth: 10, // Limit context traversal
 	}

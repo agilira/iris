@@ -16,7 +16,7 @@
 //   - Debug and profiling support
 //
 // Copyright (c) 2025 AGILira
-// Series: IRIS Logging Library - Internal Zephyros Light
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package zephyroslite

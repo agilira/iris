@@ -7,7 +7,7 @@
 // 3. Optional context integration - zero overhead when not used
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -111,6 +111,7 @@ func (l *Logger) WithContextValue(ctx context.Context, key ContextKey, fieldName
 // Logging methods for ContextLogger - all delegate to underlying logger
 // with pre-extracted context fields automatically included.
 
+// Debug logs a message at debug level with context fields
 func (cl *ContextLogger) Debug(msg string, fields ...Field) {
 	if cl.logger.level.Level() > Debug {
 		return
@@ -119,6 +120,7 @@ func (cl *ContextLogger) Debug(msg string, fields ...Field) {
 	cl.logger.Debug(msg, allFields...)
 }
 
+// Info logs a message at info level with context fields
 func (cl *ContextLogger) Info(msg string, fields ...Field) {
 	if cl.logger.level.Level() > Info {
 		return
@@ -127,6 +129,7 @@ func (cl *ContextLogger) Info(msg string, fields ...Field) {
 	cl.logger.Info(msg, allFields...)
 }
 
+// Warn logs a message at warn level with context fields
 func (cl *ContextLogger) Warn(msg string, fields ...Field) {
 	if cl.logger.level.Level() > Warn {
 		return
@@ -135,6 +138,7 @@ func (cl *ContextLogger) Warn(msg string, fields ...Field) {
 	cl.logger.Warn(msg, allFields...)
 }
 
+// Error logs a message at error level with context fields
 func (cl *ContextLogger) Error(msg string, fields ...Field) {
 	if cl.logger.level.Level() > Error {
 		return
@@ -143,6 +147,7 @@ func (cl *ContextLogger) Error(msg string, fields ...Field) {
 	cl.logger.Error(msg, allFields...)
 }
 
+// Fatal logs a message at fatal level with context fields and exits
 func (cl *ContextLogger) Fatal(msg string, fields ...Field) {
 	allFields := append(cl.fields, fields...)
 	cl.logger.Fatal(msg, allFields...)
@@ -172,18 +177,18 @@ func (cl *ContextLogger) WithAdditionalContext(ctx context.Context, extractor *C
 
 // Performance optimization: Context field extraction helpers
 
-// FastRequestID extracts request ID with minimal allocations.
+// WithRequestID extracts request ID with minimal allocations.
 // Optimized for the most common use case.
 func (l *Logger) WithRequestID(ctx context.Context) *ContextLogger {
 	return l.WithContextValue(ctx, RequestIDKey, "request_id")
 }
 
-// FastTraceID extracts trace ID for distributed tracing.
+// WithTraceID extracts trace ID for distributed tracing.
 func (l *Logger) WithTraceID(ctx context.Context) *ContextLogger {
 	return l.WithContextValue(ctx, TraceIDKey, "trace_id")
 }
 
-// FastUserID extracts user ID for user-specific logging.
+// WithUserID extracts user ID from context for user-specific logging.
 func (l *Logger) WithUserID(ctx context.Context) *ContextLogger {
 	return l.WithContextValue(ctx, UserIDKey, "user_id")
 }
@@ -200,6 +205,22 @@ func (l *Logger) WithUserID(ctx context.Context) *ContextLogger {
 //             // Extract request ID from header or generate one
 //             requestID := r.Header.Get("X-Request-ID")
 //             if requestID == "" {
+//                 requestID = generateRequestID()
+//             }
+//
+//             // Create context logger with request fields
+//             contextLogger := logger.WithContext(r.Context()).With(
+//                 Str("request_id", requestID),
+//                 Str("method", r.Method),
+//                 Str("path", r.URL.Path),
+//             )
+//
+//             // Store in context for handlers
+//             ctx := context.WithValue(r.Context(), "logger", contextLogger)
+//             next.ServeHTTP(w, r.WithContext(ctx))
+//         })
+//     }
+// }
 //                 requestID = generateRequestID()
 //             }
 //

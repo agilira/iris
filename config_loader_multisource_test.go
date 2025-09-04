@@ -7,7 +7,7 @@
 // Tests are OS-aware and validate all configuration precedence scenarios.
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -35,16 +35,22 @@ func TestLoadConfigMultiSource(t *testing.T) {
 	// Clean environment for test
 	envVars := []string{"IRIS_LEVEL", "IRIS_FORMAT", "IRIS_OUTPUT", "IRIS_CAPACITY", "IRIS_BATCH_SIZE", "IRIS_NAME"}
 	for _, envVar := range envVars {
-		os.Unsetenv(envVar)
+		if err := os.Unsetenv(envVar); err != nil {
+			t.Errorf("Failed to unset env var %s: %v", envVar, err)
+		}
 	}
 
 	// Restore environment after test
 	defer func() {
 		for key, value := range originalEnv {
 			if value != "" {
-				os.Setenv(key, value)
+				if err := os.Setenv(key, value); err != nil {
+					t.Errorf("Failed to restore env var %s: %v", key, err)
+				}
 			} else {
-				os.Unsetenv(key)
+				if err := os.Unsetenv(key); err != nil {
+					t.Errorf("Failed to unset env var %s: %v", key, err)
+				}
 			}
 		}
 	}()
@@ -85,7 +91,7 @@ func TestLoadConfigMultiSource(t *testing.T) {
 			t.Fatalf("Failed to marshal test config: %v", err)
 		}
 
-		if err := os.WriteFile(jsonFile, data, 0644); err != nil {
+		if err := os.WriteFile(jsonFile, data, 0644); err != nil { // #nosec G306 -- Test file permissions
 			t.Fatalf("Failed to write test config file: %v", err)
 		}
 
@@ -126,16 +132,26 @@ func TestLoadConfigMultiSource(t *testing.T) {
 			t.Fatalf("Failed to marshal test config: %v", err)
 		}
 
-		if err := os.WriteFile(jsonFile, data, 0644); err != nil {
+		if err := os.WriteFile(jsonFile, data, 0644); err != nil { // #nosec G306 -- Test file permissions
 			t.Fatalf("Failed to write test config file: %v", err)
 		}
 
 		// Set environment variables to override JSON
-		os.Setenv("IRIS_LEVEL", "error")
-		os.Setenv("IRIS_FORMAT", "json")
-		os.Setenv("IRIS_CAPACITY", "4096")
-		os.Setenv("IRIS_BATCH_SIZE", "128")
-		os.Setenv("IRIS_NAME", "env-logger")
+		if err := os.Setenv("IRIS_LEVEL", "error"); err != nil {
+			t.Errorf("Failed to set IRIS_LEVEL: %v", err)
+		}
+		if err := os.Setenv("IRIS_FORMAT", "json"); err != nil {
+			t.Errorf("Failed to set IRIS_FORMAT: %v", err)
+		}
+		if err := os.Setenv("IRIS_CAPACITY", "4096"); err != nil {
+			t.Errorf("Failed to set IRIS_CAPACITY: %v", err)
+		}
+		if err := os.Setenv("IRIS_BATCH_SIZE", "128"); err != nil {
+			t.Errorf("Failed to set IRIS_BATCH_SIZE: %v", err)
+		}
+		if err := os.Setenv("IRIS_NAME", "env-logger"); err != nil {
+			t.Errorf("Failed to set IRIS_NAME: %v", err)
+		}
 
 		config, err := LoadConfigMultiSource(jsonFile)
 		if err != nil {
@@ -161,7 +177,9 @@ func TestLoadConfigMultiSource(t *testing.T) {
 		// Clear environment first
 		envVars := []string{"IRIS_LEVEL", "IRIS_FORMAT", "IRIS_OUTPUT", "IRIS_CAPACITY", "IRIS_BATCH_SIZE", "IRIS_NAME"}
 		for _, envVar := range envVars {
-			os.Unsetenv(envVar)
+			if err := os.Unsetenv(envVar); err != nil {
+				t.Errorf("Failed to unset env var %s: %v", envVar, err)
+			}
 		}
 
 		// Test with non-existent file
@@ -181,7 +199,9 @@ func TestLoadConfigMultiSource(t *testing.T) {
 		// Clear environment first
 		envVars := []string{"IRIS_LEVEL", "IRIS_FORMAT", "IRIS_OUTPUT", "IRIS_CAPACITY", "IRIS_BATCH_SIZE", "IRIS_NAME"}
 		for _, envVar := range envVars {
-			os.Unsetenv(envVar)
+			if err := os.Unsetenv(envVar); err != nil {
+				t.Errorf("Failed to unset env var %s: %v", envVar, err)
+			}
 		}
 
 		// Create JSON with only some fields
@@ -199,7 +219,7 @@ func TestLoadConfigMultiSource(t *testing.T) {
 			t.Fatalf("Failed to marshal partial config: %v", err)
 		}
 
-		if err := os.WriteFile(jsonFile, data, 0644); err != nil {
+		if err := os.WriteFile(jsonFile, data, 0644); err != nil { // #nosec G306 -- Test file permissions
 			t.Fatalf("Failed to write partial config file: %v", err)
 		}
 
@@ -227,12 +247,24 @@ func TestLoadConfigMultiSource(t *testing.T) {
 
 	t.Run("env_only_no_json", func(t *testing.T) {
 		// Set environment variables only
-		os.Setenv("IRIS_LEVEL", "fatal")
-		os.Setenv("IRIS_FORMAT", "console")
-		os.Setenv("IRIS_OUTPUT", "stderr")
-		os.Setenv("IRIS_CAPACITY", "8192")
-		os.Setenv("IRIS_BATCH_SIZE", "256")
-		os.Setenv("IRIS_NAME", "env-only-logger")
+		if err := os.Setenv("IRIS_LEVEL", "fatal"); err != nil {
+			t.Errorf("Failed to set IRIS_LEVEL: %v", err)
+		}
+		if err := os.Setenv("IRIS_FORMAT", "console"); err != nil {
+			t.Errorf("Failed to set IRIS_FORMAT: %v", err)
+		}
+		if err := os.Setenv("IRIS_OUTPUT", "stderr"); err != nil {
+			t.Errorf("Failed to set IRIS_OUTPUT: %v", err)
+		}
+		if err := os.Setenv("IRIS_CAPACITY", "8192"); err != nil {
+			t.Errorf("Failed to set IRIS_CAPACITY: %v", err)
+		}
+		if err := os.Setenv("IRIS_BATCH_SIZE", "256"); err != nil {
+			t.Errorf("Failed to set IRIS_BATCH_SIZE: %v", err)
+		}
+		if err := os.Setenv("IRIS_NAME", "env-only-logger"); err != nil {
+			t.Errorf("Failed to set IRIS_NAME: %v", err)
+		}
 
 		config, err := LoadConfigMultiSource("")
 		if err != nil {
@@ -257,14 +289,24 @@ func TestLoadConfigMultiSource(t *testing.T) {
 		// Clear environment first
 		envVars := []string{"IRIS_LEVEL", "IRIS_FORMAT", "IRIS_OUTPUT", "IRIS_CAPACITY", "IRIS_BATCH_SIZE", "IRIS_NAME"}
 		for _, envVar := range envVars {
-			os.Unsetenv(envVar)
+			if err := os.Unsetenv(envVar); err != nil {
+				t.Errorf("Failed to unset env var %s: %v", envVar, err)
+			}
 		}
 
 		// Set invalid environment values
-		os.Setenv("IRIS_LEVEL", "invalid-level")
-		os.Setenv("IRIS_FORMAT", "invalid-format")
-		os.Setenv("IRIS_CAPACITY", "not-a-number")
-		os.Setenv("IRIS_BATCH_SIZE", "also-not-a-number")
+		if err := os.Setenv("IRIS_LEVEL", "invalid-level"); err != nil {
+			t.Errorf("Failed to set IRIS_LEVEL: %v", err)
+		}
+		if err := os.Setenv("IRIS_FORMAT", "invalid-format"); err != nil {
+			t.Errorf("Failed to set IRIS_FORMAT: %v", err)
+		}
+		if err := os.Setenv("IRIS_CAPACITY", "not-a-number"); err != nil {
+			t.Errorf("Failed to set IRIS_CAPACITY: %v", err)
+		}
+		if err := os.Setenv("IRIS_BATCH_SIZE", "also-not-a-number"); err != nil {
+			t.Errorf("Failed to set IRIS_BATCH_SIZE: %v", err)
+		}
 
 		config, err := LoadConfigMultiSource("")
 		// Should handle errors gracefully - invalid level defaults to Info
@@ -297,9 +339,13 @@ func TestLoadConfigMultiSource_EnvironmentIntegration(t *testing.T) {
 	defer func() {
 		for key, value := range originalEnv {
 			if value != "" {
-				os.Setenv(key, value)
+				if err := os.Setenv(key, value); err != nil {
+					t.Errorf("Failed to restore %s: %v", key, err)
+				}
 			} else {
-				os.Unsetenv(key)
+				if err := os.Unsetenv(key); err != nil {
+					t.Errorf("Failed to unset %s: %v", key, err)
+				}
 			}
 		}
 	}()
@@ -308,8 +354,12 @@ func TestLoadConfigMultiSource_EnvironmentIntegration(t *testing.T) {
 		// Clear environment
 		envVars := []string{"IRIS_LEVEL", "IRIS_FORMAT", "IRIS_OUTPUT", "IRIS_CAPACITY", "IRIS_BATCH_SIZE", "IRIS_NAME"}
 		for _, envVar := range envVars {
-			os.Unsetenv(envVar)
+			if err := os.Unsetenv(envVar); err != nil {
+				t.Errorf("Failed to unset env var %s: %v", envVar, err)
+			}
 		}
+
+		// Create production-like config
 
 		// Create production JSON config
 		tmpDir := t.TempDir()
@@ -329,12 +379,14 @@ func TestLoadConfigMultiSource_EnvironmentIntegration(t *testing.T) {
 			t.Fatalf("Failed to marshal production config: %v", err)
 		}
 
-		if err := os.WriteFile(jsonFile, data, 0644); err != nil {
+		if err := os.WriteFile(jsonFile, data, 0644); err != nil { // #nosec G306 -- Test file permissions
 			t.Fatalf("Failed to write production config: %v", err)
 		}
 
 		// Override log level for debugging
-		os.Setenv("IRIS_LEVEL", "debug")
+		if err := os.Setenv("IRIS_LEVEL", "debug"); err != nil {
+			t.Errorf("Failed to set IRIS_LEVEL: %v", err)
+		}
 
 		config, err := LoadConfigMultiSource(jsonFile)
 		if err != nil {

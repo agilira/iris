@@ -1,7 +1,7 @@
 // level_test.go: Comprehensive test suite for Iris logging level functionality
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -437,7 +437,7 @@ func TestAtomicLevelConcurrency(t *testing.T) {
 
 // TestLevelFlag tests the LevelFlag functionality
 func TestLevelFlag(t *testing.T) {
-	var level Level = Info
+	level := Info
 	lf := NewLevelFlag(&level)
 
 	if lf == nil {
@@ -495,7 +495,7 @@ func TestLevelFlagNilPointer(t *testing.T) {
 
 // TestLevelFlagWithCommandLine tests LevelFlag integration with flag package
 func TestLevelFlagWithCommandLine(t *testing.T) {
-	var level Level = Info
+	level := Info
 
 	// Create a new flag set to avoid interfering with other tests
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)

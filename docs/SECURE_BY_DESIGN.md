@@ -545,3 +545,5 @@ Key benefits:
 - **Future-proof**: Extensible architecture for new security features
 
 ---
+
+Iris • an AGILira fragment

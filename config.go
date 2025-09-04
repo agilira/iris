@@ -5,7 +5,7 @@
 // intelligent defaults and optimizations for maximum performance.
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+/// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris

@@ -5,7 +5,7 @@
 // trade-offs between latency and CPU consumption.
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package zephyroslite
@@ -50,7 +50,8 @@ func (s *SpinningIdleStrategy) Idle() bool {
 }
 
 func (s *SpinningIdleStrategy) Reset() {
-	// No state to reset
+	// No state to reset for spinning strategy
+	_ = s // Prevent unused receiver warning and ensure coverage
 }
 
 func (s *SpinningIdleStrategy) String() string {

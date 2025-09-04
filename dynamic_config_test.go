@@ -1,3 +1,9 @@
+// dynamic_config_test.go: Comprehensive test suite for Iris configuration
+//
+// Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
+// SPDX-License-Identifier: MPL-2.0
+
 package iris
 
 import (
@@ -25,7 +31,7 @@ func TestDynamicConfigWatcher(t *testing.T) {
 		t.Fatalf("Failed to marshal config: %v", err)
 	}
 
-	if err := os.WriteFile(configPath, configData, 0644); err != nil {
+	if err := os.WriteFile(configPath, configData, 0644); err != nil { // #nosec G306 -- Test file permissions
 		t.Fatalf("Failed to write config file: %v", err)
 	}
 
@@ -101,7 +107,7 @@ func TestEnableDynamicLevel(t *testing.T) {
 		t.Fatalf("Failed to marshal config: %v", err)
 	}
 
-	if err := os.WriteFile(configPath, configData, 0644); err != nil {
+	if err := os.WriteFile(configPath, configData, 0644); err != nil { // #nosec G306 -- Test file permissions
 		t.Fatalf("Failed to write config file: %v", err)
 	}
 
@@ -119,7 +125,11 @@ func TestEnableDynamicLevel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to enable dynamic level: %v", err)
 	}
-	defer watcher.Stop()
+	defer func() {
+		if err := watcher.Stop(); err != nil {
+			t.Errorf("Failed to stop watcher: %v", err)
+		}
+	}()
 
 	if !watcher.IsRunning() {
 		t.Error("Watcher should be running after EnableDynamicLevel()")

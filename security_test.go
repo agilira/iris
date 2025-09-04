@@ -1,7 +1,7 @@
 // security_test.go: Security features test suite for Iris logging library
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -25,7 +25,7 @@ func TestSecretFieldRedaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseSecurityLogger(t, logger)
 
 	logger.Start()
 
@@ -90,7 +90,7 @@ func TestMultipleSecretFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseSecurityLogger(t, logger)
 
 	logger.Start()
 
@@ -138,5 +138,12 @@ func TestMultipleSecretFields(t *testing.T) {
 	}
 	if !strings.Contains(output, `"attempt_count":3`) {
 		t.Error("Non-sensitive integer field was incorrectly processed")
+	}
+}
+
+// Helper function for safe logger cleanup
+func safeCloseSecurityLogger(t *testing.T, logger *Logger) {
+	if err := logger.Close(); err != nil {
+		t.Logf("Warning: Error closing logger in test: %v", err)
 	}
 }

@@ -4,6 +4,7 @@
 // to their destination, which is essential for data integrity.
 //
 // Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -15,6 +16,15 @@ import (
 	"testing"
 	"time"
 )
+
+// Helper function for safe logger closing in sync integration tests
+func safeCloseSyncLogger(t *testing.T, logger *Logger) {
+	if logger != nil {
+		if err := logger.Close(); err != nil {
+			t.Logf("Failed to close logger: %v", err)
+		}
+	}
+}
 
 // TestLoggerSyncFlushesAllRecords tests that Sync() waits for all records to be processed
 func TestLoggerSyncFlushesAllRecords(t *testing.T) {
@@ -40,7 +50,7 @@ func TestLoggerSyncFlushesAllRecords(t *testing.T) {
 	}
 
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseSyncLogger(t, logger)
 
 	// Write several log messages quickly
 	const messageCount = 5
@@ -99,7 +109,7 @@ func TestLoggerSyncWithEmptyBuffer(t *testing.T) {
 	}
 
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseSyncLogger(t, logger)
 
 	// Call Sync() without writing anything - should return quickly
 	startTime := time.Now()
@@ -141,7 +151,7 @@ func TestLoggerSyncConcurrentWrites(t *testing.T) {
 	}
 
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseSyncLogger(t, logger)
 
 	const writerCount = 3
 	const messagesPerWriter = 5
@@ -207,7 +217,7 @@ func TestLoggerDeferSyncScenario(t *testing.T) {
 			if syncErr := logger.Sync(); syncErr != nil {
 				t.Errorf("Deferred Sync() failed: %v", syncErr)
 			}
-			logger.Close()
+			safeCloseSyncLogger(t, logger)
 		}()
 
 		// Simulate critical error logging at application shutdown

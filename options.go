@@ -20,7 +20,7 @@
 //   - Caller information captured only when requested
 //
 // Copyright (c) 2025 AGILira
-// Series: IRIS Logging Library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris

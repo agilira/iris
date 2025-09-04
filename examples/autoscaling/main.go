@@ -12,7 +12,7 @@
 //   5. Real-time performance metrics and scaling decisions
 //
 // Copyright (c) 2025 AGILira
-// Series: IRIS Logging Library - Auto-Scaling
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package main

@@ -1,7 +1,7 @@
 // sink_test.go: Comprehensive test suite for iris logging sink functionality
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -14,6 +14,13 @@ import (
 	"strings"
 	"testing"
 )
+
+// Helper function to safely close file ignoring expected errors
+func safeCloseSinkFile(t *testing.T, file *os.File) {
+	if err := file.Close(); err != nil {
+		t.Errorf("Failed to close file: %v", err)
+	}
+}
 
 // mockWriter implements io.Writer for testing
 type mockWriter struct {
@@ -84,7 +91,11 @@ func TestFileSyncer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("Failed to close file: %v", err)
+		}
+	}()
 
 	syncer := fileSyncer{file}
 
@@ -200,7 +211,7 @@ func TestWrapWriterFunctionality(t *testing.T) {
 
 	// Test with file (fileSyncer)
 	file := createTempFile(t)
-	defer file.Close()
+	defer safeCloseSinkFile(t, file)
 
 	fileSyncer := WrapWriter(file)
 
@@ -221,7 +232,7 @@ func TestWrapWriterFunctionality(t *testing.T) {
 // TestNewFileSyncer tests NewFileSyncer constructor
 func TestNewFileSyncer(t *testing.T) {
 	file := createTempFile(t)
-	defer file.Close()
+	defer safeCloseSinkFile(t, file)
 
 	syncer := NewFileSyncer(file)
 
@@ -358,7 +369,7 @@ func TestSyncBehavior(t *testing.T) {
 
 	// Test fileSyncer with valid file
 	file := createTempFile(t)
-	defer file.Close()
+	defer safeCloseSinkFile(t, file)
 
 	fileSync := NewFileSyncer(file)
 	if err := fileSync.Sync(); err != nil {
@@ -392,7 +403,7 @@ func TestConcurrentAccess(t *testing.T) {
 			defer func() { done <- true }()
 			data := []byte("concurrent test")
 			for j := 0; j < 100; j++ {
-				syncers[id].Write(data)
+				_, _ = syncers[id].Write(data)
 			}
 		}(i)
 	}
@@ -402,7 +413,7 @@ func TestConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			defer func() { done <- true }()
 			for j := 0; j < 100; j++ {
-				syncers[id].Sync()
+				_ = syncers[id].Sync()
 			}
 		}(i)
 	}
@@ -422,18 +433,18 @@ func TestPerformance(t *testing.T) {
 	// Test nopSyncer performance
 	nop := NewNopSyncer(&bytes.Buffer{})
 	for i := 0; i < 1000; i++ {
-		nop.Write(data)
-		nop.Sync()
+		_, _ = nop.Write(data)
+		_ = nop.Sync()
 	}
 
 	// Test fileSyncer performance
 	file := createTempFile(t)
-	defer file.Close()
+	defer safeCloseSinkFile(t, file)
 
 	fileSync := NewFileSyncer(file)
 	for i := 0; i < 100; i++ { // Fewer iterations for file I/O
-		fileSync.Write(data)
-		fileSync.Sync()
+		_, _ = fileSync.Write(data)
+		_ = fileSync.Sync()
 	}
 
 	// If we reach here, performance is acceptable for testing
@@ -451,7 +462,7 @@ func createTempFile(t *testing.T) *os.File {
 	}
 
 	t.Cleanup(func() {
-		file.Close()
+		_ = file.Close()
 	})
 
 	return file

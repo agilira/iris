@@ -5,7 +5,7 @@
 // implementations ensure data durability while maintaining minimal overhead.
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -80,12 +80,13 @@ func WrapWriter(w io.Writer) WriteSyncer {
 	}
 }
 
-// AddSync: alias di WrapWriter per familiarità con zap.
+// AddSync is an alias for WrapWriter for familiarity with zap
 func AddSync(w io.Writer) WriteSyncer { return WrapWriter(w) }
 
-// MultiWriteSyncer: fan-out su più destinazioni.
+// multiWS implements fan-out to multiple destinations
 type multiWS struct{ ws []WriteSyncer }
 
+// MultiWriteSyncer creates a WriteSyncer that duplicates writes to multiple writers
 func MultiWriteSyncer(writers ...WriteSyncer) WriteSyncer {
 	cp := make([]WriteSyncer, 0, len(writers))
 	for _, w := range writers {
@@ -96,7 +97,7 @@ func MultiWriteSyncer(writers ...WriteSyncer) WriteSyncer {
 	return &multiWS{ws: cp}
 }
 
-// MultiWriter: accetta io.Writer, li wrappa e crea un MultiWriteSyncer.
+// MultiWriter accepts io.Writer interfaces, wraps them and creates a MultiWriteSyncer
 func MultiWriter(writers ...io.Writer) WriteSyncer {
 	ws := make([]WriteSyncer, 0, len(writers))
 	for _, w := range writers {

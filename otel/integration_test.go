@@ -2,6 +2,10 @@
 //
 // This test demonstrates real-world usage of IRIS with OpenTelemetry
 // including trace correlation across service boundaries.
+//
+// Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
+// SPDX-License-Identifier: MPL-2.0
 
 package otel
 
@@ -70,7 +74,7 @@ func TestOpenTelemetryIntegration(t *testing.T) {
 	parentCtx = baggage.ContextWithBaggage(parentCtx, bag)
 
 	// Create OpenTelemetry-aware logger
-	otelLogger := WithTracing(logger, parentCtx)
+	otelLogger := WithTracing(parentCtx, logger)
 
 	// Log business logic events
 	otelLogger.Info("Processing user creation request",
@@ -85,7 +89,7 @@ func TestOpenTelemetryIntegration(t *testing.T) {
 		attribute.Bool("validation.passed", true),
 	)
 
-	childLogger := WithTracing(logger, childCtx)
+	childLogger := WithTracing(childCtx, logger)
 	childLogger.Debug("Email validation completed",
 		iris.Bool("valid", true),
 		iris.Str("provider", "external-validator"),

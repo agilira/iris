@@ -366,3 +366,7 @@ contextLogger.Debug("Context extraction test")
 | No Context | ~0ns | 0 | High frequency |
 
 Choose the approach based on your logging pattern and performance requirements.
+
+---
+
+Iris • an AGILira fragment

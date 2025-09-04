@@ -2,6 +2,10 @@
 //
 // This example demonstrates how to use IRIS with OpenTelemetry for
 // automatic trace correlation and distributed tracing.
+//
+// Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
+// SPDX-License-Identifier: MPL-2.0
 
 package otel_test
 
@@ -51,7 +55,7 @@ func ExampleWithTracing() {
 	ctx = baggage.ContextWithBaggage(ctx, bag)
 
 	// Create OpenTelemetry-aware logger
-	otelLogger := irisotel.WithTracing(logger, ctx)
+	otelLogger := irisotel.WithTracing(ctx, logger)
 
 	// Log messages - trace information is automatically included
 	otelLogger.Info("Processing user request",

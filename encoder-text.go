@@ -1,7 +1,7 @@
 // text_encoder.go: Secure text encoder with log injection protection
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -49,7 +49,24 @@ func NewTextEncoder() *TextEncoder {
 
 // Encode writes the record to the buffer in secure text format.
 func (e *TextEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
-	// Timestamp with smart caching
+	// Encode basic timestamp and level
+	e.encodeTimestamp(now, buf)
+	e.encodeLevel(rec, buf)
+
+	// Encode optional fields (msg, logger, caller)
+	e.encodeOptionalTextFields(rec, buf)
+
+	// Encode structured fields
+	e.encodeStructuredFields(rec, buf)
+
+	// Encode stack trace if present
+	e.encodeStackTrace(rec, buf)
+
+	buf.WriteByte('\n')
+}
+
+// encodeTimestamp writes the timestamp with smart caching
+func (e *TextEncoder) encodeTimestamp(now time.Time, buf *bytes.Buffer) {
 	buf.WriteString("time=")
 	// Use time cache for performance when timestamp is close to current time
 	if cachedTime := timecache.CachedTime(); now.Sub(cachedTime).Abs() < 500*time.Microsecond {
@@ -57,42 +74,37 @@ func (e *TextEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 	} else {
 		buf.WriteString(now.Format(e.TimeFormat)) // Exact time for tests/historical
 	}
+}
 
-	// Level
+// encodeLevel writes the log level
+func (e *TextEncoder) encodeLevel(rec *Record, buf *bytes.Buffer) {
 	buf.WriteString(" level=")
 	buf.WriteString(rec.Level.String())
+}
 
+// encodeOptionalTextFields writes msg, logger, caller if present
+func (e *TextEncoder) encodeOptionalTextFields(rec *Record, buf *bytes.Buffer) {
 	// Message - only if non-empty
 	if rec.Msg != "" {
 		buf.WriteString(" msg=")
-		if e.QuoteValues {
-			e.writeQuotedValue(rec.Msg, buf)
-		} else {
-			e.writeSafeValue(rec.Msg, buf)
-		}
+		e.writeValueWithQuoting(rec.Msg, buf)
 	}
 
 	// Logger name - only if non-empty
 	if rec.Logger != "" {
 		buf.WriteString(" logger=")
-		if e.QuoteValues {
-			e.writeQuotedValue(rec.Logger, buf)
-		} else {
-			e.writeSafeValue(rec.Logger, buf)
-		}
+		e.writeValueWithQuoting(rec.Logger, buf)
 	}
 
 	// Caller information
 	if rec.Caller != "" {
 		buf.WriteString(" caller=")
-		if e.QuoteValues {
-			e.writeQuotedValue(rec.Caller, buf)
-		} else {
-			e.writeSafeValue(rec.Caller, buf)
-		}
+		e.writeValueWithQuoting(rec.Caller, buf)
 	}
+}
 
-	// Structured fields
+// encodeStructuredFields writes all the custom fields
+func (e *TextEncoder) encodeStructuredFields(rec *Record, buf *bytes.Buffer) {
 	for i := int32(0); i < rec.n; i++ {
 		f := rec.fields[i]
 		buf.WriteByte(' ')
@@ -105,50 +117,59 @@ func (e *TextEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 		buf.WriteString(key)
 		buf.WriteByte('=')
 
-		// Type-specific value encoding
-		switch f.T {
-		case kindString:
-			if e.QuoteValues {
-				e.writeQuotedValue(f.Str, buf)
-			} else {
-				e.writeSafeValue(f.Str, buf)
-			}
-		case kindSecret:
-			// Security: Always quote and redact secret values
-			buf.WriteString(`"[REDACTED]"`)
-		case kindInt64:
-			buf.WriteString(strconv.FormatInt(f.I64, 10))
-		case kindUint64:
-			buf.WriteString(strconv.FormatUint(f.U64, 10))
-		case kindFloat64:
-			buf.WriteString(strconv.FormatFloat(f.F64, 'g', -1, 64))
-		case kindBool:
-			if f.I64 != 0 {
-				buf.WriteString("true")
-			} else {
-				buf.WriteString("false")
-			}
-		case kindDur:
-			buf.WriteString(time.Duration(f.I64).String())
-		case kindTime:
-			buf.WriteString(time.Unix(0, f.I64).UTC().Format(e.TimeFormat))
-		case kindBytes:
-			// Bytes as hex string for text format
-			buf.WriteString("0x")
-			for _, b := range f.B {
-				buf.WriteString(strconv.FormatUint(uint64(b), 16))
-			}
+		e.encodeFieldValue(&f, buf)
+	}
+}
+
+// encodeFieldValue writes a single field value based on its type
+func (e *TextEncoder) encodeFieldValue(f *Field, buf *bytes.Buffer) {
+	switch f.T {
+	case kindString:
+		e.writeValueWithQuoting(f.Str, buf)
+	case kindSecret:
+		// Security: Always quote and redact secret values
+		buf.WriteString(`"[REDACTED]"`)
+	case kindInt64:
+		buf.WriteString(strconv.FormatInt(f.I64, 10))
+	case kindUint64:
+		buf.WriteString(strconv.FormatUint(f.U64, 10))
+	case kindFloat64:
+		buf.WriteString(strconv.FormatFloat(f.F64, 'g', -1, 64))
+	case kindBool:
+		if f.I64 != 0 {
+			buf.WriteString("true")
+		} else {
+			buf.WriteString("false")
+		}
+	case kindDur:
+		buf.WriteString(time.Duration(f.I64).String())
+	case kindTime:
+		buf.WriteString(time.Unix(0, f.I64).UTC().Format(e.TimeFormat))
+	case kindBytes:
+		// Bytes as hex string for text format
+		buf.WriteString("0x")
+		for _, b := range f.B {
+			buf.WriteString(strconv.FormatUint(uint64(b), 16))
 		}
 	}
+}
 
-	// Stack trace on separate lines if present
+// encodeStackTrace writes stack trace on separate lines if present
+func (e *TextEncoder) encodeStackTrace(rec *Record, buf *bytes.Buffer) {
 	if rec.Stack != "" {
 		buf.WriteString("\nstack:\n")
 		// Security: Sanitize stack trace to prevent injection
 		e.writeSafeMultiline(rec.Stack, buf)
 	}
+}
 
-	buf.WriteByte('\n')
+// writeValueWithQuoting writes a value with optional quoting based on encoder settings
+func (e *TextEncoder) writeValueWithQuoting(value string, buf *bytes.Buffer) {
+	if e.QuoteValues {
+		e.writeQuotedValue(value, buf)
+	} else {
+		e.writeSafeValue(value, buf)
+	}
 }
 
 // sanitizeKey removes or replaces dangerous characters from field keys.
@@ -190,8 +211,8 @@ func (e *TextEncoder) sanitizeKey(key string) string {
 func (e *TextEncoder) isSafeKey(key string) bool {
 	for i := 0; i < len(key); i++ {
 		c := key[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-			(c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') &&
+			(c < '0' || c > '9') && c != '_' && c != '-' && c != '.' {
 			return false
 		}
 	}

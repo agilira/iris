@@ -1,7 +1,7 @@
 // errors.go: Error handling integration for Iris logging library
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -125,10 +125,10 @@ func NewLoggerError(code errors.ErrorCode, message string) *errors.Error {
 	// Add caller information for debugging
 	if pc, file, line, ok := runtime.Caller(1); ok {
 		if fn := runtime.FuncForPC(pc); fn != nil {
-			err.WithContext("caller_func", fn.Name())
+			_ = err.WithContext("caller_func", fn.Name())
 		}
-		err.WithContext("caller_file", file)
-		err.WithContext("caller_line", line)
+		_ = err.WithContext("caller_file", file)
+		_ = err.WithContext("caller_line", line)
 	}
 
 	return err
@@ -154,10 +154,10 @@ func WrapLoggerError(originalErr error, code errors.ErrorCode, message string) *
 	// Add caller information
 	if pc, file, line, ok := runtime.Caller(1); ok {
 		if fn := runtime.FuncForPC(pc); fn != nil {
-			err.WithContext("caller_func", fn.Name())
+			_ = err.WithContext("caller_func", fn.Name())
 		}
-		err.WithContext("caller_file", file)
-		err.WithContext("caller_line", line)
+		_ = err.WithContext("caller_file", file)
+		_ = err.WithContext("caller_line", line)
 	}
 
 	return err
@@ -201,13 +201,13 @@ func RecoverWithError(code errors.ErrorCode) *errors.Error {
 		err := NewLoggerError(code, message)
 
 		// Add panic information to context
-		err.WithContext("panic_value", r)
-		err.WithContext("recovery_time", time.Now().UTC())
+		_ = err.WithContext("panic_value", r)
+		_ = err.WithContext("recovery_time", time.Now().UTC())
 
 		// Add stack trace from panic point
 		buf := make([]byte, 4096)
 		stackSize := runtime.Stack(buf, false)
-		err.WithContext("panic_stack", string(buf[:stackSize]))
+		_ = err.WithContext("panic_stack", string(buf[:stackSize]))
 
 		return err
 	}
@@ -218,7 +218,7 @@ func RecoverWithError(code errors.ErrorCode) *errors.Error {
 func SafeExecute(fn func() error, operation string) error {
 	defer func() {
 		if err := RecoverWithError(ErrCodeLoggerExecution); err != nil {
-			err.WithContext("operation", operation)
+			_ = err.WithContext("operation", operation)
 			handleError(err)
 		}
 	}()
@@ -226,7 +226,7 @@ func SafeExecute(fn func() error, operation string) error {
 	return fn()
 }
 
-// Logger execution error code
+// ErrCodeLoggerExecution represents the error code for logger execution failures
 const ErrCodeLoggerExecution errors.ErrorCode = "IRIS_LOGGER_EXECUTION"
 
 // validateErrorCodes ensures all error codes follow naming conventions

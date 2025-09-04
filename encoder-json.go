@@ -1,3 +1,9 @@
+// encoder-json.go: optimized json Encoder
+//
+// Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
+// SPDX-License-Identifier: MPL-2.0
+
 package iris
 
 import (
@@ -59,7 +65,8 @@ func (r *Record) FieldCount() int {
 // GetField returns the field at the specified index.
 // Panics if index is out of bounds (for test simplicity).
 func (r *Record) GetField(index int) Field {
-	if index < 0 || int32(index) >= r.n {
+	// Safe bounds checking without unsafe conversion
+	if index < 0 || index >= int(r.n) {
 		return Field{} // Return zero field for out-of-bounds access
 	}
 	return r.fields[index]
@@ -80,7 +87,7 @@ type Encoder interface {
 	Encode(rec *Record, now time.Time, buf *bytes.Buffer)
 }
 
-// JSONEncoder: NDJSON (una riga per record), zero-reflect.
+// JSONEncoder implements NDJSON (one line per record) with zero-reflection encoding
 type JSONEncoder struct {
 	TimeKey  string // default "ts"
 	LevelKey string // default "level"
@@ -117,6 +124,7 @@ func (e *JSONEncoder) shouldUseTimeCache(now time.Time) bool {
 	return now.Sub(cachedTime).Abs() < 500*time.Microsecond
 }
 
+// Encode encodes a log record to JSON format
 func (e *JSONEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 	// buf.Reset() viene fatto dal caller (buffer pool)
 	buf.Grow(128)
@@ -127,7 +135,18 @@ func (e *JSONEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 		e.ensureDefaults()
 	}
 
-	// ts
+	// Encode basic fields
+	e.encodeTimestamp(now, buf)
+	e.encodeLevel(rec, buf)
+	e.encodeOptionalFields(rec, buf)
+	e.encodeFields(rec, buf)
+
+	buf.WriteByte('}')
+	buf.WriteByte('\n')
+}
+
+// encodeTimestamp writes the timestamp field
+func (e *JSONEncoder) encodeTimestamp(now time.Time, buf *bytes.Buffer) {
 	buf.WriteString(`"`)
 	buf.WriteString(e.TimeKey)
 	buf.WriteString(`":`)
@@ -150,15 +169,20 @@ func (e *JSONEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 			buf.WriteString(strconv.FormatInt(now.UnixNano(), 10))
 		}
 	}
+}
 
-	// level
+// encodeLevel writes the level field
+func (e *JSONEncoder) encodeLevel(rec *Record, buf *bytes.Buffer) {
 	buf.WriteByte(',')
 	buf.WriteString(`"`)
 	buf.WriteString(e.LevelKey)
 	buf.WriteString(`":"`)
 	buf.WriteString(rec.Level.String())
 	buf.WriteByte('"')
+}
 
+// encodeOptionalFields writes logger, msg, caller, stack if present
+func (e *JSONEncoder) encodeOptionalFields(rec *Record, buf *bytes.Buffer) {
 	// logger name (if present)
 	if rec.Logger != "" {
 		buf.WriteByte(',')
@@ -188,101 +212,130 @@ func (e *JSONEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 		buf.WriteString(`"stack":`)
 		quoteString(rec.Stack, buf)
 	}
+}
 
-	// fields
+// encodeFields writes all the custom fields
+func (e *JSONEncoder) encodeFields(rec *Record, buf *bytes.Buffer) {
 	for i := int32(0); i < rec.n; i++ {
 		f := rec.fields[i]
 		buf.WriteByte(',')
 		buf.WriteByte('"')
 		buf.WriteString(f.K)
 		buf.WriteString(`":`)
-		switch f.T {
-		case kindString:
-			quoteString(f.Str, buf)
-		case kindInt64:
-			buf.WriteString(strconv.FormatInt(f.I64, 10))
-		case kindUint64:
-			buf.WriteString(strconv.FormatUint(f.U64, 10))
-		case kindFloat64:
-			buf.WriteString(strconv.FormatFloat(f.F64, 'f', -1, 64))
-		case kindBool:
-			if f.I64 != 0 {
-				buf.WriteString("true")
-			} else {
-				buf.WriteString("false")
-			}
-		case kindDur:
-			// duration in ns (int64)
-			buf.WriteString(strconv.FormatInt(f.I64, 10))
-		case kindTime:
-			buf.WriteByte('"')
-			// TIMECACHE OPTIMIZATION: Use cached time formatting for field timestamps too
-			timeValue := time.Unix(0, f.I64).UTC()
-			// Check if this timestamp is close to our cached time to use cache
-			if cachedTime := timecache.CachedTime(); timeValue.Sub(cachedTime).Abs() < 500*time.Microsecond {
-				buf.WriteString(timecache.CachedTimeString())
-			} else {
-				// For older timestamps, still need to format but this should be rare
-				buf.WriteString(timeValue.Format(time.RFC3339Nano))
-			}
-			buf.WriteByte('"')
-		case kindBytes:
-			// compatto: array byte in base10 per evitare base64
+		e.encodeFieldValue(&f, buf)
+	}
+}
+
+// encodeFieldValue writes a single field value based on its type
+func (e *JSONEncoder) encodeFieldValue(f *Field, buf *bytes.Buffer) {
+	switch f.T {
+	case kindString:
+		quoteString(f.Str, buf)
+	case kindInt64:
+		buf.WriteString(strconv.FormatInt(f.I64, 10))
+	case kindUint64:
+		buf.WriteString(strconv.FormatUint(f.U64, 10))
+	case kindFloat64:
+		buf.WriteString(strconv.FormatFloat(f.F64, 'f', -1, 64))
+	case kindBool:
+		if f.I64 != 0 {
+			buf.WriteString("true")
+		} else {
+			buf.WriteString("false")
+		}
+	case kindDur:
+		// duration in ns (int64)
+		buf.WriteString(strconv.FormatInt(f.I64, 10))
+	case kindTime:
+		e.encodeTimeField(f, buf)
+	case kindBytes:
+		e.encodeBytesField(f, buf)
+	case kindSecret:
+		// Secret fields are redacted
+		buf.WriteString(`"[REDACTED]"`)
+	case kindError:
+		e.encodeErrorField(f, buf)
+	case kindStringer:
+		e.encodeStringerField(f, buf)
+	case kindObject:
+		e.encodeObjectField(f, buf)
+	}
+}
+
+// encodeTimeField writes a time field with cache optimization
+func (e *JSONEncoder) encodeTimeField(f *Field, buf *bytes.Buffer) {
+	buf.WriteByte('"')
+	// TIMECACHE OPTIMIZATION: Use cached time formatting for field timestamps too
+	timeValue := time.Unix(0, f.I64).UTC()
+	// Check if this timestamp is close to our cached time to use cache
+	if cachedTime := timecache.CachedTime(); timeValue.Sub(cachedTime).Abs() < 500*time.Microsecond {
+		buf.WriteString(timecache.CachedTimeString())
+	} else {
+		// For older timestamps, still need to format but this should be rare
+		buf.WriteString(timeValue.Format(time.RFC3339Nano))
+	}
+	buf.WriteByte('"')
+}
+
+// encodeBytesField writes a bytes field as JSON array
+func (e *JSONEncoder) encodeBytesField(f *Field, buf *bytes.Buffer) {
+	// compatto: array byte in base10 per evitare base64
+	buf.WriteByte('[')
+	for j, b := range f.B {
+		if j > 0 {
+			buf.WriteByte(',')
+		}
+		buf.WriteString(strconv.Itoa(int(b)))
+	}
+	buf.WriteByte(']')
+}
+
+// encodeErrorField writes an error field
+func (e *JSONEncoder) encodeErrorField(f *Field, buf *bytes.Buffer) {
+	if f.Obj == nil {
+		buf.WriteString(`null`)
+	} else if err, ok := f.Obj.(error); ok {
+		quoteString(err.Error(), buf)
+	} else {
+		quoteString(fmt.Sprintf("%v", f.Obj), buf)
+	}
+}
+
+// encodeStringerField writes a stringer field
+func (e *JSONEncoder) encodeStringerField(f *Field, buf *bytes.Buffer) {
+	if f.Obj == nil {
+		buf.WriteString(`null`)
+	} else if stringer, ok := f.Obj.(interface{ String() string }); ok {
+		quoteString(stringer.String(), buf)
+	} else {
+		quoteString(fmt.Sprintf("%v", f.Obj), buf)
+	}
+}
+
+// encodeObjectField writes an object field
+func (e *JSONEncoder) encodeObjectField(f *Field, buf *bytes.Buffer) {
+	if f.Obj == nil {
+		buf.WriteString(`null`)
+	} else {
+		// For arrays of errors (like Zap's ErrorsField)
+		if errs, ok := f.Obj.([]error); ok {
 			buf.WriteByte('[')
-			for j, b := range f.B {
+			for j, err := range errs {
 				if j > 0 {
 					buf.WriteByte(',')
 				}
-				buf.WriteString(strconv.Itoa(int(b)))
-			}
-			buf.WriteByte(']')
-		case kindSecret:
-			// Secret fields are redacted
-			buf.WriteString(`"[REDACTED]"`)
-		case kindError:
-			if f.Obj == nil {
-				buf.WriteString(`null`)
-			} else if err, ok := f.Obj.(error); ok {
-				quoteString(err.Error(), buf)
-			} else {
-				quoteString(fmt.Sprintf("%v", f.Obj), buf)
-			}
-		case kindStringer:
-			if f.Obj == nil {
-				buf.WriteString(`null`)
-			} else if stringer, ok := f.Obj.(interface{ String() string }); ok {
-				quoteString(stringer.String(), buf)
-			} else {
-				quoteString(fmt.Sprintf("%v", f.Obj), buf)
-			}
-		case kindObject:
-			if f.Obj == nil {
-				buf.WriteString(`null`)
-			} else {
-				// For arrays of errors (like Zap's ErrorsField)
-				if errs, ok := f.Obj.([]error); ok {
-					buf.WriteByte('[')
-					for j, err := range errs {
-						if j > 0 {
-							buf.WriteByte(',')
-						}
-						if err == nil {
-							buf.WriteString(`null`)
-						} else {
-							quoteString(err.Error(), buf)
-						}
-					}
-					buf.WriteByte(']')
+				if err == nil {
+					buf.WriteString(`null`)
 				} else {
-					// Generic object - convert to string
-					quoteString(fmt.Sprintf("%v", f.Obj), buf)
+					quoteString(err.Error(), buf)
 				}
 			}
+			buf.WriteByte(']')
+		} else {
+			// Generic object - convert to string
+			quoteString(fmt.Sprintf("%v", f.Obj), buf)
 		}
 	}
-
-	buf.WriteByte('}')
-	buf.WriteByte('\n')
 }
 
 // quoteString: ottimizzato per stringhe comuni senza caratteri speciali

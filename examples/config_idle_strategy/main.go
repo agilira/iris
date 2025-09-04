@@ -1,3 +1,9 @@
+// main.go. idle strategies Examples
+//
+// Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
+// SPDX-License-Identifier: MPL-2.0
+
 package main
 
 import (
@@ -7,6 +13,11 @@ import (
 
 	"github.com/agilira/iris"
 )
+
+// setEnvForDemo sets an environment variable for demo purposes
+func setEnvForDemo(key, value string) {
+	_ = os.Setenv(key, value)
+}
 
 func main() {
 	fmt.Println("=== Iris Idle Strategy Configuration Demo ===")
@@ -32,8 +43,8 @@ func main() {
 
 	// Demo 2: Configuration via environment variables
 	fmt.Println("\n2. Configuration via environment variables...")
-	os.Setenv("IRIS_IDLE_STRATEGY", "yielding")
-	os.Setenv("IRIS_LEVEL", "debug")
+	setEnvForDemo("IRIS_IDLE_STRATEGY", "yielding")
+	setEnvForDemo("IRIS_LEVEL", "debug")
 	defer func() {
 		os.Unsetenv("IRIS_IDLE_STRATEGY")
 		os.Unsetenv("IRIS_LEVEL")
@@ -84,14 +95,16 @@ func main() {
 		}
 
 		logger.Info(fmt.Sprintf("Message from %s logger", s.name))
-		logger.Close()
+		if err := logger.Close(); err != nil {
+			fmt.Printf("Warning: failed to close logger: %v\n", err)
+		}
 	}
 
 	// Demo 4: Multi-source configuration priority
 	fmt.Println("\n4. Multi-source configuration (JSON + Environment)...")
 
 	// JSON has "sleeping", environment has "channel" - environment should override
-	os.Setenv("IRIS_IDLE_STRATEGY", "channel")
+	setEnvForDemo("IRIS_IDLE_STRATEGY", "channel")
 	defer os.Unsetenv("IRIS_IDLE_STRATEGY")
 
 	multiConfig, err := iris.LoadConfigMultiSource("config_idle_strategy.json")

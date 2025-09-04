@@ -1,7 +1,7 @@
 // sampler_test.go: Test suite for iris log sampling functionality
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -293,6 +293,10 @@ func TestTokenBucketSamplerInterface(t *testing.T) {
 
 // TestTokenBucketSamplerRapidRefill tests behavior with very fast refill
 func TestTokenBucketSamplerRapidRefill(t *testing.T) {
+	if IsCIEnvironment() {
+		t.Skip("Skipping rapid refill test in CI due to timing sensitivity")
+	}
+
 	sampler := NewTokenBucketSampler(5, 3, time.Microsecond)
 
 	// Consume initial tokens

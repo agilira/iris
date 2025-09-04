@@ -1,7 +1,7 @@
 // ring_test.go: Comprehensive tests for ultra-high performance ring buffer
 //
 // Copyright (c) 2025 AGILira
-// Series: IRIS Logging Library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -330,11 +330,11 @@ func TestRing_Flush(t *testing.T) {
 	})
 
 	// Flush to ensure visibility
-	ring.Flush()
+	_ = ring.Flush()
 
 	// Flush should be safe to call multiple times
-	ring.Flush()
-	ring.Flush()
+	_ = ring.Flush()
+	_ = ring.Flush()
 }
 
 func TestRing_ProcessBatch(t *testing.T) {

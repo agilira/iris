@@ -1,7 +1,7 @@
 // field_extended_test.go: Tests for extended field types (Dur, TimeField, Bytes, Err)
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -25,7 +25,7 @@ func TestExtendedFieldTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseFieldExtendedLogger(t, logger)
 
 	logger.Start()
 
@@ -54,7 +54,7 @@ func TestExtendedFieldTypes(t *testing.T) {
 	// Give time for async processing
 	time.Sleep(50 * time.Millisecond)
 
-	logger.Sync()
+	_ = logger.Sync()
 
 	output := buf.String()
 	lines := strings.Split(strings.TrimSpace(output), "\n")
@@ -165,5 +165,12 @@ func TestFieldValueAccessors(t *testing.T) {
 
 	if strField.BytesValue() != nil {
 		t.Errorf("Expected nil bytes for string field, got %v", strField.BytesValue())
+	}
+}
+
+// Helper function for safe logger cleanup
+func safeCloseFieldExtendedLogger(t *testing.T, logger *Logger) {
+	if err := logger.Close(); err != nil {
+		t.Logf("Warning: Error closing logger in test: %v", err)
 	}
 }

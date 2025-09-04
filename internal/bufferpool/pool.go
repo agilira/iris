@@ -1,7 +1,7 @@
 // pool.go: High-performance buffer pool for zero-allocation logging
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package bufferpool

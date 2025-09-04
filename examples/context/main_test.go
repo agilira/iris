@@ -20,21 +20,18 @@ import (
 	"github.com/agilira/iris"
 )
 
-// captureStdout captures stdout during function execution
-func captureStdout(fn func()) string {
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+// Context key types to avoid collisions
+type contextKey string
 
-	fn()
-
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	return buf.String()
-}
+const (
+	userIDKey       contextKey = "user_id"
+	requestIDKey    contextKey = "request_id"
+	tenantKey       contextKey = "tenant"
+	organizationKey contextKey = "organization"
+	envKey          contextKey = "env"
+	reqIDKey        contextKey = "req_id"
+	loggerKey       contextKey = "logger"
+)
 
 // TestBasicContextExample tests the basic context extraction example
 func TestBasicContextExample(t *testing.T) {
@@ -58,8 +55,8 @@ func TestBasicContextExample(t *testing.T) {
 
 	// Run basic context example logic directly
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "user_id", "user123")
-	ctx = context.WithValue(ctx, "request_id", "req-456")
+	ctx = context.WithValue(ctx, userIDKey, "user123")
+	ctx = context.WithValue(ctx, requestIDKey, "req-456")
 
 	// Log with context
 	contextLogger := logger.WithContext(ctx)
@@ -114,7 +111,7 @@ func TestHTTPMiddlewareExample(t *testing.T) {
 
 	// Create context with request ID
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "request_id", "req-http-example")
+	ctx = context.WithValue(ctx, requestIDKey, "req-http-example")
 
 	// Log with context like in the middleware
 	contextLogger := logger.WithContext(ctx)
@@ -167,10 +164,10 @@ func TestCustomExtractorExample(t *testing.T) {
 
 	// Create context with custom fields
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "tenant", "tenant-abc123")
-	ctx = context.WithValue(ctx, "organization", "org-xyz789")
-	ctx = context.WithValue(ctx, "env", "production")
-	ctx = context.WithValue(ctx, "req_id", "req-custom")
+	ctx = context.WithValue(ctx, tenantKey, "tenant-abc123")
+	ctx = context.WithValue(ctx, organizationKey, "org-xyz789")
+	ctx = context.WithValue(ctx, envKey, "production")
+	ctx = context.WithValue(ctx, reqIDKey, "req-custom")
 
 	// Log with context like in the custom extractor
 	contextLogger := logger.WithContext(ctx)
@@ -223,8 +220,8 @@ func TestPerformanceComparisonExample(t *testing.T) {
 
 	// Run a simplified performance test with fewer iterations
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "user_id", "user-perf-test")
-	ctx = context.WithValue(ctx, "request_id", "req-perf-test")
+	ctx = context.WithValue(ctx, userIDKey, "user-perf-test")
+	ctx = context.WithValue(ctx, requestIDKey, "req-perf-test")
 
 	// Test with just a few iterations instead of 1000
 	iterations := 5
@@ -333,7 +330,7 @@ func TestHTTPMiddlewareIntegration(t *testing.T) {
 			ctx = context.WithValue(ctx, iris.RequestIDKey, requestID)
 
 			contextLogger := logger.WithContext(ctx)
-			ctx = context.WithValue(ctx, "logger", contextLogger)
+			ctx = context.WithValue(ctx, loggerKey, contextLogger)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		}
@@ -341,7 +338,7 @@ func TestHTTPMiddlewareIntegration(t *testing.T) {
 
 	// Create test handler
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		logger := r.Context().Value("logger").(*iris.ContextLogger)
+		logger := r.Context().Value(loggerKey).(*iris.ContextLogger)
 		logger.Info("Test handler executed")
 		w.WriteHeader(http.StatusOK)
 	}

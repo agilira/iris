@@ -681,3 +681,7 @@ Complete configuration examples are available in the repository:
 - `examples/configs/production.json` - Production configuration
 - `examples/docker/` - Docker and container examples
 - `examples/kubernetes/` - Kubernetes manifests
+
+---
+
+Iris • an AGILira fragment

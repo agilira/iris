@@ -4,6 +4,7 @@
 // to be processed, which is essential for Sync() guarantees.
 //
 // Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package zephyroslite
@@ -56,7 +57,7 @@ func TestFlushEnsuresProcessing(t *testing.T) {
 
 	// Call Flush() - this should block until all items are processed
 	startTime := time.Now()
-	z.Flush()
+	_ = z.Flush()
 	flushDuration := time.Since(startTime)
 
 	// After Flush(), all items should be processed
@@ -98,7 +99,7 @@ func TestFlushWithNoItems(t *testing.T) {
 
 	// Call Flush() without writing anything - should return immediately
 	startTime := time.Now()
-	z.Flush()
+	_ = z.Flush()
 	flushDuration := time.Since(startTime)
 
 	// Should complete very quickly since nothing to flush
@@ -161,7 +162,7 @@ func TestFlushConcurrentWrites(t *testing.T) {
 	wg.Wait()
 
 	// Now flush - should wait for all items to be processed
-	z.Flush()
+	_ = z.Flush()
 
 	// Check that all items were processed
 	expectedCount := writerCount * itemsPerWriter

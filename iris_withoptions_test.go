@@ -36,6 +36,15 @@ func (ts *testSyncer) String() string {
 	return ts.buf.String()
 }
 
+// Helper function to safely close logger ignoring expected errors
+func safeCloseWithOptionsLogger(t *testing.T, logger *Logger) {
+	if err := logger.Close(); err != nil &&
+		!strings.Contains(err.Error(), "sync /dev/stdout: invalid argument") &&
+		!strings.Contains(err.Error(), "ring buffer flush failed") {
+		t.Errorf("Failed to close logger: %v", err)
+	}
+}
+
 // TestLogger_WithOptions tests Logger.WithOptions method
 func TestLogger_WithOptions(t *testing.T) {
 	buf := &testSyncer{}
@@ -49,7 +58,7 @@ func TestLogger_WithOptions(t *testing.T) {
 		t.Fatalf("Failed to create base logger: %v", err)
 	}
 	baseLogger.Start()
-	defer baseLogger.Close()
+	defer safeCloseWithOptionsLogger(t, baseLogger)
 
 	// Create logger with options
 	newLogger := baseLogger.WithOptions(WithCaller())
@@ -85,7 +94,7 @@ func TestLogger_WithOptions_NoOptions(t *testing.T) {
 		t.Fatalf("Failed to create base logger: %v", err)
 	}
 	baseLogger.Start()
-	defer baseLogger.Close()
+	defer safeCloseWithOptionsLogger(t, baseLogger)
 
 	// Create logger with no options
 	newLogger := baseLogger.WithOptions()

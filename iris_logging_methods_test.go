@@ -4,7 +4,7 @@
 // coverage: InfoFields, Write, Stats, and formatted logging methods.
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -51,7 +51,7 @@ func TestLogger_InfoFields(t *testing.T) {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseLoggingMethodsLogger(t, logger)
 
 	// Test InfoFields with various field types
 	result := logger.InfoFields("Info message with fields",
@@ -93,7 +93,7 @@ func TestLogger_InfoFields_LevelFiltering(t *testing.T) {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseLoggingMethodsLogger(t, logger)
 
 	// InfoFields returns true even when level is too low (early exit optimization)
 	result := logger.InfoFields("This should be filtered out",
@@ -125,7 +125,7 @@ func TestLogger_Write(t *testing.T) {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseLoggingMethodsLogger(t, logger)
 
 	// Test Write method with record filling function
 	result := logger.Write(func(record *Record) {
@@ -166,7 +166,7 @@ func TestLogger_Stats(t *testing.T) {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseLoggingMethodsLogger(t, logger)
 
 	// Log some messages to generate stats
 	logger.Info("Test message 1")
@@ -201,7 +201,7 @@ func TestLogger_FormattedMethods(t *testing.T) {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseLoggingMethodsLogger(t, logger)
 
 	tests := []struct {
 		name     string
@@ -267,7 +267,7 @@ func TestLogger_FormattedMethods_LevelFiltering(t *testing.T) {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseLoggingMethodsLogger(t, logger)
 
 	// These should be filtered out
 	logger.Debugf("Debug message %d", 1)
@@ -295,5 +295,12 @@ func TestLogger_FormattedMethods_LevelFiltering(t *testing.T) {
 	// Should contain error message
 	if !strings.Contains(output, "Error message 4") {
 		t.Error("Error message should appear at Error level")
+	}
+}
+
+// Helper function for safe logger cleanup
+func safeCloseLoggingMethodsLogger(t *testing.T, logger *Logger) {
+	if err := logger.Close(); err != nil {
+		t.Logf("Warning: Error closing logger in test: %v", err)
 	}
 }

@@ -1,7 +1,7 @@
 // field_advanced_unit_test.go: Tests for advanced field types (ErrorField, NamedError, Stringer, Object, Errors)
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -516,7 +516,7 @@ func TestAdvancedFieldsIntegration(t *testing.T) {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseFieldLogger(t, logger)
 
 	// Log with various advanced field types
 	testUser := testUser{ID: 123, Name: "John Doe"}
@@ -535,7 +535,7 @@ func TestAdvancedFieldsIntegration(t *testing.T) {
 
 	// Allow async processing
 	time.Sleep(50 * time.Millisecond)
-	logger.Sync()
+	_ = logger.Sync()
 
 	output := buf.String()
 
@@ -564,6 +564,12 @@ func TestAdvancedFieldsIntegration(t *testing.T) {
 }
 
 // Helper functions for testing
+
+func safeCloseFieldLogger(t *testing.T, logger *Logger) {
+	if err := logger.Close(); err != nil {
+		t.Logf("Warning: Error closing logger in test: %v", err)
+	}
+}
 
 func isValidJSONFieldTest(s string) bool {
 	lines := strings.Split(strings.TrimSpace(s), "\n")

@@ -1,7 +1,7 @@
 // main_test.go: Tests for configuration loading examples
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package main
@@ -148,7 +148,7 @@ func TestLoadProductionConfig(t *testing.T) {
 				// Create production config
 				prodConfig := `{"level": "info", "capacity": 8192, "batch_size": 16}`
 				prodPath := filepath.Join(configDir, "production.json")
-				os.WriteFile(prodPath, []byte(prodConfig), 0644)
+				os.WriteFile(prodPath, []byte(prodConfig), 0644) // #nosec G306 -- Test file permissions
 				os.Setenv("ENVIRONMENT", "production")
 			},
 			cleanupEnv: func() {
@@ -162,7 +162,7 @@ func TestLoadProductionConfig(t *testing.T) {
 				// Create development config
 				devConfig := `{"level": "debug", "capacity": 4096, "batch_size": 8}`
 				devPath := filepath.Join(configDir, "development.json")
-				os.WriteFile(devPath, []byte(devConfig), 0644)
+				os.WriteFile(devPath, []byte(devConfig), 0644) // #nosec G306 -- Test file permissions
 				os.Setenv("ENVIRONMENT", "development")
 			},
 			cleanupEnv: func() {

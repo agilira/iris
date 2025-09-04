@@ -22,7 +22,7 @@
 // Performance target: ~15-20ns/op (vs 9ns commercial, 25ns current IRIS)
 //
 // Copyright (c) 2025 AGILira
-// Series: IRIS Logging Library - Internal Zephyros Light
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package zephyroslite

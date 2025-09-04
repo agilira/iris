@@ -40,7 +40,7 @@ func TestLogger_DPanic(t *testing.T) {
 		}
 
 		logger.Start()
-		defer logger.Close()
+		defer safeCloseCriticalLogger(t, logger)
 
 		// Test DPanic in production mode - should not panic
 		result := logger.DPanic("test dpanic message", String("key", "value"))
@@ -82,7 +82,7 @@ func TestLogger_DPanic(t *testing.T) {
 			}
 
 			logger.Start()
-			defer logger.Close()
+			defer safeCloseCriticalLogger(t, logger)
 
 			// This should panic in development mode
 			logger.DPanic("test dpanic panic", String("key", "value"))
@@ -112,7 +112,7 @@ func TestLogger_DPanic(t *testing.T) {
 		}
 
 		logger.Start()
-		defer logger.Close()
+		defer safeCloseCriticalLogger(t, logger)
 
 		// DPanic should be filtered out
 		result := logger.DPanic("filtered dpanic", String("key", "value"))
@@ -147,7 +147,7 @@ func TestLogger_Panic(t *testing.T) {
 			}
 
 			logger.Start()
-			defer logger.Close()
+			defer safeCloseCriticalLogger(t, logger)
 
 			// This should always panic
 			logger.Panic("test panic message", String("key", "value"))
@@ -179,7 +179,7 @@ func TestLogger_Panic(t *testing.T) {
 			}
 
 			logger.Start()
-			defer logger.Close()
+			defer safeCloseCriticalLogger(t, logger)
 
 			// This should still panic even when filtered
 			logger.Panic("filtered panic", String("key", "value"))
@@ -214,7 +214,7 @@ func TestLogger_Fatal(t *testing.T) {
 			}
 
 			logger.Start()
-			defer logger.Close()
+			defer safeCloseCriticalLogger(t, logger)
 
 			// This should call os.Exit(1)
 			logger.Fatal("test fatal message", String("key", "value"))
@@ -250,7 +250,7 @@ func TestLogger_Fatal(t *testing.T) {
 			}
 
 			logger.Start()
-			defer logger.Close()
+			defer safeCloseCriticalLogger(t, logger)
 
 			// This should still exit even when filtered
 			logger.Fatal("filtered fatal", String("key", "value"))
@@ -292,7 +292,7 @@ func TestLogger_Fatal_Sync_Called(t *testing.T) {
 			}
 
 			logger.Start()
-			defer logger.Close()
+			defer safeCloseCriticalLogger(t, logger)
 
 			// Fatal should call Sync before os.Exit
 			logger.Fatal("test fatal sync", String("key", "value"))
@@ -309,4 +309,11 @@ func TestLogger_Fatal_Sync_Called(t *testing.T) {
 			t.Error("Expected Fatal to exit the process")
 		}
 	})
+}
+
+// Helper function for safe logger cleanup
+func safeCloseCriticalLogger(t *testing.T, logger *Logger) {
+	if err := logger.Close(); err != nil {
+		t.Logf("Warning: Error closing logger in test: %v", err)
+	}
 }

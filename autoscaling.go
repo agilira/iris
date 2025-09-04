@@ -10,13 +10,14 @@
 //   - Adapts to changing application load patterns
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,11 +27,11 @@ import (
 type AutoScalingMode uint32
 
 const (
-	// SingleRingMode: Ultra-fast single-threaded logging (~25ns/op)
+	// SingleRingMode represents ultra-fast single-threaded logging (~25ns/op)
 	// Best for: Low contention, single producers, benchmarks
 	SingleRingMode AutoScalingMode = iota
 
-	// MPSCMode: Multi-producer high-contention mode (~35ns/op per thread)
+	// MPSCMode represents multi-producer high-contention mode (~35ns/op per thread)
 	// Best for: High contention, multiple goroutines, high throughput
 	MPSCMode
 )
@@ -156,7 +157,10 @@ func NewAutoScalingLogger(cfg Config, scalingConfig AutoScalingConfig, opts ...O
 	mpscLogger, err := New(mpscConfig, opts...)
 	if err != nil {
 		cancel()
-		singleLogger.Close()
+		if closeErr := singleLogger.Close(); closeErr != nil {
+			// Log both errors
+			return nil, fmt.Errorf("failed to create MPSC logger: %w (also failed to close single logger: %v)", err, closeErr)
+		}
 		return nil, err
 	}
 
@@ -283,12 +287,30 @@ func (asl *AutoScalingLogger) Error(msg string, fields ...Field) {
 // updateMetrics updates performance metrics for scaling decisions
 func (asl *AutoScalingLogger) updateMetrics(start time.Time, success bool) {
 	now := time.Now()
-	latency := uint64(now.Sub(start).Nanoseconds())
+	duration := now.Sub(start)
+
+	// Safe conversion with bounds checking
+	var latency uint64
+	if duration < 0 {
+		latency = 0
+	} else if duration > time.Duration(1<<63-1) {
+		latency = uint64(1<<63 - 1)
+	} else {
+		nanos := duration.Nanoseconds()
+		if nanos < 0 {
+			latency = 0
+		} else {
+			latency = uint64(nanos)
+		}
+	}
 
 	// Update write metrics
 	asl.metrics.writeCount.Add(1)
 	asl.metrics.recentWriteCount.Add(1)
-	asl.metrics.lastWriteTime.Store(now.UnixNano())
+
+	// Safe timestamp storage
+	timestamp := now.UnixNano()
+	asl.metrics.lastWriteTime.Store(timestamp)
 
 	// Update latency metrics
 	asl.metrics.totalLatency.Add(latency)
@@ -348,12 +370,32 @@ func (asl *AutoScalingLogger) checkScalingDecision() {
 	targetMode := currentMode
 
 	if preferredMode == MPSCMode && currentMode == SingleRingMode {
-		if asl.consecutiveMPSC.Load() >= int32(asl.config.StabilityRequirement) {
+		// Safe conversion with bounds checking
+		stabilityReq := asl.config.StabilityRequirement
+		var stabilityReqInt32 int32
+		if stabilityReq > int(1<<31-1) {
+			stabilityReqInt32 = int32(1<<31 - 1)
+		} else if stabilityReq < 0 {
+			stabilityReqInt32 = 0
+		} else {
+			stabilityReqInt32 = int32(stabilityReq)
+		}
+		if asl.consecutiveMPSC.Load() >= stabilityReqInt32 {
 			shouldScale = true
 			targetMode = MPSCMode
 		}
 	} else if preferredMode == SingleRingMode && currentMode == MPSCMode {
-		if asl.consecutiveSingle.Load() >= int32(asl.config.StabilityRequirement) {
+		// Safe conversion with bounds checking
+		stabilityReq := asl.config.StabilityRequirement
+		var stabilityReqInt32 int32
+		if stabilityReq > int(1<<31-1) {
+			stabilityReqInt32 = int32(1<<31 - 1)
+		} else if stabilityReq < 0 {
+			stabilityReqInt32 = 0
+		} else {
+			stabilityReqInt32 = int32(stabilityReq)
+		}
+		if asl.consecutiveSingle.Load() >= stabilityReqInt32 {
 			shouldScale = true
 			targetMode = SingleRingMode
 		}
@@ -389,14 +431,26 @@ func (asl *AutoScalingLogger) calculateCurrentMetrics() scalingMetrics {
 	contentionCount := asl.metrics.contentionCount.Load()
 	var contentionRatio uint32
 	if totalWrites > 0 {
-		contentionRatio = uint32((contentionCount * 100) / totalWrites)
+		// Safe conversion with bounds checking
+		ratio := (contentionCount * 100) / totalWrites
+		if ratio > 100 {
+			contentionRatio = 100
+		} else {
+			contentionRatio = uint32(ratio)
+		}
 	}
 
 	// Calculate average latency
 	recentLatency := asl.metrics.recentLatency.Load()
 	var avgLatency time.Duration
 	if recentWrites > 0 {
-		avgLatency = time.Duration(recentLatency / recentWrites)
+		// Safe conversion with bounds checking
+		avgNanos := recentLatency / recentWrites
+		if avgNanos > uint64(time.Duration(1<<63-1)) {
+			avgLatency = time.Duration(1<<63 - 1) // Max duration
+		} else {
+			avgLatency = time.Duration(avgNanos)
+		}
 	}
 
 	// Get active goroutines

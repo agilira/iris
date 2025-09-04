@@ -1,7 +1,7 @@
 // options_test.go: Tests for advanced logger options
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -44,7 +44,7 @@ func TestWithCallerSkip(t *testing.T) {
 		}
 
 		logger.Start()
-		defer logger.Close()
+		defer safeCloseOptionsLogger(t, logger)
 
 		// Log a message with caller information
 		logger.Info("test message with caller skip", String("test", "value"))
@@ -76,7 +76,7 @@ func TestWithCallerSkip(t *testing.T) {
 		}
 
 		logger.Start()
-		defer logger.Close()
+		defer safeCloseOptionsLogger(t, logger)
 
 		// Log a message
 		logger.Info("test message with negative skip", String("test", "value"))
@@ -108,15 +108,13 @@ func TestWithCallerSkip(t *testing.T) {
 		}
 
 		logger.Start()
-		defer logger.Close()
+		defer safeCloseOptionsLogger(t, logger)
 
 		// Log a message
 		logger.Info("test message with zero skip", String("test", "value"))
 
 		// Wait for async processing
-		time.Sleep(50 * time.Millisecond)
-
-		// Verify log was written
+		time.Sleep(50 * time.Millisecond) // Verify log was written
 		if len(syncer.logs) == 0 {
 			t.Error("Expected WithCallerSkip with zero value to write log")
 		}
@@ -143,15 +141,13 @@ func TestAddStacktrace(t *testing.T) {
 		}
 
 		logger.Start()
-		defer logger.Close()
+		defer safeCloseOptionsLogger(t, logger)
 
 		// Log an error message (should include stack trace)
 		logger.Error("test error with stack trace", String("test", "value"))
 
 		// Wait for async processing
-		time.Sleep(50 * time.Millisecond)
-
-		// Verify log was written
+		time.Sleep(50 * time.Millisecond) // Verify log was written
 		if len(syncer.logs) == 0 {
 			t.Error("Expected AddStacktrace to write error log")
 		}
@@ -175,15 +171,13 @@ func TestAddStacktrace(t *testing.T) {
 		}
 
 		logger.Start()
-		defer logger.Close()
+		defer safeCloseOptionsLogger(t, logger)
 
 		// Log a warning message (should NOT include stack trace)
 		logger.Warn("test warning without stack trace", String("test", "value"))
 
 		// Wait for async processing
-		time.Sleep(50 * time.Millisecond)
-
-		// Verify log was written
+		time.Sleep(50 * time.Millisecond) // Verify log was written
 		if len(syncer.logs) == 0 {
 			t.Error("Expected AddStacktrace to write warning log")
 		}
@@ -207,15 +201,13 @@ func TestAddStacktrace(t *testing.T) {
 		}
 
 		logger.Start()
-		defer logger.Close()
+		defer safeCloseOptionsLogger(t, logger)
 
 		// Log a debug message (should include stack trace since min is Debug)
 		logger.Debug("test debug with stack trace", String("test", "value"))
 
 		// Wait for async processing
-		time.Sleep(50 * time.Millisecond)
-
-		// Verify log was written
+		time.Sleep(50 * time.Millisecond) // Verify log was written
 		if len(syncer.logs) == 0 {
 			t.Error("Expected AddStacktrace to write debug log")
 		}
@@ -239,15 +231,13 @@ func TestAddStacktrace(t *testing.T) {
 		}
 
 		logger.Start()
-		defer logger.Close()
+		defer safeCloseOptionsLogger(t, logger)
 
 		// Log an error message (should NOT include stack trace since min is Fatal)
 		logger.Error("test error without stack trace", String("test", "value"))
 
 		// Wait for async processing
-		time.Sleep(50 * time.Millisecond)
-
-		// Verify log was written
+		time.Sleep(50 * time.Millisecond) // Verify log was written
 		if len(syncer.logs) == 0 {
 			t.Error("Expected AddStacktrace to write error log without stack trace")
 		}
@@ -274,15 +264,13 @@ func TestWithCallerSkip_Integration(t *testing.T) {
 		}
 
 		logger.Start()
-		defer logger.Close()
+		defer safeCloseOptionsLogger(t, logger)
 
 		// Log a message with multiple options
 		logger.Info("integration test message", String("integration", "test"))
 
 		// Wait for async processing
-		time.Sleep(50 * time.Millisecond)
-
-		// Verify log was written
+		time.Sleep(50 * time.Millisecond) // Verify log was written
 		if len(syncer.logs) == 0 {
 			t.Error("Expected integration test to write log")
 		}
@@ -309,15 +297,13 @@ func TestAddStacktrace_Integration(t *testing.T) {
 		}
 
 		logger.Start()
-		defer logger.Close()
+		defer safeCloseOptionsLogger(t, logger)
 
 		// Log a warning message (should include both caller and stack trace)
 		logger.Warn("integration warning with stack", String("integration", "test"))
 
 		// Wait for async processing
-		time.Sleep(50 * time.Millisecond)
-
-		// Verify log was written
+		time.Sleep(50 * time.Millisecond) // Verify log was written
 		if len(syncer.logs) == 0 {
 			t.Error("Expected integration warning to write log")
 		}
@@ -328,4 +314,11 @@ func TestAddStacktrace_Integration(t *testing.T) {
 			t.Errorf("Expected log to contain warning message, got: %s", logContent)
 		}
 	})
+}
+
+// Helper function for safe logger cleanup
+func safeCloseOptionsLogger(t *testing.T, logger *Logger) {
+	if err := logger.Close(); err != nil {
+		t.Logf("Warning: Error closing logger in test: %v", err)
+	}
 }

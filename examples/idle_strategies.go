@@ -3,6 +3,10 @@
 // This example shows how to use different idle strategies to control CPU usage
 // when the logger consumer has no work to process. Each strategy provides
 // different trade-offs between latency and CPU consumption.
+//
+// Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
+// SPDX-License-Identifier: MPL-2.0
 
 //go:build ignore
 

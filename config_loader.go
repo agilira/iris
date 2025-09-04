@@ -1,7 +1,7 @@
 // config_loader.go: Configuration loading from multiple sources
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGILira library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -10,19 +10,44 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/agilira/argus"
 	"github.com/agilira/iris/internal/zephyroslite"
 )
 
+// validateFilePath checks if a file path is safe to use
+func validateFilePath(filename string) error {
+	if filename == "" {
+		return fmt.Errorf("empty file path")
+	}
+
+	// Clean the path to resolve any . or .. elements
+	cleanPath := filepath.Clean(filename)
+
+	// Check for directory traversal attempts
+	if strings.Contains(cleanPath, "..") {
+		return fmt.Errorf("path contains directory traversal: %s", filename)
+	}
+
+	return nil
+}
+
 // LoadConfigFromJSON loads logger configuration from a JSON file
 func LoadConfigFromJSON(filename string) (*Config, error) {
 	var config Config
 
-	data, err := os.ReadFile(filename)
+	// Validate file path for security
+	if err := validateFilePath(filename); err != nil {
+		return &config, fmt.Errorf("invalid file path: %w", err)
+	}
+
+	data, err := os.ReadFile(filename) // #nosec G304 -- Path validation implemented above
 	if err != nil {
 		return &config, fmt.Errorf("failed to read config file: %w", err)
 	}
@@ -67,7 +92,7 @@ func LoadConfigFromJSON(filename string) (*Config, error) {
 	default:
 		// Assume it's a file path
 		if jsonConfig.Output != "" {
-			file, err := os.OpenFile(jsonConfig.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			file, err := os.OpenFile(jsonConfig.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 			if err != nil {
 				return &config, fmt.Errorf("failed to open output file: %w", err)
 			}
@@ -131,8 +156,12 @@ func LoadConfigFromEnv() (*Config, error) {
 	case "stderr":
 		config.Output = WrapWriter(os.Stderr)
 	default:
+		// Validate file path for security
+		if err := validateFilePath(output); err != nil {
+			return &config, fmt.Errorf("invalid output file path: %w", err)
+		}
 		// Assume it's a file path
-		file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600) // #nosec G304 -- Path validation implemented above
 		if err != nil {
 			return &config, fmt.Errorf("failed to open output file: %w", err)
 		}
@@ -309,7 +338,8 @@ type DynamicConfigWatcher struct {
 	configPath  string
 	atomicLevel *AtomicLevel
 	watcher     *argus.Watcher
-	enabled     bool
+	enabled     int32      // Use atomic int32 instead of bool for thread safety
+	mu          sync.Mutex // Protect start/stop operations
 }
 
 // NewDynamicConfigWatcher creates a new dynamic config watcher for iris logger
@@ -373,18 +403,30 @@ func NewDynamicConfigWatcher(configPath string, atomicLevel *AtomicLevel) (*Dyna
 		configPath:  configPath,
 		atomicLevel: atomicLevel,
 		watcher:     watcher,
-		enabled:     false,
+		enabled:     0, // 0 = false, 1 = true for atomic int32
 	}, nil
 }
 
 // Start begins watching the configuration file for changes
 func (w *DynamicConfigWatcher) Start() error {
-	if w.enabled {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if atomic.LoadInt32(&w.enabled) != 0 {
 		return fmt.Errorf("watcher is already started")
 	}
 
+	// Load initial configuration
+	if w.atomicLevel != nil {
+		initialConfig, err := LoadConfigFromJSON(w.configPath)
+		if err == nil {
+			w.atomicLevel.SetLevel(initialConfig.Level)
+		}
+		// Don't fail on initial load error - just continue with current level
+	}
+
 	// Set up config file watcher with hot reload callback
-	w.watcher.Watch(w.configPath, func(event argus.ChangeEvent) {
+	if err := w.watcher.Watch(w.configPath, func(event argus.ChangeEvent) {
 		// Load and parse the updated configuration
 		newConfig, err := LoadConfigFromJSON(event.Path)
 		if err != nil {
@@ -395,35 +437,46 @@ func (w *DynamicConfigWatcher) Start() error {
 		}
 
 		// Update the atomic level with the new configuration
-		w.atomicLevel.SetLevel(newConfig.Level)
+		if w.atomicLevel != nil {
+			w.atomicLevel.SetLevel(newConfig.Level)
+		}
 
 		// Log successful config reload (using our own logger would create a loop!)
 		// Instead we write to stderr for safety
 		fmt.Fprintf(os.Stderr, "[IRIS] Configuration reloaded from %s - Level: %s\n",
 			event.Path, newConfig.Level.String())
-	})
+	}); err != nil {
+		return fmt.Errorf("failed to setup file watcher: %w", err)
+	}
 
 	// Start the Argus watcher
-	w.watcher.Start()
-	w.enabled = true
+	if err := w.watcher.Start(); err != nil {
+		return fmt.Errorf("failed to start file watcher: %w", err)
+	}
+	atomic.StoreInt32(&w.enabled, 1) // Set to 1 (true)
 	return nil
 }
 
 // Stop stops watching the configuration file
 func (w *DynamicConfigWatcher) Stop() error {
-	if !w.enabled {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if atomic.LoadInt32(&w.enabled) == 0 {
 		return fmt.Errorf("watcher is not started")
 	}
 
 	// Stop the Argus watcher
-	w.watcher.Stop()
-	w.enabled = false
+	if err := w.watcher.Stop(); err != nil {
+		return fmt.Errorf("failed to stop file watcher: %w", err)
+	}
+	atomic.StoreInt32(&w.enabled, 0) // Set to 0 (false)
 	return nil
 }
 
 // IsRunning returns true if the watcher is currently active
 func (w *DynamicConfigWatcher) IsRunning() bool {
-	return w.enabled
+	return atomic.LoadInt32(&w.enabled) != 0
 }
 
 // EnableDynamicLevel creates and starts a config watcher for the given logger and config file

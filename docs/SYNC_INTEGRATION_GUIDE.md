@@ -803,3 +803,7 @@ type WorkItem struct {
 6. **Monitor Sync() performance and tune buffer sizes**
 7. **Use context-aware patterns for bounded operations**
 8. **Test your integration under load and failure conditions**
+
+---
+
+Iris • an AGILira fragment

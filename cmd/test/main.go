@@ -17,7 +17,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer logger.Close()
+	defer func() {
+		if err := logger.Close(); err != nil {
+			fmt.Printf("Error closing logger: %v\n", err)
+		}
+	}()
 
 	fmt.Println("Logger created")
 	logger.Start()
@@ -29,6 +33,8 @@ func main() {
 	// Give time for processing
 	time.Sleep(100 * time.Millisecond)
 
-	logger.Sync()
+	if err := logger.Sync(); err != nil {
+		fmt.Printf("Warning: failed to sync logger: %v\n", err)
+	}
 	fmt.Println("Logger synced")
 }

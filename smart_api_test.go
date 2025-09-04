@@ -2,6 +2,10 @@
 //
 // This file validates that the smart API auto-detection works correctly
 // and provides better defaults than manual configuration.
+//
+// Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
+// SPDX-License-Identifier: MPL-2.0
 
 package iris
 
@@ -19,7 +23,7 @@ func TestSmartAPI_BasicCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New(Config{}) failed: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseSmartAPILogger(t, logger)
 
 	logger.Start()
 
@@ -41,14 +45,14 @@ func TestSmartAPI_DevelopmentMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New with Development() failed: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseSmartAPILogger(t, logger)
 
 	logger.Start()
 
 	logger.Info("Development message", Str("key", "value"))
 
 	time.Sleep(10 * time.Millisecond)
-	logger.Sync()
+	_ = logger.Sync()
 
 	output := buf.String()
 
@@ -73,14 +77,14 @@ func TestSmartAPI_ProductionMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New without Development() failed: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseSmartAPILogger(t, logger)
 
 	logger.Start()
 
 	logger.Info("Production message", Str("key", "value"))
 
 	time.Sleep(10 * time.Millisecond)
-	logger.Sync()
+	_ = logger.Sync()
 
 	output := buf.String()
 
@@ -102,7 +106,7 @@ func TestSmartAPI_ArchitectureDetection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() with smart architecture failed: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseSmartAPILogger(t, logger)
 
 	// Architecture should be automatically selected based on CPU count
 	// We can't easily test the specific choice without exposing internals,
@@ -116,7 +120,7 @@ func TestSmartAPI_CapacityOptimization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() with smart capacity failed: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseSmartAPILogger(t, logger)
 
 	logger.Start()
 
@@ -134,16 +138,22 @@ func TestSmartAPI_CapacityOptimization(t *testing.T) {
 func TestSmartAPI_LevelDetection(t *testing.T) {
 	// Test with environment variable
 	originalLevel := os.Getenv("IRIS_LEVEL")
-	defer os.Setenv("IRIS_LEVEL", originalLevel)
+	defer func() {
+		if err := os.Setenv("IRIS_LEVEL", originalLevel); err != nil {
+			t.Errorf("Failed to restore IRIS_LEVEL: %v", err)
+		}
+	}()
 
-	os.Setenv("IRIS_LEVEL", "error")
+	if err := os.Setenv("IRIS_LEVEL", "error"); err != nil {
+		t.Errorf("Failed to set IRIS_LEVEL: %v", err)
+	}
 
 	var buf bytes.Buffer
 	logger, err := New(Config{Output: WrapWriter(&buf)})
 	if err != nil {
 		t.Fatalf("New() with IRIS_LEVEL failed: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseSmartAPILogger(t, logger)
 
 	logger.Start()
 
@@ -152,7 +162,7 @@ func TestSmartAPI_LevelDetection(t *testing.T) {
 	logger.Error("This should appear")
 
 	time.Sleep(10 * time.Millisecond)
-	logger.Sync()
+	_ = logger.Sync()
 
 	output := buf.String()
 
@@ -177,14 +187,14 @@ func TestSmartAPI_BackwardCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() with explicit config failed: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseSmartAPILogger(t, logger)
 
 	logger.Start()
 
 	logger.Info("Backward compatibility test")
 
 	time.Sleep(10 * time.Millisecond)
-	logger.Sync()
+	_ = logger.Sync()
 
 	output := buf.String()
 	if output == "" {
@@ -200,7 +210,7 @@ func TestSmartAPI_Performance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() for performance test failed: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseSmartAPILogger(t, logger)
 
 	logger.Start()
 
@@ -220,5 +230,12 @@ func TestSmartAPI_Performance(t *testing.T) {
 	}
 
 	time.Sleep(50 * time.Millisecond)
-	logger.Sync()
+	_ = logger.Sync()
+}
+
+// Helper function for safe logger cleanup
+func safeCloseSmartAPILogger(t *testing.T, logger *Logger) {
+	if err := logger.Close(); err != nil {
+		t.Logf("Warning: Error closing logger in test: %v", err)
+	}
 }

@@ -5,7 +5,7 @@
 // Tests are OS-aware and focus on real-world usage patterns.
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -15,10 +15,29 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+// Helper function to safely close context logger ignoring expected errors
+func safeCloseContextLogger(t *testing.T, logger *Logger) {
+	if err := logger.Close(); err != nil &&
+		!strings.Contains(err.Error(), "sync /dev/stdout: invalid argument") &&
+		!strings.Contains(err.Error(), "ring buffer flush failed") {
+		t.Errorf("Failed to close logger: %v", err)
+	}
+}
+
+// Helper function to safely sync context logger ignoring expected errors
+func safeSyncContextLogger(t *testing.T, logger *Logger) {
+	if err := logger.Sync(); err != nil &&
+		!strings.Contains(err.Error(), "sync /dev/stdout: invalid argument") &&
+		!strings.Contains(err.Error(), "ring buffer flush failed") {
+		t.Errorf("Failed to sync logger: %v", err)
+	}
+}
 
 // bufferedTestSyncer wraps a bytes.Buffer to implement WriteSyncer for testing
 type bufferedTestSyncer struct {
@@ -132,7 +151,11 @@ func TestDefaultContextExtractor(t *testing.T) {
 // TestLogger_WithContext tests basic context integration
 func TestLogger_WithContext(t *testing.T) {
 	logger := setupContextTestLogger(t)
-	defer logger.Close()
+	defer func() {
+		if err := logger.Close(); err != nil {
+			t.Errorf("Failed to close logger: %v", err)
+		}
+	}()
 
 	tests := []struct {
 		name     string
@@ -256,7 +279,11 @@ func TestLogger_WithContext(t *testing.T) {
 // TestLogger_WithContextExtractor tests custom context extraction
 func TestLogger_WithContextExtractor(t *testing.T) {
 	logger := setupContextTestLogger(t)
-	defer logger.Close()
+	defer func() {
+		if err := logger.Close(); err != nil {
+			t.Errorf("Failed to close logger: %v", err)
+		}
+	}()
 
 	tests := []struct {
 		name      string
@@ -363,7 +390,7 @@ func TestLogger_WithContextExtractor(t *testing.T) {
 // TestLogger_WithContextValue tests single value extraction optimization
 func TestLogger_WithContextValue(t *testing.T) {
 	logger := setupContextTestLogger(t)
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	tests := []struct {
 		name      string
@@ -471,7 +498,7 @@ func TestLogger_WithContextValue(t *testing.T) {
 // TestLogger_FastRequestID tests the optimized request ID extraction
 func TestLogger_FastRequestID(t *testing.T) {
 	logger := setupContextTestLogger(t)
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	tests := []struct {
 		name     string
@@ -525,7 +552,7 @@ func TestLogger_FastRequestID(t *testing.T) {
 // TestLogger_FastTraceID tests the optimized trace ID extraction
 func TestLogger_FastTraceID(t *testing.T) {
 	logger := setupContextTestLogger(t)
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	tests := []struct {
 		name     string
@@ -579,7 +606,7 @@ func TestLogger_FastTraceID(t *testing.T) {
 // TestLogger_FastUserID tests the optimized user ID extraction
 func TestLogger_FastUserID(t *testing.T) {
 	logger := setupContextTestLogger(t)
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	tests := []struct {
 		name     string
@@ -633,7 +660,7 @@ func TestLogger_FastUserID(t *testing.T) {
 // TestContextLogger_With tests field addition to context logger
 func TestContextLogger_With(t *testing.T) {
 	logger := setupContextTestLogger(t)
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	ctx := context.WithValue(context.Background(), RequestIDKey, "with-test")
 	cl := logger.WithContext(ctx)
@@ -684,7 +711,7 @@ func TestContextLogger_With(t *testing.T) {
 // TestContextLogger_WithAdditionalContext tests context merging
 func TestContextLogger_WithAdditionalContext(t *testing.T) {
 	logger := setupContextTestLogger(t)
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	// Create first context with request ID
 	ctx1 := context.WithValue(context.Background(), RequestIDKey, "req-123")
@@ -736,7 +763,7 @@ func TestContextLogger_LoggingMethods(t *testing.T) {
 		t.Fatalf("Failed to create test logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	ctx := context.WithValue(context.Background(), RequestIDKey, "test-req-123")
 	cl := logger.WithContext(ctx)
@@ -790,7 +817,7 @@ func TestContextLogger_LoggingMethods(t *testing.T) {
 			tt.logFunc()
 
 			// Wait a bit for async processing
-			logger.Close()
+			safeCloseContextLogger(t, logger)
 			logger, err = New(Config{
 				Level:   Debug,
 				Encoder: NewJSONEncoder(),
@@ -869,7 +896,7 @@ func TestContextLogger_OutputBufferBug(t *testing.T) {
 	t.Log("Waited for async processing")
 
 	// CRITICAL: Force sync to flush buffers (like other working tests)
-	logger.Sync()
+	safeSyncContextLogger(t, logger)
 	t.Log("Forced sync")
 
 	// Check buffer after sync
@@ -878,7 +905,7 @@ func TestContextLogger_OutputBufferBug(t *testing.T) {
 
 	// Close logger to flush
 	t.Log("Closing logger to flush...")
-	logger.Close()
+	safeCloseContextLogger(t, logger)
 
 	// Check buffer after close
 	finalOutput := buf.String()
@@ -933,7 +960,7 @@ func TestContextLogger_LevelFiltering(t *testing.T) {
 		t.Fatalf("Failed to create test logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	ctx := context.WithValue(context.Background(), RequestIDKey, "filter-test")
 	cl := logger.WithContext(ctx)
@@ -951,7 +978,7 @@ func TestContextLogger_LevelFiltering(t *testing.T) {
 
 	// Handle async processing properly
 	time.Sleep(50 * time.Millisecond)
-	logger.Sync()
+	safeSyncContextLogger(t, logger)
 
 	output := buf.String()
 	t.Logf("Level filtering output: %s", output)
@@ -994,7 +1021,7 @@ func TestContextLogger_Fatal(t *testing.T) {
 			}
 
 			logger.Start()
-			defer logger.Close()
+			defer safeCloseContextLogger(t, logger)
 
 			// Create context logger with some context fields
 			ctx := context.WithValue(context.Background(), RequestIDKey, "fatal-test")
@@ -1026,7 +1053,7 @@ func TestContextLogger_Fatal(t *testing.T) {
 
 	// Additional compilation verification test
 	logger := setupContextTestLogger(t)
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	ctx := context.WithValue(context.Background(), RequestIDKey, "fatal-test")
 	cl := logger.WithContext(ctx)
@@ -1054,7 +1081,7 @@ func TestLogger_WithContextValueSingle(t *testing.T) {
 		t.Fatalf("Failed to create test logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	// Create context with UserID value
 	ctx := context.WithValue(context.Background(), UserIDKey, "user123")
@@ -1067,7 +1094,7 @@ func TestLogger_WithContextValueSingle(t *testing.T) {
 
 	// Allow async processing
 	time.Sleep(50 * time.Millisecond)
-	logger.Sync()
+	safeSyncContextLogger(t, logger)
 
 	output := buf.String()
 
@@ -1089,7 +1116,7 @@ func TestLogger_WithRequestID(t *testing.T) {
 		t.Fatalf("Failed to create test logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	ctx := context.WithValue(context.Background(), RequestIDKey, "req-456")
 	clWithReq := logger.WithRequestID(ctx)
@@ -1098,7 +1125,7 @@ func TestLogger_WithRequestID(t *testing.T) {
 
 	// Allow async processing
 	time.Sleep(50 * time.Millisecond)
-	logger.Sync()
+	safeSyncContextLogger(t, logger)
 
 	output := buf.String()
 
@@ -1119,7 +1146,7 @@ func TestLogger_WithTraceID(t *testing.T) {
 		t.Fatalf("Failed to create test logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	ctx := context.WithValue(context.Background(), TraceIDKey, "trace-789")
 	clWithTrace := logger.WithTraceID(ctx)
@@ -1128,7 +1155,7 @@ func TestLogger_WithTraceID(t *testing.T) {
 
 	// Allow async processing
 	time.Sleep(50 * time.Millisecond)
-	logger.Sync()
+	safeSyncContextLogger(t, logger)
 
 	output := buf.String()
 
@@ -1149,7 +1176,7 @@ func TestLogger_WithUserID(t *testing.T) {
 		t.Fatalf("Failed to create test logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	ctx := context.WithValue(context.Background(), UserIDKey, "user-999")
 	clWithUser := logger.WithUserID(ctx)
@@ -1158,7 +1185,7 @@ func TestLogger_WithUserID(t *testing.T) {
 
 	// Allow async processing
 	time.Sleep(50 * time.Millisecond)
-	logger.Sync()
+	safeSyncContextLogger(t, logger)
 
 	output := buf.String()
 
@@ -1179,7 +1206,7 @@ func TestContextLogger_WarnErrorEdgeCases(t *testing.T) {
 		t.Fatalf("Failed to create test logger: %v", err)
 	}
 	logger.Start()
-	defer logger.Close()
+	defer safeCloseContextLogger(t, logger)
 
 	ctx := context.WithValue(context.Background(), RequestIDKey, "edge-test")
 	cl := logger.WithContext(ctx)
@@ -1198,7 +1225,7 @@ func TestContextLogger_WarnErrorEdgeCases(t *testing.T) {
 
 	// Allow async processing
 	time.Sleep(50 * time.Millisecond)
-	logger.Sync()
+	safeSyncContextLogger(t, logger)
 
 	output := buf.String()
 
@@ -1339,12 +1366,10 @@ func TestContextLogger_AdvancedLevelFiltering(t *testing.T) {
 				t.Fatalf("Failed to create logger: %v", err)
 			}
 			logger.Start()
-			defer logger.Close()
+			defer safeCloseContextLogger(t, logger)
 
 			// Create context logger with some fields
-			cl := logger.WithContext(context.Background()).With(Str("test", "value"))
-
-			// Execute test function
+			cl := logger.WithContext(context.Background()).With(Str("test", "value")) // Execute test function
 			tt.testFunc(cl)
 
 			// Wait for async processing

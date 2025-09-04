@@ -1,3 +1,9 @@
+// main.go. Config loader example tests
+//
+// Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
+// SPDX-License-Identifier: MPL-2.0
+
 package main
 
 import (

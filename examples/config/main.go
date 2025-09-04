@@ -6,6 +6,7 @@
 // To run: go run examples/configuration_loading.go
 //
 // Copyright (c) 2025 AGILira
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package main
@@ -17,6 +18,11 @@ import (
 
 	"github.com/agilira/iris"
 )
+
+// setEnvForDemo sets an environment variable for demo purposes
+func setEnvForDemo(key, value string) {
+	_ = os.Setenv(key, value)
+}
 
 func main() {
 	// Example 1: JSON configuration loading
@@ -57,7 +63,9 @@ func jsonConfigExample() {
 	if _, err := tmpFile.WriteString(configJSON); err != nil {
 		panic(err)
 	}
-	tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		fmt.Printf("Warning: failed to close temp file: %v\n", err)
+	}
 
 	// Load configuration from JSON
 	config, err := iris.LoadConfigFromJSON(tmpFile.Name())
@@ -82,11 +90,11 @@ func jsonConfigExample() {
 
 func envConfigExample() {
 	// Set environment variables
-	os.Setenv("IRIS_LEVEL", "warn")
-	os.Setenv("IRIS_CAPACITY", "16384")
-	os.Setenv("IRIS_BATCH_SIZE", "32")
-	os.Setenv("IRIS_ENABLE_CALLER", "false")
-	os.Setenv("IRIS_NAME", "env-service")
+	setEnvForDemo("IRIS_LEVEL", "warn")
+	setEnvForDemo("IRIS_CAPACITY", "16384")
+	setEnvForDemo("IRIS_BATCH_SIZE", "32")
+	setEnvForDemo("IRIS_ENABLE_CALLER", "false")
+	setEnvForDemo("IRIS_NAME", "env-service")
 
 	defer func() {
 		// Clean up environment variables
@@ -134,12 +142,16 @@ func multiSourceConfigExample() {
 	}
 	defer os.Remove(tmpFile.Name())
 
-	tmpFile.WriteString(configJSON)
-	tmpFile.Close()
+	if _, err := tmpFile.WriteString(configJSON); err != nil {
+		fmt.Printf("Warning: failed to write config: %v\n", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		fmt.Printf("Warning: failed to close tmp file: %v\n", err)
+	}
 
 	// Set environment variables (these will override JSON settings)
-	os.Setenv("IRIS_LEVEL", "debug")        // Overrides JSON "info"
-	os.Setenv("IRIS_BATCH_SIZE", "64")      // Overrides JSON "8"
+	setEnvForDemo("IRIS_LEVEL", "debug")   // Overrides JSON "info"
+	setEnvForDemo("IRIS_BATCH_SIZE", "64") // Overrides JSON "8"
 	// IRIS_CAPACITY not set, so JSON value (4096) will be used
 
 	defer func() {
@@ -184,18 +196,20 @@ func productionDeploymentExample() {
 }`
 
 	configDir := filepath.Join(os.TempDir(), "iris_configs")
-	os.MkdirAll(configDir, 0755)
+	if err := os.MkdirAll(configDir, 0750); err != nil {
+		panic(fmt.Sprintf("Failed to create config directory: %v", err))
+	}
 	defer os.RemoveAll(configDir)
 
 	prodConfigPath := filepath.Join(configDir, "production.json")
-	if err := os.WriteFile(prodConfigPath, []byte(prodConfigJSON), 0644); err != nil {
+	if err := os.WriteFile(prodConfigPath, []byte(prodConfigJSON), 0600); err != nil {
 		panic(err)
 	}
 
 	// Simulate container environment variables
-	os.Setenv("ENVIRONMENT", "production")
-	os.Setenv("IRIS_LEVEL", "warn")      // Production override for safety
-	os.Setenv("IRIS_CAPACITY", "131072") // Increased for high throughput
+	setEnvForDemo("ENVIRONMENT", "production")
+	setEnvForDemo("IRIS_LEVEL", "warn")      // Production override for safety
+	setEnvForDemo("IRIS_CAPACITY", "131072") // Increased for high throughput
 
 	defer func() {
 		os.Unsetenv("ENVIRONMENT")
@@ -237,7 +251,7 @@ func loadProductionConfig(configDir string) (*iris.Config, error) {
 
 	// Try environment-specific config file first
 	configPath := filepath.Join(configDir, env+".json")
-	
+
 	// Try multi-source loading
 	if config, err := iris.LoadConfigMultiSource(configPath); err == nil {
 		fmt.Printf("Loaded configuration for environment: %s\n", env)

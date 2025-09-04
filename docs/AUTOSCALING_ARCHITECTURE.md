@@ -279,3 +279,7 @@ func (asl *AutoScalingLogger) performScaling(targetMode AutoScalingMode) {
 4. **Hardware-Aware Scaling**: CPU core count and NUMA topology-aware optimization
 
 The auto-scaling architecture provides a foundation for advanced adaptive logging systems that optimize performance automatically based on runtime conditions.
+
+---
+
+Iris • an AGILira fragment

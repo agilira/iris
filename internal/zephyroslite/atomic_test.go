@@ -1,7 +1,7 @@
 // atomic_test.go: Tests for atomic operations in zephyroslite
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package zephyroslite
@@ -126,34 +126,49 @@ func TestAtomicPaddedInt64_Concurrent(t *testing.T) {
 	t.Run("Concurrent_CAS", func(t *testing.T) {
 		var atomic AtomicPaddedInt64
 		const goroutines = 50
-		var successCount int64
-		var successAtomic AtomicPaddedInt64
+		const attempts = 10 // Try multiple rounds to test robustness
 
-		var wg sync.WaitGroup
-		wg.Add(goroutines)
+		for round := 0; round < attempts; round++ {
+			// Reset for each round
+			atomic.Store(0)
+			successCount := make([]bool, goroutines)
 
-		// Launch multiple goroutines trying to CAS from 0 to their ID
-		for i := 0; i < goroutines; i++ {
-			go func(id int) {
-				defer wg.Done()
-				if atomic.CompareAndSwap(0, int64(id)) {
-					successAtomic.Add(1)
+			var wg sync.WaitGroup
+			wg.Add(goroutines)
+
+			// Launch multiple goroutines trying to CAS from 0 to their ID
+			for i := 0; i < goroutines; i++ {
+				go func(id int) {
+					defer wg.Done()
+					// Try CAS with a small delay to reduce race conditions
+					successCount[id] = atomic.CompareAndSwap(0, int64(id+1)) // Use id+1 to avoid 0
+				}(i)
+			}
+
+			wg.Wait()
+
+			// Count successful CAS operations
+			actualSuccesses := 0
+			successfulId := -1
+			for i, success := range successCount {
+				if success {
+					actualSuccesses++
+					successfulId = i
 				}
-			}(i)
-		}
+			}
 
-		wg.Wait()
+			// Exactly one should succeed in each round
+			if actualSuccesses != 1 {
+				t.Errorf("Round %d: Expected exactly 1 successful CAS, got %d", round, actualSuccesses)
+				continue // Continue with next round instead of failing immediately
+			}
 
-		// Exactly one should succeed
-		successCount = successAtomic.Load()
-		if successCount != 1 {
-			t.Errorf("Expected exactly 1 successful CAS, got %d", successCount)
-		}
-
-		// Value should be one of the IDs
-		value := atomic.Load()
-		if value < 0 || value >= goroutines {
-			t.Errorf("Expected value between 0 and %d, got %d", goroutines-1, value)
+			// Value should match the successful goroutine's ID+1
+			value := atomic.Load()
+			expectedValue := int64(successfulId + 1)
+			if value != expectedValue {
+				t.Errorf("Round %d: Expected value %d, got %d", round, expectedValue, value)
+			}
 		}
 	})
 }

@@ -4,7 +4,7 @@
 // capture using runtime.Callers and object pooling for zero-allocation paths.
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris

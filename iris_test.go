@@ -31,6 +31,15 @@ func (bs *bufferedSyncer) Sync() error {
 	return nil
 }
 
+// Helper function for safe logger closing in test
+func safeCloseIrisLogger(t *testing.T, logger *Logger) {
+	if logger != nil {
+		if err := logger.Close(); err != nil {
+			t.Logf("Failed to close logger: %v", err)
+		}
+	}
+}
+
 func (bs *bufferedSyncer) String() string {
 	bs.mu.Lock()
 	defer bs.mu.Unlock()
@@ -48,7 +57,7 @@ func TestLoggerBasicOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseIrisLogger(t, logger)
 
 	logger.Start()
 
@@ -62,7 +71,7 @@ func TestLoggerBasicOperations(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Ensure all records are processed
-	logger.Sync()
+	_ = logger.Sync()
 
 	output := buf.String()
 	t.Logf("Output: %q", output)
@@ -102,7 +111,7 @@ func TestLoggerLevelFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseIrisLogger(t, logger)
 
 	// Start the logger for async processing
 	logger.Start()
@@ -146,7 +155,7 @@ func TestLoggerWithFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer baseLogger.Close()
+	defer safeCloseIrisLogger(t, baseLogger)
 
 	// Start the logger for async processing
 	baseLogger.Start()
@@ -187,7 +196,7 @@ func TestLoggerNamed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer baseLogger.Close()
+	defer safeCloseIrisLogger(t, baseLogger)
 
 	// Start the logger for async processing
 	baseLogger.Start()
@@ -218,7 +227,7 @@ func TestLoggerSetLevel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseIrisLogger(t, logger)
 
 	// Start the logger for async processing
 	logger.Start()
@@ -263,7 +272,7 @@ func TestLoggerConcurrency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseIrisLogger(t, logger)
 
 	// Start the logger for async processing
 	logger.Start()
@@ -326,7 +335,7 @@ func TestLoggerHooks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseIrisLogger(t, logger)
 
 	// Start the logger for async processing
 	logger.Start()
@@ -355,7 +364,7 @@ func TestLoggerDevelopmentMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseIrisLogger(t, logger)
 
 	// Start the logger for async processing
 	logger.Start()
@@ -384,7 +393,7 @@ func TestLoggerWithCallerInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseIrisLogger(t, logger)
 
 	// Start the logger for async processing
 	logger.Start()
@@ -472,7 +481,7 @@ func TestLoggerStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseIrisLogger(t, logger)
 
 	// Test multiple Start calls (should be idempotent)
 	logger.Start()
@@ -539,7 +548,7 @@ func TestDPanic(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create logger: %v", err)
 			}
-			defer logger.Close()
+			defer safeCloseIrisLogger(t, logger)
 			logger.Start()
 
 			// Test the DPanic function
@@ -631,7 +640,7 @@ func TestSync(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create logger: %v", err)
 			}
-			defer logger.Close()
+			defer safeCloseIrisLogger(t, logger)
 			logger.Start()
 
 			// Wait for logger to start

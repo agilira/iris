@@ -4,7 +4,7 @@
 // behavior in terms of CPU usage and responsiveness.
 //
 // Copyright (c) 2025 AGILira
-// Series: an AGLIra library
+// Series: an AGILira fragment
 // SPDX-License-Identifier: MPL-2.0
 
 package iris
@@ -297,7 +297,7 @@ func TestLogger_WithCustomIdleStrategy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)
 	}
-	defer logger.Close()
+	defer safeCloseIdleStrategyLogger(t, logger)
 
 	logger.Start()
 
@@ -306,7 +306,7 @@ func TestLogger_WithCustomIdleStrategy(t *testing.T) {
 
 	// Give time for processing
 	time.Sleep(10 * time.Millisecond)
-	logger.Sync()
+	_ = logger.Sync()
 }
 
 // TestWriteSyncer is a simple WriteSyncer for testing
@@ -321,4 +321,11 @@ func (t *TestWriteSyncer) Write(p []byte) (n int, err error) {
 
 func (t *TestWriteSyncer) Sync() error {
 	return nil
+}
+
+// Helper function for safe logger cleanup
+func safeCloseIdleStrategyLogger(t *testing.T, logger *Logger) {
+	if err := logger.Close(); err != nil {
+		t.Logf("Warning: Error closing logger in test: %v", err)
+	}
 }

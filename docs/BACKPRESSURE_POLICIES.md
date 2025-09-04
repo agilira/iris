@@ -571,3 +571,7 @@ Choose your backpressure policy based on your specific requirements:
 - **BlockOnFull** when data integrity is paramount and performance can be traded off
 
 Both policies provide excellent performance characteristics when properly configured for your use case.
+
+---
+
+Iris • an AGILira fragment
