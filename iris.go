@@ -157,9 +157,16 @@ func detectOptimalArchitecture() Architecture {
 }
 
 func detectOptimalCapacity() int64 {
-	// Smart capacity based on system resources
+	// Smart capacity based on system resources with CI-friendly defaults
 	cpus := int64(runtime.NumCPU())
-	// 8KB per CPU core, minimum 8KB, maximum 64KB
+
+	// Check if running in CI environment (limited resources)
+	if os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" {
+		// Use conservative capacity for CI environments
+		return 4096 // Safe for all CI runners
+	}
+
+	// 8KB per CPU core for production, minimum 8KB, maximum 64KB
 	capacity := cpus * 8192
 	if capacity < 8192 {
 		capacity = 8192
