@@ -1,0 +1,2 @@
+{"timestamp":"2025-09-05T12:33:43.167740785+02:00","level":0,"event":"watch_start","component":"argus","file_path":"/tmp/iris_dynamic_2167866117.json","process_id":318042,"process_name":"argus","checksum":"2ae88b2b678afbd056a940c738bdd1e1f5102ebc080c9a4c03aa0bd5d54350a9"}
+{"timestamp":"2025-09-05T12:33:43.175792653+02:00","level":0,"event":"watch_start","component":"argus","file_path":"/tmp/iris_dynamic_948549676.json","process_id":318042,"process_name":"argus","checksum":"e7811eda6150df9a85e79cc4555771347e53f26d823ab7cff3846168750cb58f"}

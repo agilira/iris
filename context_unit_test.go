@@ -1291,9 +1291,10 @@ func setupContextTestLogger(t *testing.T) *Logger {
 	t.Helper()
 	buf := &bufferedTestSyncer{}
 	logger, err := New(Config{
-		Level:   Debug,
-		Encoder: NewJSONEncoder(),
-		Output:  buf,
+		Level:    Debug,
+		Encoder:  NewJSONEncoder(),
+		Output:   buf,
+		Capacity: 1024, // Safe capacity for CI environments
 	})
 	if err != nil {
 		t.Fatalf("Failed to create test logger: %v", err)

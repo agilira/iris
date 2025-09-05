@@ -73,7 +73,10 @@ func TestSmartAPI_ProductionMode(t *testing.T) {
 	var buf bytes.Buffer
 
 	// Production mode (no Development() option) should select JSONEncoder
-	logger, err := New(Config{Output: WrapWriter(&buf)})
+	logger, err := New(Config{
+		Output:   WrapWriter(&buf),
+		Capacity: 1024, // Safe capacity for CI
+	})
 	if err != nil {
 		t.Fatalf("New without Development() failed: %v", err)
 	}

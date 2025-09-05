@@ -50,9 +50,10 @@ func (bs *bufferedSyncer) String() string {
 func TestLoggerBasicOperations(t *testing.T) {
 	buf := &bufferedSyncer{}
 	logger, err := New(Config{
-		Level:   Debug,
-		Encoder: NewJSONEncoder(),
-		Output:  buf,
+		Level:    Debug,
+		Encoder:  NewJSONEncoder(),
+		Output:   buf,
+		Capacity: 1024, // Safe capacity for CI
 	})
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)

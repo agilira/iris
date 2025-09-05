@@ -473,9 +473,10 @@ func TestDynamicConfigWatcherLifecycle(t *testing.T) {
 
 		// Create a logger to test with
 		logger, err := New(Config{
-			Level:   Info,
-			Encoder: NewTextEncoder(),
-			Output:  os.Stdout,
+			Level:    Info,
+			Encoder:  NewTextEncoder(),
+			Output:   os.Stdout,
+			Capacity: 1024, // Safe capacity for CI
 		})
 		if err != nil {
 			t.Fatalf("Failed to create logger: %v", err)
