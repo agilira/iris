@@ -183,13 +183,13 @@ func (a *atomicLevel) SetMin(l Level) { a.Store(l) }
 func (c *Config) withDefaults() *Config {
 	out := *c
 
-	// Set default capacity based on platform and environment for optimal compatibility
-	// Use conservative settings for macOS and test environments
+	// Set default capacity based on platform for optimal compatibility
+	// Use conservative settings for macOS and Windows which have different constraints
 	if out.Capacity <= 0 {
-		if runtime.GOOS == "darwin" || os.Getenv("IRIS_TESTING") != "" || os.Getenv("GO_TESTING") != "" {
-			out.Capacity = 1 << 12 // 4096 for macOS/testing compatibility
+		if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+			out.Capacity = 1 << 12 // 4096 for macOS/Windows compatibility
 		} else {
-			out.Capacity = 1 << 16 // 65536 for other platforms
+			out.Capacity = 1 << 16 // 65536 for Linux
 		}
 	}
 
