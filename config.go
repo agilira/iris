@@ -13,6 +13,7 @@ package iris
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -183,9 +184,17 @@ func (c *Config) withDefaults() *Config {
 	out := *c
 
 	// Set default capacity for deterministic behavior across all platforms
-	// Use hardcoded 65536 to ensure ZephyrosLite compatibility on all systems
+	// Check environment variable first for CI/testing overrides
 	if out.Capacity <= 0 {
-		out.Capacity = 1 << 16 // 65536 - hardcoded for reliability
+		if capacityStr := os.Getenv("IRIS_CAPACITY"); capacityStr != "" {
+			if capacity, err := strconv.ParseInt(capacityStr, 10, 64); err == nil && capacity > 0 {
+				out.Capacity = capacity
+			} else {
+				out.Capacity = 1 << 16 // 65536 - fallback default
+			}
+		} else {
+			out.Capacity = 1 << 16 // 65536 - hardcoded for reliability
+		}
 	}
 
 	// Default output to stdout with proper synchronization
