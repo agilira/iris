@@ -13,7 +13,6 @@ package iris
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -183,14 +182,10 @@ func (a *atomicLevel) SetMin(l Level) { a.Store(l) }
 func (c *Config) withDefaults() *Config {
 	out := *c
 
-	// Set default capacity based on platform for optimal compatibility
-	// Use conservative settings for macOS and Windows which have different constraints
+	// Set default capacity for deterministic behavior across all platforms
+	// Use hardcoded 65536 to ensure ZephyrosLite compatibility on all systems
 	if out.Capacity <= 0 {
-		if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-			out.Capacity = 1 << 12 // 4096 for macOS/Windows compatibility
-		} else {
-			out.Capacity = 1 << 16 // 65536 for Linux
-		}
+		out.Capacity = 1 << 16 // 65536 - hardcoded for reliability
 	}
 
 	// Default output to stdout with proper synchronization

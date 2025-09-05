@@ -19,7 +19,8 @@ func TestConfigDefaults(t *testing.T) {
 	config := &Config{}
 	defaulted := config.withDefaults()
 
-	if defaulted.Capacity != 1<<16 {
+	// Check deterministic capacity default (hardcoded for cross-platform compatibility)
+	if defaulted.Capacity != 65536 {
 		t.Errorf("Expected default capacity 65536, got %d", defaulted.Capacity)
 	}
 
