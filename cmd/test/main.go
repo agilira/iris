@@ -10,9 +10,11 @@ import (
 
 func main() {
 	logger, err := iris.New(iris.Config{
-		Level:   iris.Debug,
-		Encoder: iris.NewJSONEncoder(),
-		Output:  os.Stdout,
+		Level:     iris.Debug,
+		Encoder:   iris.NewJSONEncoder(),
+		Output:    os.Stdout,
+		Capacity:  256, // Small capacity for test reliability
+		BatchSize: 4,   // Small batches for immediate processing
 	})
 	if err != nil {
 		panic(err)
@@ -46,7 +48,7 @@ func main() {
 		} else {
 			fmt.Println("Logger synced")
 		}
-	case <-time.After(10 * time.Second):
+	case <-time.After(5 * time.Second): // Ridotto da 10 a 5 secondi
 		fmt.Println("Warning: logger sync timeout (Windows issue)")
 	}
 }

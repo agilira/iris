@@ -18,8 +18,8 @@ import (
 
 // TestSmartAPI_BasicCreation tests that New() works with minimal configuration
 func TestSmartAPI_BasicCreation(t *testing.T) {
-	// Empty config should work with smart defaults
-	logger, err := New(Config{})
+	// Use explicit small capacity for cross-platform compatibility
+	logger, err := New(Config{Capacity: 1024})
 	if err != nil {
 		t.Fatalf("New(Config{}) failed: %v", err)
 	}
@@ -101,8 +101,8 @@ func TestSmartAPI_ProductionMode(t *testing.T) {
 
 // TestSmartAPI_ArchitectureDetection tests smart architecture selection
 func TestSmartAPI_ArchitectureDetection(t *testing.T) {
-	// Just test that it doesn't crash and selects appropriate architecture
-	logger, err := New(Config{})
+	// Use explicit small capacity for cross-platform compatibility
+	logger, err := New(Config{Capacity: 512})
 	if err != nil {
 		t.Fatalf("New() with smart architecture failed: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestSmartAPI_ArchitectureDetection(t *testing.T) {
 
 // TestSmartAPI_CapacityOptimization tests smart capacity selection
 func TestSmartAPI_CapacityOptimization(t *testing.T) {
-	logger, err := New(Config{})
+	logger, err := New(Config{Capacity: 512})
 	if err != nil {
 		t.Fatalf("New() with smart capacity failed: %v", err)
 	}

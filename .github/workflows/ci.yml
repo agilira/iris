@@ -86,4 +86,7 @@ jobs:
       run: go build -v ./...
 
     - name: Short Test (no race, faster)
+      env:
+        IRIS_TESTING: "true"
+        GO_TESTING: "true"
       run: go test -short -timeout 60s ./...

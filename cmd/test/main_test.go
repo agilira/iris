@@ -280,11 +280,11 @@ func TestMain(t *testing.T) {
 		main()
 	}()
 
-	// Wait for main to complete with timeout (Windows Sync can be slow)
+	// Wait for main to complete with timeout (reduced for faster CI)
 	select {
 	case <-done:
 		// Success
-	case <-time.After(25 * time.Second):
+	case <-time.After(15 * time.Second): // Ridotto da 25 a 15 secondi
 		t.Fatal("Test timeout: main() took too long (likely Windows Sync issue)")
 	}
 
