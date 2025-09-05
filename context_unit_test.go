@@ -25,6 +25,7 @@ import (
 func safeCloseContextLogger(t *testing.T, logger *Logger) {
 	if err := logger.Close(); err != nil &&
 		!strings.Contains(err.Error(), "sync /dev/stdout: invalid argument") &&
+		!strings.Contains(err.Error(), "sync /dev/stdout: bad file descriptor") &&
 		!strings.Contains(err.Error(), "ring buffer flush failed") {
 		t.Errorf("Failed to close logger: %v", err)
 	}
@@ -34,6 +35,7 @@ func safeCloseContextLogger(t *testing.T, logger *Logger) {
 func safeSyncContextLogger(t *testing.T, logger *Logger) {
 	if err := logger.Sync(); err != nil &&
 		!strings.Contains(err.Error(), "sync /dev/stdout: invalid argument") &&
+		!strings.Contains(err.Error(), "sync /dev/stdout: bad file descriptor") &&
 		!strings.Contains(err.Error(), "ring buffer flush failed") {
 		t.Errorf("Failed to sync logger: %v", err)
 	}

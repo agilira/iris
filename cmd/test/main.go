@@ -33,8 +33,20 @@ func main() {
 	// Give time for processing
 	time.Sleep(100 * time.Millisecond)
 
-	if err := logger.Sync(); err != nil {
-		fmt.Printf("Warning: failed to sync logger: %v\n", err)
+	// Sync with timeout to avoid Windows hanging
+	syncDone := make(chan error, 1)
+	go func() {
+		syncDone <- logger.Sync()
+	}()
+
+	select {
+	case err := <-syncDone:
+		if err != nil {
+			fmt.Printf("Warning: failed to sync logger: %v\n", err)
+		} else {
+			fmt.Println("Logger synced")
+		}
+	case <-time.After(10 * time.Second):
+		fmt.Println("Warning: logger sync timeout (Windows issue)")
 	}
-	fmt.Println("Logger synced")
 }

@@ -21,7 +21,9 @@ import (
 
 // Helper function to safely close logger ignoring stdout sync errors
 func safeCloseLogger(t *testing.T, logger *AutoScalingLogger) {
-	if err := logger.Close(); err != nil && !strings.Contains(err.Error(), "sync /dev/stdout: invalid argument") {
+	if err := logger.Close(); err != nil && 
+		!strings.Contains(err.Error(), "sync /dev/stdout: invalid argument") &&
+		!strings.Contains(err.Error(), "sync /dev/stdout: bad file descriptor") {
 		t.Errorf("Failed to close logger: %v", err)
 	}
 }

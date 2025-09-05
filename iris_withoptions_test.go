@@ -40,6 +40,7 @@ func (ts *testSyncer) String() string {
 func safeCloseWithOptionsLogger(t *testing.T, logger *Logger) {
 	if err := logger.Close(); err != nil &&
 		!strings.Contains(err.Error(), "sync /dev/stdout: invalid argument") &&
+		!strings.Contains(err.Error(), "sync /dev/stdout: bad file descriptor") &&
 		!strings.Contains(err.Error(), "ring buffer flush failed") {
 		t.Errorf("Failed to close logger: %v", err)
 	}

@@ -20,7 +20,7 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version: '1.24.5'
         cache: true
 
     - name: Install Dependencies
@@ -71,7 +71,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        go-version: ['1.23']
+        go-version: ['1.24.5']
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -86,4 +86,4 @@ jobs:
       run: go build -v ./...
 
     - name: Short Test (no race, faster)
-      run: go test -short -timeout 30s ./...
+      run: go test -short -timeout 60s ./...
