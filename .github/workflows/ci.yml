@@ -90,7 +90,5 @@ jobs:
       run: go test -race -timeout 5m -v ./...
 
     - name: Test (macOS - Serial Execution)
-      if: runner.os == 'macOS'
-      env:
-        IRIS_CAPACITY: 4096  # Reduced capacity for macOS GitHub Actions compatibility
-      run: go test -count=1 -p=1 -timeout 10m -v ./...
+      if: matrix.os == 'macos-latest'
+      run: go test -v -count=1 -p=1 -timeout=10m ./...

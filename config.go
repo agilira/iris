@@ -13,7 +13,6 @@ package iris
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -184,17 +183,9 @@ func (c *Config) withDefaults() *Config {
 	out := *c
 
 	// Set default capacity for deterministic behavior across all platforms
-	// Check environment variable first for CI/testing overrides
+	// Use constant value to ensure identical behavior on all systems
 	if out.Capacity <= 0 {
-		if capacityStr := os.Getenv("IRIS_CAPACITY"); capacityStr != "" {
-			if capacity, err := strconv.ParseInt(capacityStr, 10, 64); err == nil && capacity > 0 {
-				out.Capacity = capacity
-			} else {
-				out.Capacity = 1 << 16 // 65536 - fallback default
-			}
-		} else {
-			out.Capacity = 1 << 16 // 65536 - hardcoded for reliability
-		}
+		out.Capacity = 65536 // Hardcoded for cross-platform reliability
 	}
 
 	// Default output to stdout with proper synchronization
