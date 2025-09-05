@@ -85,5 +85,12 @@ jobs:
     - name: Build
       run: go build -v ./...
 
-    - name: Short Test (no race, faster)
-      run: go test -short -timeout 60s ./...
+    - name: Test (Linux/Windows)
+      if: runner.os != 'macOS'
+      run: go test -race -timeout 5m -v ./...
+
+    - name: Test (macOS - Serial Execution)
+      if: runner.os == 'macOS'
+      run: go test -count=1 -p=1 -timeout 10m -v ./...
+      # Note: macOS requires serial test execution (-p=1) and no cache (-count=1)
+      # due to test interference issues with ring buffer creation in parallel execution
