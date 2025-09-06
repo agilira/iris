@@ -25,7 +25,6 @@ Iris is a blazing-fast, zero-allocation structured logging library for Go, engin
 Iris uses a modular design with external packages for integrations:
 - **Providers**: `iris-provider-slog` for Go's log/slog integration
 - **Writers**: `iris-writer-loki` for Grafana Loki output
-- **Zero Dependencies**: Core library remains dependency-free
 
 **[Provider Ecosystem →](./docs/PROVIDER_ECOSYSTEM.md)** | **[Writer Development →](./docs/WRITER_DEVELOPMENT.md)**
 
