@@ -142,6 +142,9 @@ func buildSmartConfig(cfg Config, opts ...Option) Config {
 	if cfg.IdleStrategy != nil {
 		smartCfg.IdleStrategy = cfg.IdleStrategy
 	}
+	if cfg.Sampler != nil {
+		smartCfg.Sampler = cfg.Sampler
+	}
 
 	return smartCfg
 }
@@ -242,6 +245,11 @@ func detectSamplerFromOptions(opts ...Option) Sampler {
 	tempOpts := newLoggerOptions()
 	for _, opt := range opts {
 		opt(&tempOpts)
+	}
+
+	// Return sampler if configured through options
+	if tempOpts.sampler != nil {
+		return tempOpts.sampler
 	}
 
 	// Check if sampling is configured through options
@@ -541,16 +549,24 @@ func (l *Logger) AtomicLevel() *AtomicLevel { return &l.level }
 //
 // Thread Safety: Safe to call from multiple goroutines
 func (l *Logger) WithOptions(opts ...Option) *Logger {
+	newOpts := l.opts.merge(opts...)
+
+	// Check if sampler option was provided
+	newSampler := l.sampler
+	if newOpts.sampler != nil {
+		newSampler = newOpts.sampler
+	}
+
 	clone := &Logger{
 		r:          l.r,
 		out:        l.out,
 		enc:        l.enc,
 		level:      l.level,
 		clock:      l.clock,
-		sampler:    l.sampler,
+		sampler:    newSampler,
 		name:       l.name,
 		baseFields: l.baseFields,
-		opts:       l.opts.merge(opts...),
+		opts:       newOpts,
 	}
 	return clone
 }

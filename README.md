@@ -9,17 +9,26 @@ Iris is an ultra-high performance, zero-allocation structured logging library fo
 [![Test Coverage](https://codecov.io/gh/agilira/iris/branch/main/graph/badge.svg)](https://codecov.io/gh/agilira/iris)
 ![Xantos Powered](https://img.shields.io/badge/Xantos%20Powered-8A2BE2?style=flat)
 
-
-
 ### Key Features
 - **Smart API**: Zero-configuration setup with automatic optimization for your environment
+- **SyncReader Interface**: Extensible architecture for integrating with existing logging libraries
+- **SyncWriter Interface**: Modular output destinations with external writer modules
 - **Intelligent Auto-Scaling**: Real-time switching between SingleRing and MPSC modes based on workload
-- **Pofessional Security**: Built-in sensitive data redaction and log injection protection
+- **Modular Ecosystem**: External providers and writers with zero core dependencies
+- **Professional Security**: Built-in sensitive data redaction and log injection protection
 - **OpenTelemetry Integration**: Native distributed tracing with automatic correlation and baggage propagation
 - **Time Optimization**: 121x faster timestamps with intelligent caching (timecache.CachedTime)
 - **Hot Reload Configuration**: Runtime configuration changes without service restarts
 - **Advanced Idle Strategies**: Progressive, spinning, sleeping, and hybrid strategies for optimal CPU usage
 - **Backpressure Policies**: Intelligent handling of high-load scenarios with multiple strategies
+
+### Modular Architecture
+Iris uses a modular design with external packages for integrations:
+- **Providers**: `iris-provider-slog` for Go's log/slog integration
+- **Writers**: `iris-writer-loki` for Grafana Loki output
+- **Zero Dependencies**: Core library remains dependency-free
+
+**[Provider Ecosystem →](./docs/PROVIDER_ECOSYSTEM.md)** | **[Writer Development →](./docs/WRITER_DEVELOPMENT.md)**
 
 ## Installation
 
@@ -49,12 +58,11 @@ logger.Info("User authenticated",
 ```
 
 **[Complete Quick Start Guide →](./docs/QUICK_START.md)** - Get running in 2 minutes with detailed examples
+**[Provider Integration Guide →](./docs/READERLOGGER_INTEGRATION.md)** - Accelerate existing applications
 
 ## Performance
 
 Iris prioritizes performance without sacrificing developer experience. Through careful engineering of zero-allocation field encoding, intelligent time caching, and lock-free ring buffers, we've achieved consistent sub-50ns logging operations.
-
-Rather than making claims, we invite you to run the [benchmarks](./benchmarks/) yourself and see how Iris performs in your specific workloads:
 
 Logging a message and 10 fields:
 
@@ -120,6 +128,20 @@ graph TD
     class E,H security
     class D,I performance
 ```
+
+### SyncReader Integration
+
+Iris provides a SyncReader interface for integrating with existing logging libraries through external provider modules:
+
+```go
+// Example with slog provider
+import slogprovider "github.com/agilira/iris-provider-slog"
+
+provider := slogprovider.New(slogprovider.Config{})
+logger := slog.New(provider)  // Same slog API, enhanced performance
+```
+
+**[Provider Integration Guide →](./docs/READERLOGGER_INTEGRATION.md)** | **[Provider Development →](./docs/PROVIDER_DEVELOPMENT_GUIDE.md)**
 
 ### Advanced Features
 
@@ -196,11 +218,19 @@ Iris doesn't just log events—it delivers them with the speed of light while sa
 
 **Quick Links:**
 - **[Quick Start Guide](./docs/QUICK_START.md)** - Get running in 2 minutes
+- **[SyncReader Interface](./docs/SYNCREADER_INTERFACE.md)** - Universal logging acceleration
+- **[Provider Integration Guide](./docs/READERLOGGER_INTEGRATION.md)** - Accelerate existing applications
+- **[Provider Development Guide](./docs/PROVIDER_DEVELOPMENT_GUIDE.md)** - Create new provider modules
+- **[Writer Development Guide](./docs/WRITER_DEVELOPMENT.md)** - Create external writer modules
+- **[Provider Ecosystem](./docs/PROVIDER_ECOSYSTEM.md)** - Architecture and maintenance model
+- **[SyncReader Troubleshooting](./docs/SYNCREADER_TROUBLESHOOTING.md)** - Diagnostic and debugging guide
+- **[Grafana Loki Integration](./docs/LOKI_INTEGRATION.md)** - High-performance logging to Loki
 - **[Auto-Scaling Architecture](./docs/AUTOSCALING_ARCHITECTURE.md)** - Intelligent performance optimization
 - **[OpenTelemetry Integration](./docs/OPENTELEMETRY.md)** - Distributed tracing and observability
 - **[Hot Reload Configuration](./docs/HOT_RELOAD.md)** - Runtime configuration management
 - **[Smart API Guide](./docs/SMART_API.md)** - Zero-configuration setup and auto-optimization
 - **[Security Reference](./docs/SECURE_BY_DESIGN.md)** - Complete security features guide
+- **[Log Sampling](./docs/SAMPLER.md)** - Rate limiting and volume control for high-throughput scenarios
 - **[Context Integration](./docs/CONTEXT_INTEGRATION.md)** - Advanced context handling patterns
 - **[Idle Strategies Guide](./docs/IDLE_STRATEGIES_GUIDE.md)** - CPU optimization and workload adaptation
 - **[Backpressure Policies](./docs/BACKPRESSURE_POLICIES.md)** - High-load scenario handling

@@ -75,6 +75,9 @@ type loggerOptions struct {
 
 	// Hook system
 	hooks []Hook // Post-processing hooks executed in consumer thread
+
+	// Sampling system
+	sampler Sampler // Log sampling strategy for rate limiting
 }
 
 // Option represents a function that modifies logger options during construction.
@@ -247,6 +250,41 @@ func WithHook(h Hook) Option {
 	}
 }
 
+// WithSampler enables log sampling with the specified sampler.
+//
+// Sampling is used to reduce log volume in high-throughput scenarios by
+// selectively allowing only a subset of log messages to be processed.
+// This is particularly useful for preventing log storms and managing
+// system resources while maintaining visibility into application behavior.
+//
+// Parameters:
+//   - s: Sampler implementation (nil disables sampling)
+//
+// Common Use Cases:
+//   - Rate limiting in high-volume production systems
+//   - Preventing log storms during error conditions
+//   - Managing log storage costs
+//   - Maintaining system performance under load
+//
+// Returns:
+//   - Option: Configuration function to set the sampler
+//
+// Example:
+//
+//	// Create a token bucket sampler: 100 burst, 10/sec sustained rate
+//	sampler := iris.NewTokenBucketSampler(100, 10, time.Second)
+//	logger := logger.WithOptions(iris.WithSampler(sampler))
+//
+//	// High-volume logging will be automatically rate-limited
+//	for i := 0; i < 1000; i++ {
+//	    logger.Info("high volume message", iris.Int("id", i))
+//	}
+func WithSampler(s Sampler) Option {
+	return func(o *loggerOptions) {
+		o.sampler = s
+	}
+}
+
 // newLoggerOptions creates a new loggerOptions with proper default values.
 func newLoggerOptions() loggerOptions {
 	return loggerOptions{
@@ -255,6 +293,7 @@ func newLoggerOptions() loggerOptions {
 		stackMin:    StacktraceDisabled, // Disabled by default
 		development: false,
 		hooks:       nil,
+		sampler:     nil, // No sampling by default
 	}
 }
 
