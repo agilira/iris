@@ -258,3 +258,7 @@ Providers should implement appropriate backpressure strategies:
 - Contribute improvements and bug fixes
 - Develop additional provider implementations
 - Share usage patterns and best practices
+
+---
+
+Iris • an AGILira fragment

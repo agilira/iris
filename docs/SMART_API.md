@@ -242,6 +242,7 @@ logger, _ := iris.New(iris.Config{}) // Reads IRIS_LEVEL automatically
 - **Reduced Complexity**: Less training and documentation needed
 - **Fewer Bugs**: No configuration mistakes possible
 - **Better Performance**: Optimized automatically
+
 ---
 
 Iris • an AGILira fragment

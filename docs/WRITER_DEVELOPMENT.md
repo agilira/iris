@@ -222,4 +222,6 @@ Every writer module should include:
 - **Community**: Discussion and examples in iris repository
 - **Documentation**: Updated guides and best practices
 
-For questions about writer development, please refer to the main Iris repository or community channels.
+---
+
+Iris • an AGILira fragment

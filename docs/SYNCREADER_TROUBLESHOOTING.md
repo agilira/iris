@@ -576,4 +576,6 @@ func (p *Provider) GracefulShutdown(timeout time.Duration) error {
 }
 ```
 
-This comprehensive troubleshooting guide provides systematic approaches to identify, diagnose, and resolve issues with SyncReader implementations.
+---
+
+Iris • an AGILira fragment

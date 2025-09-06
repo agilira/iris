@@ -311,3 +311,7 @@ logger := iris.NewReaderLogger(config, readers,
 2. **Resource Monitoring**: Track memory and CPU usage
 3. **Error Alerting**: Alert on reader failures and high error rates
 4. **Performance Baseline**: Establish baseline metrics for comparison
+
+---
+
+Iris • an AGILira fragment

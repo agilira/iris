@@ -271,4 +271,4 @@ Iris manages buffers efficiently across all encoders:
 
 ---
 
-For detailed API documentation, see the GoDoc comments in each encoder file.
+Iris • an AGILira fragment

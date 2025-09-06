@@ -155,3 +155,7 @@ SyncReader implementations should include:
 3. **Resource Tests**: Verify proper cleanup and resource management
 4. **Integration Tests**: Test with actual ReaderLogger instances
 5. **Benchmark Tests**: Measure conversion and throughput performance
+
+---
+
+Iris • an AGILira fragment

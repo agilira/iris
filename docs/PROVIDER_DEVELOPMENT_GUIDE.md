@@ -427,3 +427,7 @@ Follow semantic versioning:
 - Maintain contributor guidelines
 - Provide clear development setup instructions
 - Acknowledge contributors in release notes
+
+---
+
+Iris • an AGILira fragment
