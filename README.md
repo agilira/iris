@@ -17,7 +17,6 @@ Iris is an ultra-high performance, zero-allocation structured logging library fo
 - **Modular Ecosystem**: External providers and writers with zero core dependencies
 - **Professional Security**: Built-in sensitive data redaction and log injection protection
 - **OpenTelemetry Integration**: Native distributed tracing with automatic correlation and baggage propagation
-- **Time Optimization**: 121x faster timestamps with intelligent caching (timecache.CachedTime)
 - **Hot Reload Configuration**: Runtime configuration changes without service restarts
 - **Advanced Idle Strategies**: Progressive, spinning, sleeping, and hybrid strategies for optimal CPU usage
 - **Backpressure Policies**: Intelligent handling of high-load scenarios with multiple strategies
@@ -69,39 +68,39 @@ Logging a message and 10 fields:
 | Package | Time | Time % to iris | Objects Allocated |
 | :------ | ---: | -------------: | ----------------: |
 | **iris** | **31 ns/op** | **+0%** | **0 allocs/op** |
-| zerolog | 60 ns/op | +94% | 0 allocs/op |
-| zap | 411 ns/op | +1,227% | 1 allocs/op |
-| slog | 851 ns/op | +2,645% | 11 allocs/op |
-| go-kit | 2,342 ns/op | +7,461% | 36 allocs/op |
-| apex/log | 5,719 ns/op | +18,352% | 35 allocs/op |
-| log15 | 7,251 ns/op | +23,290% | 42 allocs/op |
-| logrus | 8,396 ns/op | +26,990% | 52 allocs/op |
+| zerolog | 63 ns/op | +103% | 0 allocs/op |
+| zap | 442 ns/op | +1,326% | 1 allocs/op |
+| slog | 662 ns/op | +2,035% | 11 allocs/op |
+| go-kit | 1,871 ns/op | +5,935% | 36 allocs/op |
+| apex/log | 5,771 ns/op | +18,519% | 35 allocs/op |
+| log15 | 7,196 ns/op | +23,084% | 42 allocs/op |
+| logrus | 7,579 ns/op | +24,316% | 52 allocs/op |
 
 Logging with accumulated context (10 fields already present):
 
 | Package | Time | Time % to iris | Objects Allocated |
 | :------ | ---: | -------------: | ----------------: |
-| **iris** | **11 ns/op** | **+0%** | **0 allocs/op** |
-| zerolog | 25 ns/op | +127% | 0 allocs/op |
-| zap | 108 ns/op | +882% | 0 allocs/op |
-| slog | 173 ns/op | +1,473% | 0 allocs/op |
-| go-kit | 919 ns/op | +8,255% | 19 allocs/op |
-| apex/log | 2,851 ns/op | +25,827% | 13 allocs/op |
-| log15 | 3,396 ns/op | +30,782% | 23 allocs/op |
-| logrus | 5,412 ns/op | +49,018% | 35 allocs/op |
+| **iris** | **25 ns/op** | **+0%** | **0 allocs/op** |
+| zerolog | 25 ns/op | +0% | 0 allocs/op |
+| zap | 103 ns/op | +312% | 0 allocs/op |
+| slog | 167 ns/op | +568% | 0 allocs/op |
+| go-kit | 895 ns/op | +3,480% | 19 allocs/op |
+| apex/log | 2,796 ns/op | +11,084% | 13 allocs/op |
+| log15 | 3,402 ns/op | +13,508% | 23 allocs/op |
+| logrus | 5,394 ns/op | +21,476% | 35 allocs/op |
 
 Adding fields at log site:
 
 | Package | Time | Time % to iris | Objects Allocated |
 | :------ | ---: | -------------: | ----------------: |
-| **iris** | **37 ns/op** | **+0%** | **0 allocs/op** |
-| zerolog | 68 ns/op | +86% | 0 allocs/op |
-| zap | 297 ns/op | +703% | 1 allocs/op |
-| slog | 529 ns/op | +1,330% | 7 allocs/op |
-| go-kit | 1,529 ns/op | +4,032% | 28 allocs/op |
-| apex/log | 4,160 ns/op | +11,143% | 24 allocs/op |
-| log15 | 5,428 ns/op | +14,573% | 34 allocs/op |
-| logrus | 6,256 ns/op | +16,813% | 40 allocs/op |
+| **iris** | **30 ns/op** | **+0%** | **0 allocs/op** |
+| zerolog | 69 ns/op | +130% | 0 allocs/op |
+| zap | 334 ns/op | +1,013% | 1 allocs/op |
+| slog | 543 ns/op | +1,710% | 7 allocs/op |
+| go-kit | 1,376 ns/op | +4,487% | 28 allocs/op |
+| apex/log | 4,186 ns/op | +13,853% | 24 allocs/op |
+| log15 | 5,372 ns/op | +17,807% | 34 allocs/op |
+| logrus | 6,280 ns/op | +20,833% | 40 allocs/op |
 
 ## Architecture
 
@@ -208,11 +207,9 @@ logger.Info("Payment processed",
 
 ## The Philosophy Behind Iris
 
-In Greek mythology, Iris was the personification of the rainbow and messenger of the gods, known for her speed in delivering messages across vast distances while maintaining their integrity and beauty. She served as the link between heaven and earth, ensuring that divine communications reached their intended recipients without distortion.
+In Greek mythology, Iris was the personification of the rainbow and divine messenger of the gods, beloved wife of Zephyros, the swiftest and gentlest of the Anemoi. Together, they embodied perfect partnership: Zephyros as the carrier of velocity and power, Iris as the guardian of beauty and truth. When they worked in harmony, messages crossed the heavens with unprecedented speed while maintaining their radiant clarity and divine fidelity.
 
-This embodies Iris' design philosophy: lightning-fast delivery of structured log messages while preserving their integrity through security features and maintaining beauty through readable output formats. The library provides a reliable bridge between your application's events and their destinations, ensuring that critical information flows seamlessly without performance degradation or security vulnerabilities.
-
-Iris doesn't just log events—it delivers them with the speed of light while safeguarding their content and maintaining clarity for human and machine consumption alike.
+Iris and Zephyros work together within every log operation—Zephyros provides the velocity that moves your messages in mere nanoseconds across any distance, while Iris ensures each log maintains its integrity, security, and meaning. Neither works alone; they are unified in purpose.
 
 ## Documentation
 

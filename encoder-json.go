@@ -87,15 +87,55 @@ type Encoder interface {
 	Encode(rec *Record, now time.Time, buf *bytes.Buffer)
 }
 
-// JSONEncoder implements NDJSON (one line per record) with zero-reflection encoding
+// JSONEncoder implements NDJSON (newline-delimited JSON) encoding with zero-reflection.
+//
+// The encoder produces one JSON object per log record, separated by newlines.
+// This format is ideal for log processing systems and streaming applications.
+//
+// Performance Features:
+// - Zero reflection overhead using pre-compiled encoding paths
+// - Reusable buffer allocation for minimal GC pressure
+// - Optimized time formatting with caching
+// - Direct byte buffer writing without intermediate strings
+//
+// Output Format:
+//
+//	{"ts":"2025-09-06T14:30:45.123Z","level":"info","msg":"User action","field":"value"}
+//
+// Use Cases:
+// - Log aggregation systems (ELK stack, Splunk)
+// - Structured logging for APIs and microservices
+// - Machine-readable logs for automated processing
+// - Integration with JSON-based monitoring tools
 type JSONEncoder struct {
-	TimeKey  string // default "ts"
-	LevelKey string // default "level"
-	MsgKey   string // default "msg"
-	RFC3339  bool   // default true (alternativa: UnixNano int64)
+	// TimeKey specifies the JSON key for timestamps (default: "ts")
+	TimeKey string
+
+	// LevelKey specifies the JSON key for log levels (default: "level")
+	LevelKey string
+
+	// MsgKey specifies the JSON key for log messages (default: "msg")
+	MsgKey string
+
+	// RFC3339 controls timestamp format:
+	//   true:  RFC3339 string format (default, human-readable)
+	//   false: Unix nanoseconds integer (compact, faster)
+	RFC3339 bool
 }
 
-// NewJSONEncoder creates a new JSONEncoder with optimal defaults
+// NewJSONEncoder creates a new JSON encoder with standard defaults.
+//
+// Default configuration:
+// - TimeKey: "ts"
+// - LevelKey: "level"
+// - MsgKey: "msg"
+// - RFC3339: true (human-readable timestamps)
+//
+// The defaults follow common logging conventions and work well with
+// most log processing systems.
+//
+// Returns:
+//   - *JSONEncoder: Configured JSON encoder instance
 func NewJSONEncoder() *JSONEncoder {
 	return &JSONEncoder{
 		TimeKey:  "ts",

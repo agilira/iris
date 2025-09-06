@@ -13,22 +13,57 @@ import (
 	"time"
 )
 
-// ConsoleEncoder implements an encoder for human-readable console output.
-// It provides configurable time formatting, level casing, and optional ANSI color support
-// for development and debugging environments.
+// ConsoleEncoder implements human-readable console output for development and debugging.
+//
+// This encoder is optimized for interactive terminals and development workflows.
+// It provides clean, readable output with optional color support to enhance
+// the debugging experience.
+//
+// Features:
+//   - Configurable timestamp formatting (supports any Go time layout)
+//   - Level text casing control (uppercase/lowercase)
+//   - Optional ANSI color codes for different log levels
+//   - Clean field formatting for easy visual scanning
+//   - Terminal-friendly output without excessive escaping
+//
+// Output Format:
+//
+//	2025-09-06T14:30:45.123456789Z INFO User action field=value
+//
+// Use Cases:
+// - Development and debugging environments
+// - CLI applications requiring human-readable logs
+// - Interactive terminals and development tools
+// - Local testing and troubleshooting
 type ConsoleEncoder struct {
-	// TimeFormat specifies the time layout for timestamps (default: time.RFC3339Nano)
+	// TimeFormat specifies the Go time layout for timestamps.
+	// Default: time.RFC3339Nano for precise development timing.
+	// Popular alternatives: time.Kitchen, time.Stamp, custom layouts.
 	TimeFormat string
 
-	// LevelCasing controls level text casing: "upper" (default) or "lower"
+	// LevelCasing controls the case of level text in output.
+	// Values: "upper" (default: INFO, ERROR) or "lower" (info, error).
+	// Affects readability and consistency with your preferred style.
 	LevelCasing string
 
-	// EnableColor enables ANSI color codes for different log levels (default: false)
+	// EnableColor enables ANSI color codes for different log levels.
+	// Default: false (safe for all terminals and log files).
+	// Enable only in interactive terminals that support colors.
 	EnableColor bool
 }
 
-// NewConsoleEncoder creates a new console encoder with default settings.
-// By default, it uses RFC3339Nano time format, uppercase level casing, and no colors.
+// NewConsoleEncoder creates a new console encoder with development-friendly defaults.
+//
+// Default configuration:
+// - TimeFormat: time.RFC3339Nano (precise for development)
+// - LevelCasing: "upper" (traditional log format)
+// - EnableColor: false (safe for all environments)
+//
+// These defaults work well in most development environments and can be
+// safely used in both terminals and log files.
+//
+// Returns:
+//   - *ConsoleEncoder: Configured console encoder instance
 func NewConsoleEncoder() *ConsoleEncoder {
 	return &ConsoleEncoder{
 		TimeFormat:  time.RFC3339Nano,
@@ -37,8 +72,30 @@ func NewConsoleEncoder() *ConsoleEncoder {
 	}
 }
 
-// NewColorConsoleEncoder creates a new console encoder with ANSI colors enabled.
-// This is useful for development environments where color output enhances readability.
+// NewColorConsoleEncoder creates a console encoder with ANSI colors enabled.
+//
+// This variant is specifically designed for interactive terminals that support
+// ANSI color codes. Colors help differentiate log levels at a glance during
+// development and debugging.
+//
+// Color scheme:
+// - ERROR: Red (high visibility for critical issues)
+// - WARN:  Yellow (attention-grabbing for warnings)
+// - INFO:  Default (normal text for regular information)
+// - DEBUG: Cyan (distinct but subtle for debug info)
+//
+// Use only in:
+// - Interactive development terminals
+// - IDEs with color support
+// - Terminal applications for developers
+//
+// Avoid in:
+// - Log files (colors become escape sequences)
+// - Non-interactive environments
+// - Systems without ANSI support
+//
+// Returns:
+//   - *ConsoleEncoder: Console encoder with colors enabled
 func NewColorConsoleEncoder() *ConsoleEncoder {
 	return &ConsoleEncoder{
 		TimeFormat:  time.RFC3339Nano,

@@ -16,29 +16,56 @@ import (
 )
 
 // TextEncoder provides secure human-readable text encoding for log records.
-// Implements comprehensive log injection protection by sanitizing all field
-// keys and values to prevent malicious log manipulation.
+//
+// This encoder implements comprehensive security measures to prevent log injection
+// attacks and ensure safe output in production environments. All field keys and
+// values are sanitized to prevent malicious manipulation of log data.
 //
 // Security Features:
-//   - Field key sanitization to prevent injection via malformed keys
+//   - Field key sanitization prevents injection via malformed keys
 //   - Value sanitization with proper quoting and escaping
-//   - Control character neutralization
-//   - Newline injection protection
-//   - Unicode direction override protection
+//   - Control character neutralization (prevents terminal manipulation)
+//   - Newline injection protection (prevents log splitting)
+//   - Unicode direction override protection (prevents text reversal attacks)
 //
 // Output Format:
 //
-//	time=2025-08-22T10:30:00Z level=info msg="User login" user=john_doe ip=192.168.1.1
+//	time=2025-09-06T14:30:45Z level=info msg="User action" field=value
+//
+// Use Cases:
+// - Production logging in security-sensitive environments
+// - System logs that may contain untrusted input
+// - Compliance and audit logging requiring tamper resistance
+// - Human-readable logs that still need machine parsing
 type TextEncoder struct {
-	// TimeFormat specifies the time format (default: RFC3339)
+	// TimeFormat specifies the Go time layout for timestamps.
+	// Default: time.RFC3339 for standard compliance.
+	// Common alternatives: time.RFC3339Nano, time.Kitchen, custom layouts.
 	TimeFormat string
-	// QuoteValues determines if string values should be quoted (default: true for safety)
+
+	// QuoteValues determines whether string values are quoted.
+	// Default: true for security (prevents value parsing ambiguity).
+	// Set to false only in trusted environments for cleaner output.
 	QuoteValues bool
-	// SanitizeKeys determines if field keys should be sanitized (default: true)
+
+	// SanitizeKeys determines whether field keys are sanitized.
+	// Default: true for security (prevents key-based injection).
+	// Set to false only when keys are guaranteed to be safe.
 	SanitizeKeys bool
 }
 
-// NewTextEncoder creates a new secure text encoder with safe defaults.
+// NewTextEncoder creates a new secure text encoder with production-safe defaults.
+//
+// Default configuration prioritizes security:
+// - TimeFormat: time.RFC3339 (standard, sortable)
+// - QuoteValues: true (prevents parsing ambiguity)
+// - SanitizeKeys: true (prevents key injection)
+//
+// These defaults are suitable for production environments where log data
+// may contain untrusted input or require security compliance.
+//
+// Returns:
+//   - *TextEncoder: Configured secure text encoder instance
 func NewTextEncoder() *TextEncoder {
 	return &TextEncoder{
 		TimeFormat:   time.RFC3339,
