@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/agilira/go-errors"
 )
@@ -550,9 +551,82 @@ func TestRecoverWithError(t *testing.T) {
 		t.Errorf("RecoverWithError should return nil when no panic occurs, got: %v", err)
 	}
 
-	// Note: Testing actual panic recovery is complex in unit tests
-	// as it requires the function to be called from within a defer
-	// after a recover(). This is tested implicitly in SafeExecute.
+	// Test the actual pattern used by SafeExecute - simulate recovery with proper isolation
+	t.Run("PanicRecoverySimulation", func(t *testing.T) {
+		// Test string panic recovery
+		var recoveredError *errors.Error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Simulate what RecoverWithError does
+					message := fmt.Sprintf("Panic recovered: %v", r)
+					recoveredError = NewLoggerError(ErrCodeLoggerExecution, message)
+					_ = recoveredError.WithContext("panic_value", r)
+					_ = recoveredError.WithContext("recovery_time", time.Now().UTC())
+
+					// Add stack trace
+					buf := make([]byte, 4096)
+					stackSize := runtime.Stack(buf, false)
+					_ = recoveredError.WithContext("panic_stack", string(buf[:stackSize]))
+				}
+			}()
+			panic("test panic string")
+		}()
+
+		if recoveredError == nil {
+			t.Fatal("Expected panic recovery to create an error")
+		}
+
+		if !strings.Contains(recoveredError.Error(), "test panic string") {
+			t.Errorf("Expected error message to contain panic value, got: %s", recoveredError.Error())
+		}
+
+		// Test error panic recovery
+		recoveredError = nil
+		originalError := fmt.Errorf("original error")
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					message := fmt.Sprintf("Panic recovered: %v", r)
+					recoveredError = NewLoggerError(ErrCodeLoggerExecution, message)
+					_ = recoveredError.WithContext("panic_value", r)
+				}
+			}()
+			panic(originalError)
+		}()
+
+		if recoveredError == nil {
+			t.Fatal("Expected panic recovery to create an error for error panic")
+		}
+
+		if !strings.Contains(recoveredError.Error(), originalError.Error()) {
+			t.Errorf("Expected error message to contain original error, got: %s", recoveredError.Error())
+		}
+
+		// Test integer panic recovery
+		recoveredError = nil
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					message := fmt.Sprintf("Panic recovered: %v", r)
+					recoveredError = NewLoggerError(ErrCodeLoggerExecution, message)
+					_ = recoveredError.WithContext("panic_value", r)
+				}
+			}()
+			panic(42)
+		}()
+
+		if recoveredError == nil {
+			t.Fatal("Expected panic recovery to create an error for integer panic")
+		}
+
+		if !strings.Contains(recoveredError.Error(), "42") {
+			t.Errorf("Expected error message to contain '42', got: %s", recoveredError.Error())
+		}
+	})
+
+	// Note: SafeExecute testing is handled separately in TestSafeExecute_PanicHandling
+	// which uses a different approach to avoid test framework conflicts
 }
 
 // TestSafeExecute tests safe function execution

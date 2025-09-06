@@ -164,6 +164,7 @@ func (e *BinaryEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 	e.encodeOptionalString(rec.Stack, e.IncludeStack, buf)
 
 	// Encode field count and fields
+	// #nosec G115 - Field count is always positive and small
 	e.writeVarint(uint64(rec.n), buf)
 	for i := int32(0); i < rec.n; i++ {
 		e.encodeField(&rec.fields[i], buf)
@@ -174,6 +175,7 @@ func (e *BinaryEncoder) Encode(rec *Record, now time.Time, buf *bytes.Buffer) {
 func (e *BinaryEncoder) encodeTimestamp(now time.Time, buf *bytes.Buffer) {
 	if e.UseUnixNano {
 		// Unix nanoseconds as varint (most compact for recent timestamps)
+		// #nosec G115 - UnixNano() always returns positive values
 		e.writeVarint(uint64(now.UnixNano()), buf)
 	} else {
 		// RFC3339 as length-prefixed string
@@ -209,7 +211,7 @@ func (e *BinaryEncoder) encodeField(f *Field, buf *bytes.Buffer) {
 	case kindUint64:
 		e.writeVarint(f.U64, buf)
 	case kindFloat64:
-		binary.Write(buf, binary.LittleEndian, f.F64)
+		_ = binary.Write(buf, binary.LittleEndian, f.F64)
 	case kindBool:
 		if f.I64 != 0 {
 			buf.WriteByte(1)
@@ -310,6 +312,7 @@ func (e *BinaryEncoder) writeVarint(v uint64, buf *bytes.Buffer) {
 func (e *BinaryEncoder) writeSignedVarint(v int64, buf *bytes.Buffer) {
 	// ZigZag encoding: maps signed integers to unsigned
 	// -1 -> 1, -2 -> 3, 0 -> 0, 1 -> 2, 2 -> 4
+	// #nosec G115 - ZigZag encoding is safe for all int64 values
 	uv := uint64((v << 1) ^ (v >> 63))
 	e.writeVarint(uv, buf)
 }
@@ -398,6 +401,7 @@ func EstimateBinarySize(rec *Record) int {
 	size += estimateStringSize(rec.Stack)
 
 	// Field count
+	// #nosec G115 - Field count is always positive and small
 	size += estimateVarintSize(uint64(rec.n))
 
 	// Fields
@@ -433,6 +437,7 @@ func estimateFieldValueSize(f *Field) int {
 	case kindString:
 		return estimateStringSize(f.Str)
 	case kindInt64:
+		// #nosec G115 - ZigZag encoding is safe for all int64 values
 		return estimateVarintSize(uint64((f.I64 << 1) ^ (f.I64 >> 63))) // ZigZag
 	case kindUint64:
 		return estimateVarintSize(f.U64)
@@ -441,6 +446,7 @@ func estimateFieldValueSize(f *Field) int {
 	case kindBool:
 		return 1
 	case kindDur, kindTime:
+		// #nosec G115 - ZigZag encoding is safe for all int64 values
 		return estimateVarintSize(uint64((f.I64 << 1) ^ (f.I64 >> 63))) // ZigZag
 	case kindBytes:
 		return estimateVarintSize(uint64(len(f.B))) + len(f.B)

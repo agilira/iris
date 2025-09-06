@@ -14,7 +14,10 @@ import (
 
 // IsCIEnvironment returns true if running in a CI environment
 func IsCIEnvironment() bool {
-	return os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" || os.Getenv("CONTINUOUS_INTEGRATION") != ""
+	return os.Getenv("CI") != "" ||
+		os.Getenv("GITHUB_ACTIONS") != "" ||
+		os.Getenv("CONTINUOUS_INTEGRATION") != "" ||
+		os.Getenv("TRAVIS") != ""
 }
 
 // CIFriendlyTimeout returns an appropriate timeout for the given operation

@@ -439,6 +439,48 @@ func TestDynamicConfigWatcherLifecycle(t *testing.T) {
 		}
 	})
 
+	t.Run("Start_Already_Started", func(t *testing.T) {
+		// Create a temp config file
+		configJSON := `{"level": "info", "format": "json"}`
+		tmpFile, err := os.CreateTemp("", "iris_dynamic_*.json")
+		if err != nil {
+			t.Fatalf("Failed to create temp file: %v", err)
+		}
+		defer func() {
+			_ = os.Remove(tmpFile.Name())
+		}()
+
+		if _, err := tmpFile.WriteString(configJSON); err != nil {
+			t.Fatalf("Failed to write config to temp file: %v", err)
+		}
+		if err := tmpFile.Close(); err != nil {
+			t.Fatalf("Failed to close temp file: %v", err)
+		}
+
+		// Create watcher
+		watcher, err := NewDynamicConfigWatcher(tmpFile.Name(), nil)
+		if err != nil {
+			t.Fatalf("Failed to create watcher: %v", err)
+		}
+
+		// Start watcher first time - should succeed
+		err = watcher.Start()
+		if err != nil {
+			t.Fatalf("First start should succeed, got error: %v", err)
+		}
+		defer func() {
+			_ = watcher.Stop()
+		}()
+
+		// Try to start again - should fail with "already started" error
+		err = watcher.Start()
+		if err == nil {
+			t.Error("Second start should fail with 'already started' error")
+		} else if !strings.Contains(err.Error(), "already started") {
+			t.Errorf("Expected 'already started' error, got: %v", err)
+		}
+	})
+
 	t.Run("Start_Nonexistent_File", func(t *testing.T) {
 		// Test starting watcher with nonexistent file
 		watcher, err := NewDynamicConfigWatcher("/nonexistent/file.json", nil)
