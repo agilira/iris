@@ -341,7 +341,7 @@ func TestStatsConcurrency(t *testing.T) {
 	numGoroutines := 10
 	incrementsPerGoroutine := 1000
 
-	// Start concurrent incrementers
+	// Start concurrent incrementing goroutines
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func() {
