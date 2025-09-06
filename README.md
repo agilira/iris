@@ -1,7 +1,7 @@
-# Iris — High-Performance Structured Logging for Go
+# Iris — Structured Logging at Wind Speed for Go
 ### an AGILira fragment
 
-Iris is an ultra-high performance, zero-allocation structured logging library for Go, built for applications that demand maximum throughput, enterprise security, and production-grade reliability — without compromising developer experience.
+Iris is a blazing-fast, zero-allocation structured logging library for Go, engineered for applications that demand maximum throughput, built-in security, and production-grade reliability — without compromising developer experience.
 
 [![CI/CD Pipeline](https://github.com/agilira/iris/actions/workflows/ci.yml/badge.svg)](https://github.com/agilira/iris/actions/workflows/ci.yml)
 [![Security](https://img.shields.io/badge/security-gosec-brightgreen.svg)](https://github.com/agilira/iris/actions/workflows/ci.yml)
@@ -15,7 +15,7 @@ Iris is an ultra-high performance, zero-allocation structured logging library fo
 - **SyncWriter Interface**: Modular output destinations with external writer modules
 - **Intelligent Auto-Scaling**: Real-time switching between SingleRing and MPSC modes based on workload
 - **Modular Ecosystem**: External providers and writers with zero core dependencies
-- **Professional Security**: Built-in sensitive data redaction and log injection protection
+- **Built-In Security**: Built-in sensitive data redaction and log injection protection
 - **OpenTelemetry Integration**: Native distributed tracing with automatic correlation and baggage propagation
 - **Hot Reload Configuration**: Runtime configuration changes without service restarts
 - **Advanced Idle Strategies**: Progressive, spinning, sleeping, and hybrid strategies for optimal CPU usage
