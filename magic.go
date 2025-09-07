@@ -131,9 +131,24 @@ func createStandardFileLogger(filename string, level Level, opts ...Option) (*Lo
 // containsTraversal checks for directory traversal patterns in a file path
 func containsTraversal(path string) bool {
 	// Check for common directory traversal patterns
-	return strings.Contains(path, "..") ||
-		strings.Contains(path, "~") ||
-		strings.HasPrefix(path, "/etc/") ||
+	if strings.Contains(path, "..") || strings.Contains(path, "~") {
+		return true
+	}
+
+	// Unix-specific dangerous paths
+	if strings.HasPrefix(path, "/etc/") ||
 		strings.HasPrefix(path, "/proc/") ||
-		strings.HasPrefix(path, "/sys/")
+		strings.HasPrefix(path, "/sys/") ||
+		strings.HasPrefix(path, "/root/") {
+		return true
+	}
+
+	// Windows-specific dangerous paths
+	if strings.HasPrefix(path, "C:\\Windows\\") ||
+		strings.HasPrefix(path, "C:\\Program Files\\") ||
+		strings.HasPrefix(path, "\\root\\") {
+		return true
+	}
+
+	return false
 }

@@ -33,6 +33,8 @@ func TestNewMagicLogger_FallbackMode(t *testing.T) {
 		if err := logger.Close(); err != nil {
 			t.Logf("Warning: Error closing logger: %v", err)
 		}
+		// Give Windows time to release file handles
+		time.Sleep(50 * time.Millisecond)
 	}()
 
 	// Test basic logging
@@ -96,6 +98,8 @@ func TestNewMagicLogger_WithLetheCapabilities(t *testing.T) {
 		if err := logger.Close(); err != nil {
 			t.Logf("Warning: Error closing logger: %v", err)
 		}
+		// Give Windows time to release file handles
+		time.Sleep(50 * time.Millisecond)
 	}()
 
 	// Test logging with Lethe optimizations
