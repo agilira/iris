@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/agilira/iris/internal/lethe"
 )
@@ -100,7 +101,14 @@ func createMagicLetheLogger(filename string, level Level, opts ...Option) (*Logg
 func createStandardFileLogger(filename string, level Level, opts ...Option) (*Logger, error) {
 	// Validate filename to prevent directory traversal attacks
 	cleanPath := filepath.Clean(filename)
-	if cleanPath != filename {
+
+	// Check for dangerous path patterns instead of exact equality
+	if filepath.IsAbs(cleanPath) != filepath.IsAbs(filename) {
+		return nil, fmt.Errorf("invalid file path: %s", filename)
+	}
+
+	// Prevent directory traversal attempts
+	if containsTraversal(cleanPath) {
 		return nil, fmt.Errorf("invalid file path: %s", filename)
 	}
 
@@ -118,4 +126,14 @@ func createStandardFileLogger(filename string, level Level, opts ...Option) (*Lo
 	}
 
 	return New(cfg, opts...)
+}
+
+// containsTraversal checks for directory traversal patterns in a file path
+func containsTraversal(path string) bool {
+	// Check for common directory traversal patterns
+	return strings.Contains(path, "..") ||
+		strings.Contains(path, "~") ||
+		strings.HasPrefix(path, "/etc/") ||
+		strings.HasPrefix(path, "/proc/") ||
+		strings.HasPrefix(path, "/sys/")
 }
