@@ -30,17 +30,7 @@ func TestNewMagicLogger_FallbackMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create magic logger in fallback mode: %v", err)
 	}
-	defer func() {
-		// Ensure all async operations are completed
-		if err := logger.Sync(); err != nil {
-			t.Logf("Warning: Error syncing logger: %v", err)
-		}
-		if err := logger.Close(); err != nil {
-			t.Logf("Warning: Error closing logger: %v", err)
-		}
-		// Give Windows extra time to release file handles
-		time.Sleep(200 * time.Millisecond)
-	}()
+	defer windowsSafeClose(t, logger)
 
 	// Test basic logging
 	logger.Start()
@@ -99,17 +89,7 @@ func TestNewMagicLogger_WithLetheCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create magic logger with Lethe capabilities: %v", err)
 	}
-	defer func() {
-		// Ensure all async operations are completed
-		if err := logger.Sync(); err != nil {
-			t.Logf("Warning: Error syncing logger: %v", err)
-		}
-		if err := logger.Close(); err != nil {
-			t.Logf("Warning: Error closing logger: %v", err)
-		}
-		// Give Windows extra time to release file handles
-		time.Sleep(200 * time.Millisecond)
-	}()
+	defer windowsSafeClose(t, logger)
 
 	// Test logging with Lethe optimizations
 	logger.Start()

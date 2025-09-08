@@ -14,12 +14,33 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/agilira/iris/internal/lethe"
 )
+
+// windowsSafeClose ensures proper cleanup on Windows by forcing GC and longer delays
+func windowsSafeClose(t *testing.T, logger *Logger) {
+	// Ensure all async operations are completed
+	if err := logger.Sync(); err != nil {
+		t.Logf("Warning: Error syncing logger: %v", err)
+	}
+
+	// Close the logger
+	if err := logger.Close(); err != nil {
+		t.Logf("Warning: Error closing logger: %v", err)
+	}
+
+	// Force garbage collection and finalizers to run
+	runtime.GC()
+	runtime.GC() // Call twice to ensure finalizers run
+
+	// Give Windows extra time to release file handles
+	time.Sleep(500 * time.Millisecond)
+}
 
 func TestCompleteMagicIntegration(t *testing.T) {
 	// Simulate complete Lethe registration and usage
@@ -34,17 +55,7 @@ func TestCompleteMagicIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create magic logger: %v", err)
 	}
-	defer func() {
-		// Ensure all async operations are completed
-		if err := logger.Sync(); err != nil {
-			t.Logf("Warning: Error syncing logger: %v", err)
-		}
-		if err := logger.Close(); err != nil {
-			t.Logf("Warning: Error closing logger: %v", err)
-		}
-		// Give Windows extra time to release file handles
-		time.Sleep(200 * time.Millisecond)
-	}()
+	defer windowsSafeClose(t, logger)
 
 	// Verify we got Lethe optimizations
 	if !lethe.HasLetheCapabilities() {
@@ -116,17 +127,7 @@ func TestMagicAPI_E2E_BasicFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create magic logger: %v", err)
 	}
-	defer func() {
-		// Ensure all async operations are completed
-		if err := logger.Sync(); err != nil {
-			t.Logf("Warning: Error syncing logger: %v", err)
-		}
-		if err := logger.Close(); err != nil {
-			t.Logf("Warning: Error closing logger: %v", err)
-		}
-		// Give Windows extra time to release file handles
-		time.Sleep(200 * time.Millisecond)
-	}()
+	defer windowsSafeClose(t, logger)
 
 	// Test buffer size optimization
 	// Mock returns 16384, should be detected and used
@@ -202,17 +203,7 @@ func TestMagicFallbackBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Magic logger should fallback when provider fails: %v", err)
 	}
-	defer func() {
-		// Ensure all async operations are completed
-		if err := logger.Sync(); err != nil {
-			t.Logf("Warning: Error syncing logger: %v", err)
-		}
-		if err := logger.Close(); err != nil {
-			t.Logf("Warning: Error closing logger: %v", err)
-		}
-		// Give Windows extra time to release file handles
-		time.Sleep(200 * time.Millisecond)
-	}()
+	defer windowsSafeClose(t, logger)
 
 	// Test logging still works in fallback mode
 	logger.Start()
