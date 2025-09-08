@@ -5,7 +5,7 @@ Iris is a blazing-fast, zero-allocation structured logging library for Go, engin
 
 [![CI/CD Pipeline](https://github.com/agilira/iris/actions/workflows/ci.yml/badge.svg)](https://github.com/agilira/iris/actions/workflows/ci.yml)
 [![Security](https://img.shields.io/badge/security-gosec-brightgreen.svg)](https://github.com/agilira/iris/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/agilira/iris)](https://goreportcard.com/report/github.com/agilira/iris)
+[![Go Report Card](https://goreportcard.com/badge/github.com/agilira/iris?v=1757321826)](https://goreportcard.com/report/github.com/agilira/iris)
 [![Test Coverage](https://codecov.io/gh/agilira/iris/branch/main/graph/badge.svg)](https://codecov.io/gh/agilira/iris)
 ![Xantos Powered](https://img.shields.io/badge/Xantos%20Powered-8A2BE2?style=flat)
 
