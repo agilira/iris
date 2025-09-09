@@ -12,7 +12,7 @@ Iris is an ultra-high performance structured logging library for Go, designed to
 2. **Lock-Free MPSC Ring Buffer**: Multi-producer, single-consumer architecture for maximum throughput
 3. **Adaptive Performance**: Single-ring for maximum single-thread performance, threaded-rings for multi-producer scaling
 4. **Type-Safe Structured Logging**: Compile-time type safety with runtime flexibility
-5. **Encoder Abstraction**: Pluggable output formats (JSON, console, future binary formats)
+5. **Encoder Abstraction**: Pluggable output formats (JSON, console, binary text)
 6. **Security by Design**: Built-in protection against log injection and sensitive data exposure
 7. **Production-Ready Features**: Comprehensive configuration, monitoring, and operational capabilities
 
@@ -34,16 +34,16 @@ Embedded Zephyros MPSC ring buffer providing ultra-low latency logging with two 
 ### Field System (`field.go`)
 
 Comprehensive type system supporting:
-- Primitive types (string, int64, uint64, float64, bool)
-- Temporal types (time.Time, time.Duration)
-- Complex types ([]byte, error, fmt.Stringer, arbitrary objects)
-- Security features (redacted secrets, safe error handling)
+- **Primitive types** (string, int64, uint64, float64, bool)
+- **Temporal types** (time.Time, time.Duration)
+- **Complex types** ([]byte, error, fmt.Stringer, arbitrary objects)
+- **Security features** (redacted secrets, safe error handling)
 
 ### Encoder Ecosystem (`encoder-*.go`)
 
 - **JSONEncoder**: High-performance NDJSON with intelligent time caching
 - **ConsoleEncoder**: Human-readable output with optional ANSI colors
-- **Extensible Interface**: Support for future binary and custom formats
+- **Extensible Interface**: Support for binary and custom formats
 
 ### Buffer Pool System (`internal/bufferpool/`)
 
@@ -60,205 +60,141 @@ Zero-allocation buffer management with intelligent sizing and reuse strategies.
 ```mermaid
 graph TB
     subgraph "Application Layer"
-        APP[Application Code<br/>Business Logic]
-        CTX[Context Handling<br/>Request Tracing]
-        MDW[Middleware<br/>Framework Integration]
+        APP[Application Code]
+        CTX[Context Handling]
+        MDW[Middleware]
     end
 
     subgraph "Iris Public API"
-        LOGGER[Logger Interface<br/>Info/Debug/Warn/Error<br/>Structured Fields]
-        WITH[With() Context<br/>Field Inheritance<br/>Named Loggers]
-        LEVEL[Level Management<br/>Atomic Operations<br/>Runtime Adjustment]
-        SMART[Smart API<br/>Automatic Configuration<br/>Convention over Config]
+        LOGGER[Logger Interface]
+        WITH[With Context]
+        LEVEL[Level Management]
+        SMART[Smart API]
     end
 
     subgraph "Field System"
-        FIELD[Field Construction<br/>Type-Safe Builders<br/>Union Storage]
-        TYPES[Type System<br/>15 Supported Types<br/>Compile-Time Safety]
-        VALIDATE[Validation<br/>Bounds Checking<br/>Security Filtering]
-        SECRET[Security Features<br/>Secret Redaction<br/>Injection Protection]
+        FIELD[Field Construction]
+        TYPES[Type System]
+        VALIDATE[Validation]
+        SECRET[Security Features]
     end
 
-    subgraph "Configuration System"
-        CONFIG[Config Struct<br/>Intelligent Defaults<br/>Validation Rules]
-        LOADER[Config Loader<br/>JSON File Support<br/>Hot Reload Ready]
-        ARCH[Architecture Choice<br/>SingleRing vs ThreadedRings<br/>Performance Optimization]
-        BACKP[Backpressure Policy<br/>DropOnFull vs BlockOnFull<br/>Performance vs Reliability]
+    subgraph "Configuration"
+        CONFIG[Config Struct]
+        LOADER[Config Loader]
+        ARCH[Architecture Choice]
+        BACKP[Backpressure Policy]
     end
 
-    subgraph "Core Processing Pipeline"
-        RECORD[Record Creation<br/>Field Assembly<br/>Level Checking<br/>~27-30ns logging path]
-        SAMPLING[Sampling System<br/>Noise Reduction<br/>Rate Limiting]
-        ENCODER[Encoder Selection<br/>Format Abstraction<br/>Pluggable System]
-        BUFFER[Buffer Pool<br/>Zero Allocation<br/>Intelligent Sizing]
+    subgraph "Core Processing"
+        RECORD[Record Creation]
+        SAMPLING[Sampling System]
+        ENCODER[Encoder Selection]
+        BUFFER[Buffer Pool]
     end
 
-    subgraph "Zephyros MPSC Ring Buffer"
-        subgraph "SingleRing Architecture"
-            SR[Single Ring<br/>~25ns/op<br/>Maximum Single-Thread Performance]
-            SRCONS[Single Consumer<br/>Dedicated Goroutine<br/>Batch Processing]
-        end
-        
-        subgraph "ThreadedRings Architecture"
-            TR[Multiple Rings<br/>~35ns/op per thread<br/>Excellent Scaling]
-            TRCONS[Multiple Consumers<br/>Load Balancing<br/>Adaptive Batching]
-        end
-        
-        POLICY[Backpressure<br/>DropOnFull: ~0.7ns disabled<br/>BlockOnFull: guaranteed delivery]
-        IDLE[Idle Strategies<br/>Spin, Yield, Sleep<br/>CPU vs Latency Trade-off]
+    subgraph "Ring Buffer System"
+        SR[Single Ring]
+        TR[Threaded Rings]
+        POLICY[Backpressure]
+        IDLE[Idle Strategies]
     end
 
-    subgraph "Encoder Implementations"
-        JSON[JSON Encoder<br/>NDJSON Format<br/>Time Caching<br/>Character Escaping]
-        CONSOLE[Console Encoder<br/>Human Readable<br/>ANSI Colors<br/>Key=Value Format]
-        FUTURE[Future Encoders<br/>Binary Formats<br/>Custom Protocols<br/>Compression]
+    subgraph "Encoders"
+        JSON[JSON Encoder]
+        CONSOLE[Console Encoder]
+        FUTURE[Future Encoders]
     end
 
-    subgraph "Output Layer"
-        STDOUT[Standard Output<br/>os.Stdout/Stderr<br/>Terminal Output]
-        FILES[File Output<br/>Rotation Ready<br/>Append Mode]
-        WRITERS[Custom Writers<br/>Network Sinks<br/>Monitoring Systems]
-        DISCARD[Discard Output<br/>Benchmarking<br/>Testing]
+    subgraph "Output"
+        STDOUT[Standard Output]
+        FILES[File Output]
+        WRITERS[Custom Writers]
     end
 
-    subgraph "Time System"
-        TIMECACHE[Time Cache<br/>go-timecache Integration<br/>Sub-microsecond Performance]
-        TIMEFORMAT[Time Formatting<br/>RFC3339 vs Unix<br/>Precision Control]
+    subgraph "Performance"
+        ATOMIC[Atomic Operations]
+        CACHE[Cache Optimization]
+        POOL[Resource Pooling]
     end
 
-    subgraph "Performance Optimizations"
-        ATOMIC[Atomic Operations<br/>Lock-Free Level Checks<br/>Memory Barriers]
-        CACHE[Cache Optimization<br/>CPU Cache-Line Alignment<br/>False Sharing Prevention]
-        PREFETCH[Memory Prefetch<br/>Predictable Access Patterns<br/>SIMD Ready]
-        POOL[Resource Pooling<br/>Buffer Reuse<br/>GC Pressure Reduction]
+    subgraph "Security"
+        INJECTION[Injection Protection]
+        REDACTION[Data Redaction]
+        AUDIT[Audit Capabilities]
     end
 
-    subgraph "Monitoring & Observability"
-        METRICS[Performance Metrics<br/>Throughput Monitoring<br/>Latency Histograms]
-        HEALTH[Health Checks<br/>Ring Buffer Status<br/>Consumer Health]
-        STATS[Statistics<br/>Message Counts<br/>Error Rates]
-    end
-
-    subgraph "Security Layer"
-        INJECTION[Log Injection Protection<br/>Character Escaping<br/>Format Validation]
-        REDACTION[Data Redaction<br/>Secret Fields<br/>PII Protection]
-        AUDIT[Audit Capabilities<br/>Structured Logging<br/>Compliance Ready]
-    end
-
-    %% Application to API Flow
+    %% Primary Flow
     APP --> LOGGER
     CTX --> WITH
     MDW --> LOGGER
-
-    %% API to Field System
+    
     LOGGER --> FIELD
     WITH --> FIELD
     FIELD --> TYPES
     TYPES --> VALIDATE
     VALIDATE --> SECRET
 
-    %% Configuration Flow
     CONFIG --> ARCH
-    CONFIG --> BACKP
     LOADER --> CONFIG
-    ARCH -.-> SR
-    ARCH -.-> TR
-    BACKP --> POLICY
-
-    %% Core Processing
+    ARCH --> SR
+    ARCH --> TR
+    
     LOGGER --> RECORD
     FIELD --> RECORD
     RECORD --> SAMPLING
     SAMPLING --> ENCODER
     ENCODER --> BUFFER
-
-    %% Ring Buffer Processing
+    
     BUFFER --> SR
     BUFFER --> TR
-    SR --> SRCONS
-    TR --> TRCONS
     POLICY --> SR
     POLICY --> TR
-    IDLE --> SRCONS
-    IDLE --> TRCONS
-
-    %% Encoder Selection
+    
     ENCODER --> JSON
     ENCODER --> CONSOLE
     ENCODER -.-> FUTURE
-
-    %% Output Flow
+    
     JSON --> STDOUT
     JSON --> FILES
-    JSON --> WRITERS
-    JSON --> DISCARD
     CONSOLE --> STDOUT
     CONSOLE --> FILES
-
-    %% Time Integration
-    JSON --> TIMECACHE
-    CONSOLE --> TIMECACHE
-    TIMECACHE --> TIMEFORMAT
-
+    
     %% Performance Integration
     RECORD --> ATOMIC
     SR --> CACHE
-    TR --> CACHE
-    BUFFER --> PREFETCH
     ENCODER --> POOL
-
-    %% Monitoring Integration
-    SRCONS --> METRICS
-    TRCONS --> METRICS
-    LOGGER --> HEALTH
-    RECORD --> STATS
-
+    
     %% Security Integration
     JSON --> INJECTION
-    CONSOLE --> INJECTION
     SECRET --> REDACTION
     LOGGER --> AUDIT
-
-    %% Async Processing Paths
-    SRCONS -.-> JSON
-    SRCONS -.-> CONSOLE
-    TRCONS -.-> JSON
-    TRCONS -.-> CONSOLE
-
-    %% Configuration Dependencies
-    CONFIG --> BUFFER
-    CONFIG --> SAMPLING
-    CONFIG --> TIMECACHE
-
-    %% Smart API Integration
+    
+    %% Smart API
     SMART --> CONFIG
     SMART --> LOGGER
 
-    %% Styling with semantic colors
-    classDef application fill:#f8fafc,stroke:#1e293b,stroke-width:2px
-    classDef api fill:#f0f9ff,stroke:#0369a1,stroke-width:2px
-    classDef field fill:#f3e8ff,stroke:#7c3aed,stroke-width:2px
-    classDef config fill:#fef3c7,stroke:#d97706,stroke-width:2px
-    classDef processing fill:#ecfdf5,stroke:#059669,stroke-width:2px
-    classDef ringbuffer fill:#eff6ff,stroke:#2563eb,stroke-width:2px
-    classDef encoder fill:#f0fdf4,stroke:#16a34a,stroke-width:2px
-    classDef output fill:#fefce8,stroke:#ca8a04,stroke-width:2px
-    classDef time fill:#fcfcfc,stroke:#6b7280,stroke-width:2px
-    classDef performance fill:#ecfeff,stroke:#0891b2,stroke-width:2px
-    classDef monitoring fill:#fdf4ff,stroke:#a855f7,stroke-width:2px
-    classDef security fill:#fef2f2,stroke:#dc2626,stroke-width:2px
+    %% Styling
+    classDef application fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+    classDef api fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef field fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    classDef config fill:#f1f8e9,stroke:#558b2f,stroke-width:2px
+    classDef processing fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef ringbuffer fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    classDef encoder fill:#fff8e1,stroke:#f57f17,stroke-width:2px
+    classDef output fill:#f9fbe7,stroke:#827717,stroke-width:2px
+    classDef performance fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+    classDef security fill:#ffebee,stroke:#d32f2f,stroke-width:2px
 
     class APP,CTX,MDW application
     class LOGGER,WITH,LEVEL,SMART api
     class FIELD,TYPES,VALIDATE,SECRET field
     class CONFIG,LOADER,ARCH,BACKP config
     class RECORD,SAMPLING,ENCODER,BUFFER processing
-    class SR,TR,SRCONS,TRCONS,POLICY,IDLE ringbuffer
+    class SR,TR,POLICY,IDLE ringbuffer
     class JSON,CONSOLE,FUTURE encoder
-    class STDOUT,FILES,WRITERS,DISCARD output
-    class TIMECACHE,TIMEFORMAT time
-    class ATOMIC,CACHE,PREFETCH,POOL performance
-    class METRICS,HEALTH,STATS monitoring
+    class STDOUT,FILES,WRITERS output
+    class ATOMIC,CACHE,POOL performance
     class INJECTION,REDACTION,AUDIT security
 ```
 
