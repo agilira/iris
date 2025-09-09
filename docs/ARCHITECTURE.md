@@ -227,7 +227,7 @@ type SingleRingLogger struct {
 - **~25ns/op** logging performance
 - **Single consumer goroutine** for deterministic processing
 - **Lock-free writes** with atomic sequence numbers
-- **Optimal for**: Benchmarks, single-threaded applications, maximum single-thread throughput
+- **Optimal for**: Single-threaded applications, maximum single-thread throughput
 
 ### Threaded-Rings Architecture
 
