@@ -70,6 +70,7 @@
 //   - Secret field redaction protects sensitive data in output
 //   - Encoder escapes all keys through quoteString (no raw writes)
 //   - Input validation at construction (Capacity ceiling prevents CWE-400 OOM)
+//   - OnDrop callback for real-time log-flooding attack detection (CWE-778)
 //
 // # Field Types
 //
@@ -90,7 +91,9 @@
 //
 // Logger creation returns errors for invalid configurations. Internal write
 // errors are routed to Config.ErrorHandler (or stderr if nil). Dropped messages
-// are tracked via logger.Stats()["dropped"].
+// are tracked via logger.Stats()["dropped"]. For real-time drop notification,
+// set Config.OnDrop to receive a callback from the consumer goroutine whenever
+// the cumulative drop count increases.
 //
 //	logger, err := iris.New(iris.Config{})
 //	if err != nil {

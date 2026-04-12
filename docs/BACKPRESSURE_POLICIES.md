@@ -564,6 +564,51 @@ func setupMetrics(logger *iris.Logger) {
         }
     }()
 }
+```
+
+### OnDrop Callback (v1.2.3+)
+
+For real-time drop detection without polling, use the `OnDrop` callback in `Config`.
+The callback runs in the consumer goroutine after each processed record, so it adds
+zero overhead to the producer fast path.
+
+```go
+logger, _ := iris.New(iris.Config{
+    OnDrop: func(totalDropped int64) {
+        // Called from the consumer goroutine whenever the
+        // cumulative drop count increases. totalDropped is
+        // monotonically increasing.
+        metrics.Counter("iris.drops").Set(totalDropped)
+    },
+})
+```
+
+**Forensic use case (CWE-778):** A burst of drops can signal a log-flooding attack
+attempting to mask malicious activity. Wire OnDrop to a tamper-evident audit trail
+so that drop events are themselves unforgeable:
+
+```go
+logger, _ := iris.New(iris.Config{
+    OnDrop: func(totalDropped int64) {
+        // Record the drop event in a tamper-evident audit trail
+        auditTrail.Record(ctx, AuditEvent{
+            Type:    "log_drop_detected",
+            Dropped: totalDropped,
+            Time:    time.Now(),
+        })
+    },
+    ErrorHandler: func(err *errors.Error) {
+        // OnDrop panics are recovered and reported here
+        slog.Error("iris internal error", "err", err)
+    },
+})
+```
+
+**Key properties:**
+- Consumer-side only: zero impact on producer throughput
+- Detection latency equals one batch interval (~microseconds under load)
+- Panic-safe: a panicking OnDrop is recovered and reported via ErrorHandler
+- totalDropped is the lifetime counter, not a delta (monotonically increasing)
 
 Choose your backpressure policy based on your specific requirements:
 

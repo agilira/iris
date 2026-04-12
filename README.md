@@ -17,6 +17,7 @@ Iris is a blazing-fast, zero-allocation structured logging library for Go, engin
 - **Built-In Security**: Sensitive data redaction, log injection protection, and key sanitization
 - **Advanced Idle Strategies**: Progressive, spinning, sleeping, yielding, and channel strategies for optimal CPU usage
 - **Backpressure Policies**: Drop-on-full or block-on-full handling for high-load scenarios
+- **OnDrop Forensic Callback**: Real-time notification when log entries are dropped (CWE-778 detection)
 - **Token-Bucket Sampling**: Rate-limiting for high-volume logging with configurable capacity and refill
 - **Context Integration**: First-class context.Context support with key extraction and field propagation
 
@@ -160,6 +161,7 @@ Auto-detection and configuration of architecture, capacity, encoder, and logging
 - **Injection Protection**: Complete defense against log manipulation attacks (CWE-93, CWE-116)
 - **Field Key Sanitization**: All keys pass through quoteString() -- no raw writes to output
 - **Input Validation**: Config.Validate() enforced at construction with capacity ceiling (CWE-400)
+- **Drop Detection**: OnDrop callback for real-time log-flooding attack detection (CWE-778)
 
 ### Multi-Format Output
 - **JSON**: Structured logging for production systems and log aggregation

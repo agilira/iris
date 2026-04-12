@@ -150,6 +150,15 @@ func buildSmartConfig(cfg Config, opts ...Option) Config {
 	if cfg.ErrorHandler != nil {
 		smartCfg.ErrorHandler = cfg.ErrorHandler
 	}
+	if cfg.OnDrop != nil {
+		smartCfg.OnDrop = cfg.OnDrop
+	}
+	if cfg.BatchSize != 0 {
+		smartCfg.BatchSize = cfg.BatchSize
+	}
+	if cfg.TimeFn != nil {
+		smartCfg.TimeFn = cfg.TimeFn
+	}
 
 	return smartCfg
 }
@@ -324,6 +333,12 @@ func New(cfg Config, opts ...Option) (*Logger, error) {
 	// close over the handler once. No global state, no races.
 	errorHandler := c.ErrorHandler
 
+	// WHY capture onDrop locally: same rationale as errorHandler.
+	// lastReportedDrops lives exclusively in the consumer goroutine
+	// (via the proc closure), so no synchronisation is needed.
+	onDrop := c.OnDrop
+	var lastReportedDrops int64
+
 	l := &Logger{
 		out:     c.Output,
 		enc:     c.Encoder,
@@ -375,6 +390,20 @@ func New(cfg Config, opts ...Option) (*Logger, error) {
 				}
 			}
 		}
+
+		// WHY check drops in the consumer: drops happen atomically in the
+		// producer fast path where any callback would add latency. Here in
+		// the consumer we check the counter after each record (one atomic
+		// Load, ~1ns). When the value increases we call OnDrop exactly once
+		// with the new total. Detection latency = one batch interval.
+		if onDrop != nil {
+			currentDrops := l.dropped.Load()
+			if currentDrops > lastReportedDrops {
+				lastReportedDrops = currentDrops
+				safeOnDrop(onDrop, currentDrops, errorHandler)
+			}
+		}
+
 		rec.resetForWrite()
 	}
 
@@ -1044,6 +1073,29 @@ func safeInvokeHook(h Hook, rec *Record) (hookErr *errors.Error) {
 	}()
 	h(rec)
 	return nil
+}
+
+// safeOnDrop calls the user-provided OnDrop callback with recovery.
+// WHY: same rationale as safeInvokeHook — the OnDrop callback runs in the
+// consumer goroutine. A panic would kill the consumer and silently lose all
+// subsequent log entries. Recovery reports the panic via ErrorHandler (if set)
+// or stderr, keeping the consumer alive.
+func safeOnDrop(fn func(int64), total int64, errHandler ErrorHandler) {
+	defer func() {
+		if r := recover(); r != nil {
+			err := WrapLoggerError(
+				fmt.Errorf("OnDrop callback panicked: %v", r),
+				ErrCodeHookExecution,
+				"OnDrop panic recovered in consumer goroutine",
+			)
+			if errHandler != nil {
+				errHandler(err)
+			} else {
+				fmt.Fprintf(os.Stderr, "iris: OnDrop panic: %v\n", err)
+			}
+		}
+	}()
+	fn(total)
 }
 
 // ==== Helper caller ==========================================================

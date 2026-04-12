@@ -440,8 +440,31 @@ config := Config{
 
 ```go
 stats := logger.Stats()
-// Returns: capacity, batch_size, size, processed, dropped
+// Returns: capacity, batch_size, size, processed, dropped, truncated_fields
 ```
+
+### Drop Detection (CWE-778 -- Insufficient Logging)
+
+A log-flooding attack saturates the ring buffer so that legitimate log entries
+are dropped, masking malicious activity. The `OnDrop` callback provides
+real-time, consumer-side detection with zero producer overhead:
+
+```go
+logger, _ := iris.New(iris.Config{
+    OnDrop: func(totalDropped int64) {
+        // totalDropped is monotonically increasing (lifetime counter).
+        // Wire this to a tamper-evident audit trail so drop events
+        // are themselves unforgeable.
+        auditTrail.Record(ctx, AuditEvent{
+            Type:    "log_drop_detected",
+            Dropped: totalDropped,
+        })
+    },
+})
+```
+
+The callback runs in the consumer goroutine, not in the producer hot path.
+A panicking OnDrop is recovered and reported via `ErrorHandler`.
 
 ### Security-Relevant Logging
 

@@ -151,6 +151,21 @@ type Config struct {
 	// immutable after. Tests can inject a handler that captures errors
 	// without affecting other loggers.
 	ErrorHandler ErrorHandler
+
+	// OnDrop is called from the consumer goroutine when the cumulative
+	// drop count exceeds the last reported value. The argument is the
+	// total number of drops since logger creation (monotonically increasing).
+	//
+	// WHY consumer-side only: drops happen in the producer fast path where
+	// any callback would add latency. The consumer already processes records
+	// sequentially, so a periodic check of the atomic counter is essentially
+	// free (~1ns Load). Detection latency equals one batch interval.
+	//
+	// Forensic use case (CWE-778 — Insufficient Logging): a burst of drops
+	// can signal log-flooding attacks attempting to mask malicious activity.
+	// Wire this callback to a tamper-evident audit trail (e.g. BlackBox) so
+	// that dropped-log events are themselves unforgeable.
+	OnDrop func(totalDropped int64)
 }
 
 // stats represents internal logger statistics exposed via Logger.Stats().
