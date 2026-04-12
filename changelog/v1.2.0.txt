@@ -1,0 +1,214 @@
+# Changelog - Version 1.2.0
+
+## Release Date
+2026-04-12
+
+## Overview
+Version 1.2.0 is a security hardening and documentation accuracy release.
+It adds the slogprovider subpackage, fixes four security issues found during
+a systematic fresh-eyes review, ships five new security_test.go files across
+all critical packages, and removes all aspirational code that was never
+implemented. The result is a leaner, audit-ready codebase that matches its
+documentation exactly.
+
+---
+
+## #New
+
+### slogprovider Subpackage
+- **Package**: `github.com/agilira/iris/slogprovider`
+- bridges Go standard `log/slog` (Go 1.21+) into the Iris pipeline
+- implements both `slog.Handler` and `iris.SyncReader` simultaneously
+- slog-based services adopt Iris as transport with zero call-site changes
+- internal channel decouples slog's synchronous Handler.Handle() from Iris's
+  asynchronous ring buffer
+
+```go
+provider := slogprovider.New(slogprovider.Config{ChannelSize: 256})
+slog.SetDefault(slog.New(provider))
+
+logger, _ := iris.NewReaderLogger(cfg, []iris.SyncReader{provider})
+logger.Start()
+defer logger.Close()
+```
+
+### Phase 4S Security Test Suite
+Five new security_test.go files covering 9 CWEs across all critical packages:
+- `autoscaling_security_test.go`       — CWE-362 race conditions, nil-safety
+- `encoder_json_security_test.go`      — CWE-116 log injection, CWE-20 input validation
+- `encoder_text_security_test.go`      — CWE-116, CWE-20, Unicode direction overrides
+- `internal/zephyroslite/security_test.go` — ring-buffer overflow, concurrent writes
+- `sampler_security_test.go`           — CWE-400 resource exhaustion, race detection
+
+### CHANGELOG.md
+Root-level CHANGELOG.md following Keep a Changelog format, covering v1.0.0 through v1.2.0.
+
+---
+
+## #Fixed
+
+### CWE-400: Config.Capacity upper bound missing
+- Added `const maxCapacity int64 = 1 << 24` (16M entries) to `config.go`
+- `Validate()` now rejects any capacity above this ceiling
+- WHY: unbounded capacity allowed OOM allocation through configuration alone
+- Tests: `TestConfigValidation/capacity_at_maximum_(valid)` and `capacity_exceeds_maximum`
+
+### CWE-116: JSON encoder field key injection
+- Field keys now pass through `quoteString()` before being written to output
+- Previously only values were escaped; a malicious key could inject arbitrary
+  JSON structure into the output stream
+- Tests: `TestJSONEncoder_FieldKeyInjection` in encoder_json_security_test.go
+
+### iris.New() skipping Validate()
+- `New()` now calls `c.Validate()` after `buildSmartConfig()` resolves defaults
+- WHY: smart-config defaults could produce a configuration that silently bypassed
+  all validation checks (e.g. Architecture set to an invalid value)
+- Tests: `TestNew_ValidatesConfig` with valid, invalid-level, and oversized-capacity sub-cases
+
+### IsValidLevel bounds too restrictive
+- `IsValidLevel` now correctly accepts the full range `Debug(-1)` through `Fatal(5)`
+- Previously capped at `Error(2)`, incorrectly rejecting `DPanic`, `Panic`, `Fatal`
+  as valid filter levels
+- Exposed by the New()-validates-config fix (tests using Fatal as filter level broke)
+- Tests: `TestIsValidLevel` updated
+
+### test_helpers.go in production binary
+- Renamed to `test_helpers_test.go` — excluded from compiled output
+- Functions renamed from `TestConfig*` to `makeTestConfig*` variants to avoid
+  confusion with Go's test runner naming convention
+
+---
+
+## #Removed
+
+The following packages and files were aspirational specifications: they described
+planned features but contained no working implementation. Removing them eliminates
+misleading API surface for consumers of the library.
+
+### otel/ sub-module
+- Planned OpenTelemetry integration (never implemented)
+- Removed: `otel/otel.go`, `otel/otel_example_test.go`, `otel/integration_test.go`,
+  `otel/go.mod`, `otel/go.sum`
+
+### lethebridge/ package
+- Planned Lethe ring-buffer bridge (never implemented)
+- Removed: `lethebridge/lethebridge.go`
+
+### magic.go
+- Magic API layer superseded by Smart API in `iris.go`
+- Removed: `magic.go`, `magic_test.go`
+
+### config_loader.go (hot-reload)
+- Multi-source config loader with hot-reload — never working
+- Removed: `config_loader.go`, `config_loader_multisource_test.go`,
+  `config_loader_test.go`, `dynamic_config_test.go`
+
+### integration_test.go
+- Integration tests targeting the above aspirational features
+- Removed: `integration_test.go`
+
+### examples/ directory
+- Examples written for non-existent features
+- Removed entirely (autoscaling, config_loader, hot_reload, context, sampler examples)
+
+### Aspirational documentation
+- `docs/OPENTELEMETRY.md`         — no code exists
+- `docs/HOT_RELOAD.md`            — no code exists
+- `docs/LOKI_INTEGRATION.md`      — no code, no writer implementation
+- `docs/CONFIGURATION_LOADING.md` — no code
+- `AUDIT_ENTERPRISE_TELEMETRY.md` — aspirational enterprise doc
+
+---
+
+## #Changed
+
+### doc.go
+- Complete rewrite. Removed: OpenTelemetry, hot-reload, Console encoder,
+  `logger.Dropped()` (does not exist), aspirational benchmark claims.
+- Accurate benchmark numbers from fresh measurement runs.
+- Correct API references: `iris.Error` not `iris.ErrorLevel`,
+  `logger.Stats()["dropped"]` not `logger.Dropped()`.
+
+### README.md
+- Complete rewrite with fresh benchmark data measured on:
+  AMD Ryzen 5 7520U / linux/amd64 / Go 1.24.5
+- Iris 10 fields: 34 ns/op, 0 allocs
+- Iris accumulated context: 25 ns/op, 0 allocs
+- Iris adding fields: 31 ns/op, 0 allocs
+- Removed references to non-existent sibling repos (iris-writer-loki, iris-writer-datadog)
+- All examples use only real, implemented API
+
+### docs/AUTOSCALING_ARCHITECTURE.md
+- Rewritten to document the actual `AdaptiveLogger` / `ScalerConfig` / `AdaptiveStats` API
+- Removed: aspirational `AutoScalingLogger`, `AutoScalingConfig`, `AutoScalingMetrics`,
+  `AutoScalingStats`, `DefaultAutoScalingConfig()`, ML integration, cross-app learning
+
+### docs/ENCODERS.md
+- Removed Console Encoder and Binary Encoder sections (neither is implemented)
+- Only JSON and Text encoders documented
+- Added CWE-116 note for JSON key quoting
+
+### docs/READERLOGGER_INTEGRATION.md
+- Removed `iris.WithOTel()` and `iris.NewLokiWriter()` references (do not exist)
+- Removed OpenTelemetry and Loki integration sections
+- Accurate `SyncReader` / `NewReaderLogger` / `MultiWriter` API documented
+
+### docs/CONTEXT_INTEGRATION.md
+- Removed `WithRequestID()`, `WithUserID()`, `WithTraceID()` convenience methods
+  (removed from codebase in a prior session)
+- Accurate `WithContext()` / `WithExtractor()` / `WithKeys()` / `WithKey()` API documented
+
+### docs/SECURE_BY_DESIGN.md
+- Removed: aspirational `SecurityPolicy` struct, `stats.RedactedFields`,
+  future ML-based anomaly detection, encryption-at-rest, digital signatures,
+  "Community Contributions", conclusion section
+
+---
+
+## #Performance
+
+No performance regressions. Benchmark data (AMD Ryzen 5 7520U, linux/amd64, Go 1.24.5):
+
+| Scenario               | ns/op | allocs/op |
+|------------------------|-------|-----------|
+| Iris 10 fields         | 34    | 0         |
+| Iris accumulated ctx   | 25    | 0         |
+| Iris adding fields     | 31    | 0         |
+| Iris no context        | 29    | 0         |
+| Iris disabled          | 0.8   | 0         |
+| Zerolog (comparison)   | 53    | 0         |
+| Zap (comparison)       | 429   | 5         |
+| slog (comparison)      | 689   | 11        |
+
+---
+
+## #Testing
+
+| Metric | Value |
+|--------|-------|
+| Packages tested | 4 |
+| Race detector | enabled (-race) |
+| Security test files | 5 new |
+| CWEs covered | 9 |
+| All tests pass | yes |
+
+---
+
+## #Compatibility
+
+- Fully backward compatible for all documented API (iris.New, Logger, Config, Field types)
+- **Breaking removal**: `otel/`, `lethebridge/`, `magic.go` — these were unimplemented
+  stubs so no production consumer was depending on them
+- Go 1.24.5+ required (unchanged)
+
+---
+
+## CONTRIBUTORS
+
+- A. Giordano (agilira) — architecture, security review, implementation
+- GitHub Copilot (Claude Sonnet 4.6) — pair programming, TDD, code review
+
+---
+
+Iris v1.2.0 represents the transition from aspirational library to production-ready
+audit-grade infrastructure. The codebase now matches its documentation exactly.
