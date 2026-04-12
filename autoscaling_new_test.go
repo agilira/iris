@@ -126,19 +126,34 @@ func TestAdaptiveLogger_MultiProducerScalesUp(t *testing.T) {
 		t.Fatalf("Start failed: %v", err)
 	}
 
-	// Multi-producer burst - should trigger scale up
+	// WHY: Info() enqueues to the ring buffer in nanoseconds, so uncoordinated
+	// goroutines on a single-core CI runner may never reach activeWriters>=2 at
+	// the same time. We use channel synchronization to guarantee overlap:
+	// goroutine A holds activeWriters=1 while the main goroutine calls
+	// getLogger() and sees activeWriters=2, deterministically triggering scale-up.
+	holding := make(chan struct{}) // goroutine signals it holds the writer slot
+	release := make(chan struct{}) // main signals goroutine to release
+
 	var wg sync.WaitGroup
-	for g := 0; g < 5; g++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			for i := 0; i < 50; i++ {
-				al.Info("multi producer message", Int("goroutine", id), Int("i", i))
-			}
-		}(g)
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_ = al.getLogger() // activeWriters → 1
+		close(holding)     // signal: slot is held
+		<-release          // wait: keep slot held until main proceeds
+		al.releaseWriter()
+	}()
+
+	<-holding          // wait for goroutine to hold activeWriters=1
+	_ = al.getLogger() // activeWriters → 2 >= threshold → scale up
+	al.releaseWriter()
+	close(release) // let goroutine exit
 	wg.Wait()
 
+	// Run actual writes to populate TotalWrites counter.
+	for i := 0; i < 250; i++ {
+		al.Info("multi producer message", Int("goroutine", 0), Int("i", i))
+	}
 	time.Sleep(50 * time.Millisecond)
 
 	stats := al.Stats()
