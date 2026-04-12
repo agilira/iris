@@ -8,26 +8,44 @@ package iris
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
-// optionTestSyncer captures logs for option testing
+// optionTestSyncer captures logs for option testing.
+// WHY mu: Write() is called from the ring processor goroutine while the test
+// goroutine reads logs via Logs(). Mutex provides the required happens-before.
 type optionTestSyncer struct {
+	mu       sync.Mutex
 	logs     []string
 	synced   bool
 	logCount int
 }
 
 func (o *optionTestSyncer) Write(p []byte) (n int, err error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	o.logs = append(o.logs, string(p))
 	o.logCount++
 	return len(p), nil
 }
 
 func (o *optionTestSyncer) Sync() error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	o.synced = true
 	return nil
+}
+
+// Logs returns a snapshot of all captured log strings.
+// WHY snapshot: avoids holding the lock while tests iterate.
+func (o *optionTestSyncer) Logs() []string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	cp := make([]string, len(o.logs))
+	copy(cp, o.logs)
+	return cp
 }
 
 // TestWithCallerSkip tests the WithCallerSkip option
@@ -53,12 +71,12 @@ func TestWithCallerSkip(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 
 		// Verify log was written
-		if len(syncer.logs) == 0 {
+		if len(syncer.Logs()) == 0 {
 			t.Error("Expected WithCallerSkip to write log")
 		}
 
 		// Verify caller information is present (exact format may vary)
-		logContent := syncer.logs[0]
+		logContent := syncer.Logs()[0]
 		if !strings.Contains(logContent, "test message with caller skip") {
 			t.Errorf("Expected log to contain message, got: %s", logContent)
 		}
@@ -85,12 +103,12 @@ func TestWithCallerSkip(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 
 		// Verify log was written
-		if len(syncer.logs) == 0 {
+		if len(syncer.Logs()) == 0 {
 			t.Error("Expected WithCallerSkip with negative value to write log")
 		}
 
 		// Verify message content
-		logContent := syncer.logs[0]
+		logContent := syncer.Logs()[0]
 		if !strings.Contains(logContent, "test message with negative skip") {
 			t.Errorf("Expected log to contain message, got: %s", logContent)
 		}
@@ -115,12 +133,12 @@ func TestWithCallerSkip(t *testing.T) {
 
 		// Wait for async processing
 		time.Sleep(50 * time.Millisecond) // Verify log was written
-		if len(syncer.logs) == 0 {
+		if len(syncer.Logs()) == 0 {
 			t.Error("Expected WithCallerSkip with zero value to write log")
 		}
 
 		// Verify message content
-		logContent := syncer.logs[0]
+		logContent := syncer.Logs()[0]
 		if !strings.Contains(logContent, "test message with zero skip") {
 			t.Errorf("Expected log to contain message, got: %s", logContent)
 		}
@@ -148,12 +166,12 @@ func TestAddStacktrace(t *testing.T) {
 
 		// Wait for async processing
 		time.Sleep(50 * time.Millisecond) // Verify log was written
-		if len(syncer.logs) == 0 {
+		if len(syncer.Logs()) == 0 {
 			t.Error("Expected AddStacktrace to write error log")
 		}
 
 		// Verify message content
-		logContent := syncer.logs[0]
+		logContent := syncer.Logs()[0]
 		if !strings.Contains(logContent, "test error with stack trace") {
 			t.Errorf("Expected log to contain error message, got: %s", logContent)
 		}
@@ -178,12 +196,12 @@ func TestAddStacktrace(t *testing.T) {
 
 		// Wait for async processing
 		time.Sleep(50 * time.Millisecond) // Verify log was written
-		if len(syncer.logs) == 0 {
+		if len(syncer.Logs()) == 0 {
 			t.Error("Expected AddStacktrace to write warning log")
 		}
 
 		// Verify message content
-		logContent := syncer.logs[0]
+		logContent := syncer.Logs()[0]
 		if !strings.Contains(logContent, "test warning without stack trace") {
 			t.Errorf("Expected log to contain warning message, got: %s", logContent)
 		}
@@ -208,12 +226,12 @@ func TestAddStacktrace(t *testing.T) {
 
 		// Wait for async processing
 		time.Sleep(50 * time.Millisecond) // Verify log was written
-		if len(syncer.logs) == 0 {
+		if len(syncer.Logs()) == 0 {
 			t.Error("Expected AddStacktrace to write debug log")
 		}
 
 		// Verify message content
-		logContent := syncer.logs[0]
+		logContent := syncer.Logs()[0]
 		if !strings.Contains(logContent, "test debug with stack trace") {
 			t.Errorf("Expected log to contain debug message, got: %s", logContent)
 		}
@@ -238,12 +256,12 @@ func TestAddStacktrace(t *testing.T) {
 
 		// Wait for async processing
 		time.Sleep(50 * time.Millisecond) // Verify log was written
-		if len(syncer.logs) == 0 {
+		if len(syncer.Logs()) == 0 {
 			t.Error("Expected AddStacktrace to write error log without stack trace")
 		}
 
 		// Verify message content
-		logContent := syncer.logs[0]
+		logContent := syncer.Logs()[0]
 		if !strings.Contains(logContent, "test error without stack trace") {
 			t.Errorf("Expected log to contain error message, got: %s", logContent)
 		}
@@ -271,12 +289,12 @@ func TestWithCallerSkip_Integration(t *testing.T) {
 
 		// Wait for async processing
 		time.Sleep(50 * time.Millisecond) // Verify log was written
-		if len(syncer.logs) == 0 {
+		if len(syncer.Logs()) == 0 {
 			t.Error("Expected integration test to write log")
 		}
 
 		// Verify message content
-		logContent := syncer.logs[0]
+		logContent := syncer.Logs()[0]
 		if !strings.Contains(logContent, "integration test message") {
 			t.Errorf("Expected log to contain message, got: %s", logContent)
 		}
@@ -304,12 +322,12 @@ func TestAddStacktrace_Integration(t *testing.T) {
 
 		// Wait for async processing
 		time.Sleep(50 * time.Millisecond) // Verify log was written
-		if len(syncer.logs) == 0 {
+		if len(syncer.Logs()) == 0 {
 			t.Error("Expected integration warning to write log")
 		}
 
 		// Verify message content
-		logContent := syncer.logs[0]
+		logContent := syncer.Logs()[0]
 		if !strings.Contains(logContent, "integration warning with stack") {
 			t.Errorf("Expected log to contain warning message, got: %s", logContent)
 		}

@@ -46,6 +46,14 @@ func (bs *bufferedSyncer) String() string {
 	return bs.buf.String()
 }
 
+// Reset clears the buffer. Must be called only when no concurrent writes are
+// in flight (e.g., after logger.Close() or time.Sleep to drain the ring).
+func (bs *bufferedSyncer) Reset() {
+	bs.mu.Lock()
+	defer bs.mu.Unlock()
+	bs.buf.Reset()
+}
+
 // TestLoggerBasicOperations verifies core logger functionality
 func TestLoggerBasicOperations(t *testing.T) {
 	buf := &bufferedSyncer{}

@@ -15,6 +15,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,11 +25,16 @@ import (
 // bufferedWriter captures output for testing.
 // WHY custom: We need both Write (io.Writer) and Sync (iris.Syncer)
 // to satisfy iris.Config.Output without external dependencies.
+// WHY mu: Write() is called from the ring processor goroutine while the test
+// goroutine reads via String(). Mutex provides the required happens-before.
 type bufferedWriter struct {
+	mu   sync.Mutex
 	data []byte
 }
 
 func (b *bufferedWriter) Write(p []byte) (n int, err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.data = append(b.data, p...)
 	return len(p), nil
 }
@@ -38,6 +44,8 @@ func (b *bufferedWriter) Sync() error {
 }
 
 func (b *bufferedWriter) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	return string(b.data)
 }
 

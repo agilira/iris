@@ -7,7 +7,6 @@
 package iris
 
 import (
-	"bytes"
 	"strings"
 	"sync"
 	"testing"
@@ -51,10 +50,10 @@ func TestDefaultScalerConfig(t *testing.T) {
 }
 
 func TestNewAdaptiveLogger(t *testing.T) {
-	var buf bytes.Buffer
+	buf := &bufferedSyncer{}
 	cfg := Config{
 		Level:   Info,
-		Output:  WrapWriter(&buf),
+		Output:  buf,
 		Encoder: NewJSONEncoder(),
 	}
 
@@ -71,10 +70,10 @@ func TestNewAdaptiveLogger(t *testing.T) {
 }
 
 func TestAdaptiveLogger_SingleProducerStaysSingle(t *testing.T) {
-	var buf bytes.Buffer
+	buf := &bufferedSyncer{}
 	cfg := Config{
 		Level:   Debug,
-		Output:  WrapWriter(&buf),
+		Output:  buf,
 		Encoder: NewJSONEncoder(),
 	}
 
@@ -106,10 +105,10 @@ func TestAdaptiveLogger_SingleProducerStaysSingle(t *testing.T) {
 }
 
 func TestAdaptiveLogger_MultiProducerScalesUp(t *testing.T) {
-	var buf bytes.Buffer
+	buf := &bufferedSyncer{}
 	cfg := Config{
 		Level:   Debug,
-		Output:  WrapWriter(&buf),
+		Output:  buf,
 		Encoder: NewJSONEncoder(),
 	}
 
@@ -166,10 +165,10 @@ func TestAdaptiveLogger_MultiProducerScalesUp(t *testing.T) {
 }
 
 func TestAdaptiveLogger_ScaleDownAfterCooldown(t *testing.T) {
-	var buf bytes.Buffer
+	buf := &bufferedSyncer{}
 	cfg := Config{
 		Level:   Debug,
-		Output:  WrapWriter(&buf),
+		Output:  buf,
 		Encoder: NewJSONEncoder(),
 	}
 
@@ -220,10 +219,10 @@ func TestAdaptiveLogger_ScaleDownAfterCooldown(t *testing.T) {
 }
 
 func TestAdaptiveLogger_AllLogLevels(t *testing.T) {
-	var buf bytes.Buffer
+	buf := &bufferedSyncer{}
 	cfg := Config{
 		Level:   Debug,
-		Output:  WrapWriter(&buf),
+		Output:  buf,
 		Encoder: NewTextEncoder(),
 	}
 
@@ -253,10 +252,10 @@ func TestAdaptiveLogger_AllLogLevels(t *testing.T) {
 }
 
 func TestAdaptiveLogger_Stats(t *testing.T) {
-	var buf bytes.Buffer
+	buf := &bufferedSyncer{}
 	cfg := Config{
 		Level:   Info,
-		Output:  WrapWriter(&buf),
+		Output:  buf,
 		Encoder: NewJSONEncoder(),
 	}
 
@@ -283,10 +282,10 @@ func TestAdaptiveLogger_Stats(t *testing.T) {
 }
 
 func TestAdaptiveLogger_SetLevel(t *testing.T) {
-	var buf bytes.Buffer
+	buf := &bufferedSyncer{}
 	cfg := Config{
 		Level:   Info,
-		Output:  WrapWriter(&buf),
+		Output:  buf,
 		Encoder: NewJSONEncoder(),
 	}
 
@@ -320,7 +319,7 @@ func TestAdaptiveLogger_SetLevel(t *testing.T) {
 func TestAdaptiveLogger_Level(t *testing.T) {
 	cfg := Config{
 		Level:   Warn,
-		Output:  WrapWriter(&bytes.Buffer{}),
+		Output:  &bufferedSyncer{},
 		Encoder: NewJSONEncoder(),
 	}
 
@@ -341,10 +340,10 @@ func TestAdaptiveLogger_Level(t *testing.T) {
 }
 
 func TestAdaptiveLogger_SetLevel_PropagatesBothLoggers(t *testing.T) {
-	var buf bytes.Buffer
+	buf := &bufferedSyncer{}
 	cfg := Config{
 		Level:   Debug,
-		Output:  WrapWriter(&buf),
+		Output:  buf,
 		Encoder: NewJSONEncoder(),
 	}
 
@@ -388,10 +387,10 @@ func TestAdaptiveLogger_SetLevel_PropagatesBothLoggers(t *testing.T) {
 }
 
 func TestAdaptiveLogger_Sync(t *testing.T) {
-	var buf bytes.Buffer
+	buf := &bufferedSyncer{}
 	cfg := Config{
 		Level:   Info,
-		Output:  WrapWriter(&buf),
+		Output:  buf,
 		Encoder: NewJSONEncoder(),
 	}
 
