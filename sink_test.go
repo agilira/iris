@@ -12,7 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/agilira/go-errors"
 )
 
 // Helper function to safely close file ignoring expected errors
@@ -733,4 +737,172 @@ func (e *errorWriter) Write(p []byte) (int, error) {
 
 func (e *errorWriter) Sync() error {
 	return e.error
+}
+
+// --- OwnedWriter interface tests ---
+
+// mockOwnedWriter implements both WriteSyncer and OwnedWriter.
+// WHY separate from mockWriteSyncer: we need to verify that the Logger
+// detects OwnedWriter at construction (INV-410) and calls WriteOwned
+// instead of Write in the consumer thread.
+type mockOwnedWriter struct {
+	mu         sync.Mutex
+	writeData  []byte
+	ownedData  []byte
+	ownedCalls int
+	writeCalls int
+	syncCalls  int
+}
+
+func (m *mockOwnedWriter) Write(p []byte) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.writeData = append(m.writeData, p...)
+	m.writeCalls++
+	return len(p), nil
+}
+
+func (m *mockOwnedWriter) WriteOwned(p []byte) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ownedData = append(m.ownedData, p...)
+	m.ownedCalls++
+	return len(p), nil
+}
+
+func (m *mockOwnedWriter) Sync() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.syncCalls++
+	return nil
+}
+
+func TestOwnedWriter_DetectedAtConstruction(t *testing.T) {
+	ow := &mockOwnedWriter{}
+
+	logger, err := New(Config{
+		Output:   ow,
+		Capacity: 1024,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	logger.Start()
+
+	logger.Info("owned path test")
+	time.Sleep(50 * time.Millisecond)
+
+	if closeErr := logger.Close(); closeErr != nil {
+		t.Errorf("Close() failed: %v", closeErr)
+	}
+
+	ow.mu.Lock()
+	defer ow.mu.Unlock()
+
+	// WHY check ownedCalls > 0: proves OwnedWriter was detected once at
+	// construction and the owned path is used in the processor.
+	if ow.ownedCalls == 0 {
+		t.Error("OwnedWriter.WriteOwned was never called; detection failed")
+	}
+	if ow.writeCalls != 0 {
+		t.Errorf("Write was called %d times; should be 0 when OwnedWriter is available", ow.writeCalls)
+	}
+}
+
+func TestOwnedWriter_FallbackToWrite(t *testing.T) {
+	// WHY: a plain WriteSyncer (no OwnedWriter) must use the Write path.
+	var buf bytes.Buffer
+	ws := WrapWriter(&buf)
+
+	logger, err := New(Config{
+		Output:   ws,
+		Capacity: 1024,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	logger.Start()
+
+	logger.Info("fallback path test")
+	time.Sleep(50 * time.Millisecond)
+
+	if closeErr := logger.Close(); closeErr != nil {
+		t.Errorf("Close() failed: %v", closeErr)
+	}
+
+	if buf.Len() == 0 {
+		t.Error("Write was never called; fallback path broken")
+	}
+}
+
+func TestOwnedWriter_Interface(t *testing.T) {
+	// WHY: compile-time check that OwnedWriter is a usable interface
+	var _ OwnedWriter = &mockOwnedWriter{}
+}
+
+// --- ErrorHandler in processor tests ---
+
+func TestErrorHandler_CalledOnWriteFailure(t *testing.T) {
+	writeErr := &errorWriter{error: io.ErrClosedPipe}
+
+	var captured []*errors.Error
+	var mu sync.Mutex
+
+	logger, err := New(Config{
+		Output:   writeErr,
+		Capacity: 1024,
+		ErrorHandler: func(e *errors.Error) {
+			mu.Lock()
+			defer mu.Unlock()
+			captured = append(captured, e)
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	logger.Start()
+
+	logger.Info("this write will fail")
+	time.Sleep(50 * time.Millisecond)
+
+	// WHY ignore Close error: the errorWriter fails Sync() too,
+	// which is expected -- we are testing the Write path, not Close.
+	_ = logger.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(captured) == 0 {
+		t.Fatal("ErrorHandler was never called on write failure")
+	}
+
+	// WHY check code: the processor must wrap with ErrCodeFileWrite
+	// so callers can programmatically identify write failures.
+	if captured[0].Code != ErrCodeFileWrite {
+		t.Errorf("ErrorHandler received code %q, want %q", captured[0].Code, ErrCodeFileWrite)
+	}
+}
+
+func TestErrorHandler_NilFallsBackToStderr(t *testing.T) {
+	// WHY: when ErrorHandler is nil, write errors must go to stderr
+	// (not be silently ignored). We can only verify no panic here;
+	// capturing stderr in tests is brittle and not worth the coupling.
+	writeErr := &errorWriter{error: io.ErrClosedPipe}
+
+	logger, err := New(Config{
+		Output:   writeErr,
+		Capacity: 1024,
+		// ErrorHandler intentionally nil
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	logger.Start()
+
+	logger.Info("this should go to stderr without panic")
+	time.Sleep(50 * time.Millisecond)
+
+	// WHY ignore Close error: errorWriter fails Sync() too.
+	_ = logger.Close()
+	// If we reach here without panic, the stderr fallback works.
 }

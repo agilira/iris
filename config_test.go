@@ -153,6 +153,29 @@ func TestConfigValidation(t *testing.T) {
 			expectError: true,
 			errorCode:   "IRIS_INVALID_LEVEL",
 		},
+		// WHY these cases: an unbounded Capacity allows callers to request
+		// gigantic ring buffers (e.g. 1<<62), causing OOM at newRing time.
+		// The ceiling closes CWE-400 (Uncontrolled Resource Consumption) at
+		// the validation boundary, before any allocation is attempted.
+		{
+			name: "capacity at maximum (valid)",
+			config: Config{
+				Capacity:  maxCapacity,
+				BatchSize: 32,
+				Level:     Info,
+			},
+			expectError: false,
+		},
+		{
+			name: "capacity exceeds maximum",
+			config: Config{
+				Capacity:  maxCapacity + 1,
+				BatchSize: 32,
+				Level:     Info,
+			},
+			expectError: true,
+			errorCode:   "IRIS_INVALID_CONFIG",
+		},
 	}
 
 	for _, tt := range tests {
@@ -455,16 +478,20 @@ func TestConfigPerformance(t *testing.T) {
 
 // TestConfigEdgeCases tests edge cases and boundary conditions
 func TestConfigEdgeCases(t *testing.T) {
-	// Test maximum values
+	// Test maximum allowed capacity (the ceiling itself must be valid).
+	// WHY maxCapacity and not 1<<30: maxCapacity is the enforced upper bound.
+	// Testing with an arbitrary large value that exceeds the bound would be
+	// a regression the moment the bound was introduced — the constant is the
+	// canonical reference.
 	config := &Config{
-		Capacity:  1 << 30, // Large but valid capacity
+		Capacity:  maxCapacity,
 		BatchSize: 1000,
 		Level:     Error,
 	}
 
 	err := config.Validate()
 	if err != nil {
-		t.Errorf("Large valid values should not cause validation error: %v", err)
+		t.Errorf("Capacity at maxCapacity should be valid, got: %v", err)
 	}
 
 	// Test equal capacity and batch size (valid edge case)
@@ -489,5 +516,82 @@ func TestConfigEdgeCases(t *testing.T) {
 	defaulted := config.withDefaults()
 	if defaulted.BatchSize <= 0 {
 		t.Errorf("Zero batch size should get positive default, got %d", defaulted.BatchSize)
+	}
+}
+
+// TestNew_ValidatesConfig verifies that New() enforces Config.Validate() before
+// any ring buffer is allocated.
+//
+// WHY this test exists: Config.Validate() is a public method, but callers may
+// skip calling it and pass garbage directly to New(). New() must be the last
+// line of defence so that invalid configs never reach newRing, where they
+// would either cause a panic or silently corrupt logger behaviour.
+func TestNew_ValidatesConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr bool
+		errCode string
+	}{
+		{
+			// A valid config must still be accepted.
+			name: "valid config is accepted",
+			cfg: Config{
+				Level:    Info,
+				Capacity: 1024,
+				Output:   WrapWriter(&bytes.Buffer{}),
+				Encoder:  NewJSONEncoder(),
+			},
+			wantErr: false,
+		},
+		{
+			// Invalid level survives withDefaults (it is not overridden) but
+			// must be rejected by Validate() before any resource allocation.
+			name:    "invalid level is rejected",
+			cfg:     Config{Level: Level(999)},
+			wantErr: true,
+			errCode: "IRIS_INVALID_LEVEL",
+		},
+		{
+			// Capacity beyond maxCapacity must be caught before newRing gets
+			// it and causes OOM (CWE-400).
+			name: "capacity exceeds maxCapacity is rejected",
+			cfg: Config{
+				Capacity: maxCapacity + 1,
+				Level:    Info,
+			},
+			wantErr: true,
+			errCode: "IRIS_INVALID_CONFIG",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger, err := New(tt.cfg)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("New() expected an error, got nil")
+				}
+				code := GetErrorCode(err)
+				if string(code) != tt.errCode {
+					t.Errorf("wrong error code: want %s, got %s (err: %v)", tt.errCode, string(code), err)
+				}
+				// No logger must be returned on error.
+				if logger != nil {
+					t.Error("New() returned non-nil logger alongside error")
+					_ = logger.Close()
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("New() unexpected error: %v", err)
+				}
+				if logger == nil {
+					t.Fatal("New() returned nil logger without error")
+				}
+				if closeErr := logger.Close(); closeErr != nil {
+					t.Errorf("logger.Close() error: %v", closeErr)
+				}
+			}
+		})
 	}
 }

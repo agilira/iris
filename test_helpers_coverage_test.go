@@ -110,7 +110,7 @@ func TestUnit_TestConfig_PlatformAware(t *testing.T) {
 	t.Parallel()
 
 	// Execute function under test
-	config := TestConfig()
+	config := makeTestConfig()
 
 	// Validate core configuration components
 	if config.Level != Debug {
@@ -157,7 +157,7 @@ func TestUnit_TestConfigWithOutput_OutputValidation(t *testing.T) {
 	output := WrapWriter(&outputBuffer)
 
 	// Execute function under test
-	config := TestConfigWithOutput(output)
+	config := makeTestConfigWithOutput(output)
 
 	// Validate configuration structure
 	if config.Level != Debug {
@@ -209,7 +209,7 @@ func TestUnit_TestConfigSmall_MinimalResourceUsage(t *testing.T) {
 	t.Parallel()
 
 	// Execute function under test
-	config := TestConfigSmall()
+	config := makeTestConfigSmall()
 
 	// Validate minimal configuration
 	if config.Level != Debug {
@@ -346,7 +346,7 @@ func BenchmarkSuite_TestHelpers_PerformanceProfile(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			TestConfig()
+			makeTestConfig()
 		}
 	})
 
@@ -354,7 +354,7 @@ func BenchmarkSuite_TestHelpers_PerformanceProfile(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			TestConfigSmall()
+			makeTestConfigSmall()
 		}
 	})
 }

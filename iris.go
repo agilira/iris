@@ -147,6 +147,9 @@ func buildSmartConfig(cfg Config, opts ...Option) Config {
 	if cfg.Sampler != nil {
 		smartCfg.Sampler = cfg.Sampler
 	}
+	if cfg.ErrorHandler != nil {
+		smartCfg.ErrorHandler = cfg.ErrorHandler
+	}
 
 	return smartCfg
 }
@@ -300,6 +303,26 @@ func New(cfg Config, opts ...Option) (*Logger, error) {
 	// SMART API: Ignore complex Config and auto-detect everything from opts + smart defaults
 	c := buildSmartConfig(cfg, opts...)
 
+	// WHY validate after buildSmartConfig: withDefaults normalises benign
+	// omissions (zero Capacity, nil Output, etc.) before the check runs, so
+	// Validate() only ever sees a fully-resolved config and can focus on
+	// catching values that are genuinely wrong (e.g. invalid Level, Capacity
+	// above the OOM ceiling). Callers who skip Validate() themselves are
+	// therefore still protected at construction time.
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+
+	// WHY detect OwnedWriter once here: type assertions on every write
+	// are a measurable cost at >10K records/s. One-time detection at
+	// construction satisfies INV-410 and keeps the hot path branch-free
+	// for the common (non-OwnedWriter) case.
+	ownedOut, hasOwnedWriter := c.Output.(OwnedWriter)
+
+	// WHY capture errorHandler locally: the Config is copied, so we
+	// close over the handler once. No global state, no races.
+	errorHandler := c.ErrorHandler
+
 	l := &Logger{
 		out:     c.Output,
 		enc:     c.Encoder,
@@ -314,12 +337,33 @@ func New(cfg Config, opts ...Option) (*Logger, error) {
 	var proc ProcessorFunc = func(rec *Record) {
 		buf := bufferpool.Get()
 		l.enc.Encode(rec, l.clock(), buf)
-		_, _ = l.out.Write(buf.Bytes())
+
+		// WHY two paths: OwnedWriter transfers buffer ownership to the
+		// destination (e.g. lethe). The destination is responsible for
+		// the buffer lifecycle, so we must NOT return it to the pool.
+		// Standard Write copies and we reclaim the buffer immediately.
+		var writeErr error
+		if hasOwnedWriter {
+			_, writeErr = ownedOut.WriteOwned(buf.Bytes())
+			// NOTE: do NOT call bufferpool.Put(buf) -- ownership transferred
+		} else {
+			_, writeErr = l.out.Write(buf.Bytes())
+			bufferpool.Put(buf)
+		}
+
+		if writeErr != nil {
+			l.dropped.Add(1)
+			if errorHandler != nil {
+				errorHandler(WrapLoggerError(writeErr, ErrCodeFileWrite, "write failed in processor"))
+			} else {
+				fmt.Fprintf(os.Stderr, "iris: write error: %v\n", writeErr)
+			}
+		}
+
 		// Hooks nel consumer (niente contend)
 		for _, h := range l.opts.hooks {
 			h(rec)
 		}
-		bufferpool.Put(buf)
 		rec.resetForWrite()
 	}
 

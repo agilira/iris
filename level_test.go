@@ -556,10 +556,22 @@ func TestIsValidLevel(t *testing.T) {
 		{Info, true, "Info is valid"},
 		{Warn, true, "Warn is valid"},
 		{Error, true, "Error is valid"},
+		// WHY DPanic/Panic/Fatal must be valid: they are intentional operational
+		// filter levels. Setting Config.Level = Fatal means "only pass Fatal
+		// messages", which is a legitimate production hardening mode (silence
+		// everything except the most severe events). Restricting IsValidLevel to
+		// Debug..Error was a design error — it broke callers that legitimately
+		// set a high filter level via Config.Level. The naming convention for
+		// DPanic/Panic/Fatal describes the EFFECT of emitting at that level,
+		// not that those values are illegal as a filter threshold.
+		{DPanic, true, "DPanic is valid"},
+		{Panic, true, "Panic is valid"},
+		{Fatal, true, "Fatal is valid"},
 		{Level(-10), false, "Level -10 is invalid"},
 		{Level(10), false, "Level 10 is invalid"},
 		{Level(-2), false, "Level -2 is invalid"},
-		{Level(3), false, "Level 3 is invalid"},
+		// Level(6) is one above Fatal (the highest defined level) — out of range.
+		{Level(6), false, "Level 6 (above Fatal) is invalid"},
 	}
 
 	for _, tc := range testCases {

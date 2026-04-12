@@ -8,10 +8,8 @@ package iris
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -74,157 +72,6 @@ func TestErrorCodes(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// TestDefaultErrorHandler tests the default error handler functionality
-func TestDefaultErrorHandler(t *testing.T) {
-	// Create a temporary file to capture stderr output
-	oldStderr := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("Failed to create pipe: %v", err)
-	}
-	os.Stderr = w
-
-	// Create a test error
-	testErr := errors.New(ErrCodeLoggerCreation, "Test error message")
-
-	// Call the default error handler
-	defaultErrorHandler(testErr)
-
-	// Close the writer and restore stderr
-	if err := w.Close(); err != nil {
-		t.Errorf("Failed to close writer: %v", err)
-	}
-	os.Stderr = oldStderr
-
-	// Read the captured output
-	output := make([]byte, 1024)
-	n, err := r.Read(output)
-	if err != nil && err.Error() != "EOF" {
-		t.Fatalf("Failed to read output: %v", err)
-	}
-	if err := r.Close(); err != nil {
-		t.Errorf("Failed to close reader: %v", err)
-	}
-
-	outputStr := string(output[:n])
-	expectedCode := string(ErrCodeLoggerCreation)
-	expectedMessage := "Test error message"
-
-	if !strings.Contains(outputStr, expectedCode) {
-		t.Errorf("Output should contain error code %s, got: %s", expectedCode, outputStr)
-	}
-
-	if !strings.Contains(outputStr, expectedMessage) {
-		t.Errorf("Output should contain message %s, got: %s", expectedMessage, outputStr)
-	}
-}
-
-// TestDefaultErrorHandlerWithCause tests error handler with wrapped errors
-func TestDefaultErrorHandlerWithCause(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping stderr capture test in short mode")
-	}
-
-	// Create a temporary file to capture stderr output
-	oldStderr := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("Failed to create pipe: %v", err)
-	}
-	os.Stderr = w
-
-	// Create a test error with cause
-	originalErr := fmt.Errorf("original error")
-	testErr := errors.Wrap(originalErr, ErrCodeLoggerCreation, "Wrapped error message")
-
-	// Call the default error handler
-	defaultErrorHandler(testErr)
-
-	// Close the writer and restore stderr
-	if err := w.Close(); err != nil {
-		t.Errorf("Failed to close writer: %v", err)
-	}
-	os.Stderr = oldStderr
-
-	// Read the captured output
-	output := make([]byte, 1024)
-	n, err := r.Read(output)
-	if err != nil && err.Error() != "EOF" {
-		t.Fatalf("Failed to read output: %v", err)
-	}
-	if err := r.Close(); err != nil {
-		t.Errorf("Failed to close reader: %v", err)
-	}
-
-	outputStr := string(output[:n])
-
-	if !strings.Contains(outputStr, "Wrapped error message") {
-		t.Errorf("Output should contain wrapped message, got: %s", outputStr)
-	}
-
-	if !strings.Contains(outputStr, "Caused by") {
-		t.Errorf("Output should contain 'Caused by', got: %s", outputStr)
-	}
-
-	if !strings.Contains(outputStr, "original error") {
-		t.Errorf("Output should contain original error, got: %s", outputStr)
-	}
-}
-
-// TestSetErrorHandler tests setting custom error handlers
-func TestSetErrorHandler(t *testing.T) {
-	// Save original handler
-	originalHandler := GetErrorHandler()
-	defer SetErrorHandler(originalHandler)
-
-	// Test setting custom handler
-	var capturedError *errors.Error
-	customHandler := func(err *errors.Error) {
-		capturedError = err
-	}
-
-	SetErrorHandler(customHandler)
-
-	// Verify the handler was set
-	if GetErrorHandler() == nil {
-		t.Error("Custom handler should not be nil")
-	}
-
-	// Test the custom handler
-	testErr := errors.New(ErrCodeLoggerCreation, "Test message")
-	handleError(testErr)
-
-	if capturedError == nil {
-		t.Error("Custom handler should have captured the error")
-	}
-
-	if capturedError.Code != ErrCodeLoggerCreation {
-		t.Errorf("Expected error code %s, got %s", ErrCodeLoggerCreation, capturedError.Code)
-	}
-}
-
-// TestSetErrorHandlerNil tests setting nil error handler (should revert to default)
-func TestSetErrorHandlerNil(t *testing.T) {
-	// Save original handler
-	originalHandler := GetErrorHandler()
-	defer SetErrorHandler(originalHandler)
-
-	// Set nil handler
-	SetErrorHandler(nil)
-
-	// Verify it reverted to default
-	currentHandler := GetErrorHandler()
-	if currentHandler == nil {
-		t.Error("Handler should not be nil after setting to nil")
-	}
-
-	// The handler should be the default handler (we can't directly compare function pointers,
-	// but we can test the behavior)
-	if currentHandler == nil {
-		t.Error("Default handler should be restored when setting nil")
 	}
 }
 
@@ -551,7 +398,7 @@ func TestRecoverWithError(t *testing.T) {
 		t.Errorf("RecoverWithError should return nil when no panic occurs, got: %v", err)
 	}
 
-	// Test the actual pattern used by SafeExecute - simulate recovery with proper isolation
+	// Test the recovery pattern - simulate recovery with proper isolation
 	t.Run("PanicRecoverySimulation", func(t *testing.T) {
 		// Test string panic recovery
 		var recoveredError *errors.Error
@@ -625,85 +472,6 @@ func TestRecoverWithError(t *testing.T) {
 		}
 	})
 
-	// Note: SafeExecute testing is handled separately in TestSafeExecute_PanicHandling
-	// which uses a different approach to avoid test framework conflicts
-}
-
-// TestSafeExecute tests safe function execution
-func TestSafeExecute(t *testing.T) {
-	// Test successful execution
-	err := SafeExecute(func() error {
-		return nil
-	}, "test_operation")
-
-	if err != nil {
-		t.Errorf("SafeExecute should return nil for successful execution, got: %v", err)
-	}
-
-	// Test execution with error return
-	expectedErr := fmt.Errorf("function error")
-	err = SafeExecute(func() error {
-		return expectedErr
-	}, "test_operation")
-
-	if err != expectedErr {
-		t.Errorf("SafeExecute should return function error, got: %v", err)
-	}
-
-	// Note: Testing panic recovery in SafeExecute is complex in unit tests
-	// as it involves defer/recover mechanisms. The function is designed
-	// to handle panics by calling the error handler.
-}
-
-// TestHandleError tests the internal error handling function
-func TestHandleError(t *testing.T) {
-	// Test with nil error
-	handleError(nil) // Should not panic
-
-	// Test with valid error
-	var capturedError *errors.Error
-	originalHandler := GetErrorHandler()
-	SetErrorHandler(func(err *errors.Error) {
-		capturedError = err
-	})
-	defer SetErrorHandler(originalHandler)
-
-	testErr := NewLoggerError(ErrCodeTimeout, "Test error")
-	handleError(testErr)
-
-	if capturedError == nil {
-		t.Fatal("Error handler should have been called")
-	}
-
-	// Check that runtime context was added
-	if goVersion, ok := capturedError.Context["go_version"]; !ok {
-		t.Error("Go version should be in context")
-	} else {
-		if !strings.Contains(goVersion.(string), "go") {
-			t.Errorf("Go version should contain 'go', got: %s", goVersion)
-		}
-	}
-
-	if goroutines, ok := capturedError.Context["goroutines"]; !ok {
-		t.Error("Goroutines count should be in context")
-	} else {
-		if goroutines.(int) < 1 {
-			t.Errorf("Goroutines count should be at least 1, got: %d", goroutines)
-		}
-	}
-}
-
-// TestValidateErrorCodes tests the error code validation function
-func TestValidateErrorCodes(t *testing.T) {
-	// This test ensures that validateErrorCodes doesn't panic
-	// The function is called in init(), so if it panicked, the package wouldn't load
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("validateErrorCodes should not panic, got: %v", r)
-		}
-	}()
-
-	validateErrorCodes()
 }
 
 // TestErrorCodeConstants tests that all error code constants are properly defined
@@ -773,43 +541,6 @@ func TestOSAwareness(t *testing.T) {
 	}
 }
 
-// TestConcurrentErrorHandling tests error handling under concurrent conditions
-func TestConcurrentErrorHandling(t *testing.T) {
-	const numGoroutines = 100
-	const errorsPerGoroutine = 10
-
-	var capturedErrors []*errors.Error
-	var errorsMutex sync.Mutex
-
-	originalHandler := GetErrorHandler()
-	SetErrorHandler(func(err *errors.Error) {
-		errorsMutex.Lock()
-		capturedErrors = append(capturedErrors, err)
-		errorsMutex.Unlock()
-	})
-	defer SetErrorHandler(originalHandler)
-
-	var wg sync.WaitGroup
-	wg.Add(numGoroutines)
-
-	for i := 0; i < numGoroutines; i++ {
-		go func(routineID int) {
-			defer wg.Done()
-			for j := 0; j < errorsPerGoroutine; j++ {
-				err := NewLoggerError(ErrCodeLoggerExecution, fmt.Sprintf("Error from routine %d, iteration %d", routineID, j))
-				handleError(err)
-			}
-		}(i)
-	}
-
-	wg.Wait()
-
-	expectedCount := numGoroutines * errorsPerGoroutine
-	if len(capturedErrors) != expectedCount {
-		t.Errorf("Expected %d errors, got %d", expectedCount, len(capturedErrors))
-	}
-}
-
 // TestRecoverWithError_ActualPanic tests panic recovery in realistic scenarios
 func TestRecoverWithError_ActualPanic(t *testing.T) {
 	t.Run("Panic_With_String", func(t *testing.T) {
@@ -818,7 +549,7 @@ func TestRecoverWithError_ActualPanic(t *testing.T) {
 		// Simulate how RecoverWithError is actually used
 		func() {
 			defer func() {
-				// This is the pattern used in SafeExecute - recover first, then create error
+				// Recover first, then create error
 				if r := recover(); r != nil {
 					// This simulates what RecoverWithError does when there's actually a panic
 					recoveredErr = NewLoggerError(ErrCodeLoggerExecution, fmt.Sprintf("Panic recovered: %v", r))
@@ -895,92 +626,4 @@ func TestRecoverWithError_ActualPanic(t *testing.T) {
 			t.Errorf("Expected error message to indicate panic recovery, got: %s", recoveredErr.Error())
 		}
 	})
-}
-
-// TestSafeExecute_PanicHandling tests SafeExecute with actual panics
-func TestSafeExecute_PanicHandling(t *testing.T) {
-	t.Run("Function_Panics", func(t *testing.T) {
-		// Capture errors from SafeExecute
-		capturedErrors := make([]*errors.Error, 0)
-		var errorsMutex sync.Mutex
-
-		originalHandler := GetErrorHandler()
-		SetErrorHandler(func(err *errors.Error) {
-			errorsMutex.Lock()
-			capturedErrors = append(capturedErrors, err)
-			errorsMutex.Unlock()
-		})
-		defer SetErrorHandler(originalHandler)
-
-		// Test the panic handling mechanism manually since SafeExecute may not work as expected
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					err := NewLoggerError(ErrCodeLoggerExecution, fmt.Sprintf("Panic recovered: %v", r))
-					_ = err.WithContext("operation", "test_panic_operation")
-					handleError(err)
-				}
-			}()
-
-			// Simulate what SafeExecute does
-			panic("test panic in SafeExecute")
-		}()
-
-		// The panic should be handled, so no panic should propagate
-		// But an error should be handled via error handler
-		errorsMutex.Lock()
-		errorCount := len(capturedErrors)
-		errorsMutex.Unlock()
-
-		if errorCount != 1 {
-			t.Errorf("Expected 1 error to be handled, got %d", errorCount)
-		}
-
-		if errorCount > 0 {
-			handledErr := capturedErrors[0]
-			if !strings.Contains(handledErr.Error(), "test panic in SafeExecute") {
-				t.Errorf("Expected handled error to contain panic message, got: %s", handledErr.Error())
-			}
-
-			// Verify error handling occurred (we can't easily check the operation context
-			// without accessing internal error structure, but we can verify the error was handled)
-		}
-	})
-
-	t.Run("Function_Returns_Error", func(t *testing.T) {
-		expectedErr := fmt.Errorf("function returned error")
-
-		err := SafeExecute(func() error {
-			return expectedErr
-		}, "test_error_operation")
-
-		if err != expectedErr {
-			t.Errorf("Expected SafeExecute to return function error, got: %v", err)
-		}
-	})
-
-	t.Run("Function_Succeeds", func(t *testing.T) {
-		err := SafeExecute(func() error {
-			return nil
-		}, "test_success_operation")
-
-		if err != nil {
-			t.Errorf("Expected SafeExecute to return nil for successful function, got: %v", err)
-		}
-	})
-}
-
-// TestValidateErrorCodesExtended tests additional scenarios for validateErrorCodes
-func TestValidateErrorCodesExtended(t *testing.T) {
-	// This test ensures the validateErrorCodes function runs without panicking
-	// and validates that all error codes follow the expected conventions
-
-	defer func() {
-		if r := recover(); r != nil {
-			t.Errorf("validateErrorCodes panicked unexpectedly: %v", r)
-		}
-	}()
-
-	// Call validateErrorCodes - should not panic with current error codes
-	validateErrorCodes()
 }

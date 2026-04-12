@@ -268,6 +268,10 @@ func AllLevelNames() []string {
 }
 
 // IsValidLevel checks if the given level is a valid predefined level.
+// WHY upper bound is Fatal: DPanic, Panic, and Fatal are intentional
+// production-grade levels. Restricting to Error was wrong — it would cause
+// New() to reject loggers created at Fatal level, which is a legitimate
+// operational mode (e.g. silence everything except fatal conditions).
 func IsValidLevel(level Level) bool {
-	return level >= Debug && level <= Error
+	return level >= Debug && level <= Fatal
 }

@@ -33,43 +33,6 @@ func TestUnit_RecoverWithError_NoPanic(t *testing.T) {
 	}
 }
 
-// TestUnit_SafeExecute_Success tests SafeExecute with successful function
-func TestUnit_SafeExecute_Success(t *testing.T) {
-	t.Parallel()
-
-	executed := false
-	testFunc := func() error {
-		executed = true
-		return nil
-	}
-
-	err := SafeExecute(testFunc, "test_operation")
-
-	if err != nil {
-		t.Errorf("SafeExecute should return nil for successful function: %v", err)
-	}
-
-	if !executed {
-		t.Error("Function should have been executed")
-	}
-}
-
-// TestUnit_SafeExecute_WithError tests SafeExecute with function that returns error
-func TestUnit_SafeExecute_WithError(t *testing.T) {
-	t.Parallel()
-
-	expectedErr := fmt.Errorf("test error")
-	testFunc := func() error {
-		return expectedErr
-	}
-
-	err := SafeExecute(testFunc, "test_operation")
-
-	if err != expectedErr {
-		t.Errorf("SafeExecute should return the function's error, got: %v", err)
-	}
-}
-
 // TestUnit_NewLoggerError_Coverage tests NewLoggerError function coverage
 func TestUnit_NewLoggerError_Coverage(t *testing.T) {
 	t.Parallel()

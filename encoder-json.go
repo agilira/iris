@@ -259,9 +259,12 @@ func (e *JSONEncoder) encodeFields(rec *Record, buf *bytes.Buffer) {
 	for i := int32(0); i < rec.n; i++ {
 		f := rec.fields[i]
 		buf.WriteByte(',')
-		buf.WriteByte('"')
-		buf.WriteString(f.K)
-		buf.WriteString(`":`)
+		// WHY quoteString instead of raw WriteString: field keys are user-controlled
+		// input. A malicious key like `key":"injected","evil` could break JSON
+		// structure if written unescaped (CWE-116). quoteString handles all
+		// special characters including quotes, backslashes, and control chars.
+		quoteString(f.K, buf)
+		buf.WriteByte(':')
 		e.encodeFieldValue(&f, buf)
 	}
 }

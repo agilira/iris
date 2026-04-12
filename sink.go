@@ -210,6 +210,18 @@ func IsNopSyncer(ws WriteSyncer) bool {
 	return ok
 }
 
+// OwnedWriter is an optional optimization interface for zero-copy writes.
+// WHY: when the output destination supports ownership transfer (e.g. lethe),
+// iris hands off the buffer instead of copying. This eliminates one allocation
+// per log entry and reduces GC pressure under sustained throughput.
+//
+// The Logger detects OwnedWriter once at construction time via type assertion
+// (INV-410), not per-write. Most io.Writer implementations do not support
+// ownership transfer, so the fast path is the standard Write call.
+type OwnedWriter interface {
+	WriteOwned([]byte) (int, error)
+}
+
 // readerLogger extends a standard Logger to support background processing
 // of external log sources through SyncReader interfaces. This enables
 // existing logger integrations while maintaining Iris's performance characteristics.

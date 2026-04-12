@@ -1,9 +1,0 @@
-{
-  "level": "info",
-  "format": "json",
-  "output": "stdout", 
-  "capacity": 65536,
-  "batch_size": 128,
-  "enable_caller": false,
-  "name": "microservice"
-}

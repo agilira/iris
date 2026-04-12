@@ -84,7 +84,9 @@ func TestAdaptiveLogger_SingleProducerStaysSingle(t *testing.T) {
 	}
 	defer safeCloseAdaptiveLogger(t, al)
 
-	al.Start()
+	if err := al.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
 
 	// Single producer logging - should stay in SingleMode
 	for i := 0; i < 100; i++ {
@@ -120,7 +122,9 @@ func TestAdaptiveLogger_MultiProducerScalesUp(t *testing.T) {
 	}
 	defer safeCloseAdaptiveLogger(t, al)
 
-	al.Start()
+	if err := al.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
 
 	// Multi-producer burst - should trigger scale up
 	var wg sync.WaitGroup
@@ -164,7 +168,9 @@ func TestAdaptiveLogger_ScaleDownAfterCooldown(t *testing.T) {
 	}
 	defer safeCloseAdaptiveLogger(t, al)
 
-	al.Start()
+	if err := al.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
 
 	// Trigger scale up with burst
 	var wg sync.WaitGroup
@@ -212,7 +218,9 @@ func TestAdaptiveLogger_AllLogLevels(t *testing.T) {
 	}
 	defer safeCloseAdaptiveLogger(t, al)
 
-	al.Start()
+	if err := al.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
 
 	al.Debug("debug message")
 	al.Info("info message")
@@ -243,7 +251,9 @@ func TestAdaptiveLogger_Stats(t *testing.T) {
 	}
 	defer safeCloseAdaptiveLogger(t, al)
 
-	al.Start()
+	if err := al.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
 
 	al.Info("test")
 	time.Sleep(10 * time.Millisecond)

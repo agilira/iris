@@ -8,7 +8,6 @@ package iris
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 	"time"
 
@@ -66,54 +65,10 @@ const (
 	ErrCodePermissionDenied errors.ErrorCode = "IRIS_PERMISSION_DENIED"
 )
 
-// ErrorHandler represents a function that handles errors within the logging system
+// ErrorHandler represents a function that handles errors within the logging system.
+// WHY a type alias: this type is used in Config so callers can inject custom error
+// handling at construction time, eliminating the need for mutable global state.
 type ErrorHandler func(err *errors.Error)
-
-// defaultErrorHandler is the default error handler that prints to stderr
-var defaultErrorHandler ErrorHandler = func(err *errors.Error) {
-	// Avoid infinite recursion by not using the logger to log errors
-	fmt.Fprintf(os.Stderr, "[IRIS ERROR] %s: %s\n", err.Code, err.Message)
-	if err.Cause != nil {
-		fmt.Fprintf(os.Stderr, "[IRIS ERROR] Caused by: %v\n", err.Cause)
-	}
-}
-
-// currentErrorHandler holds the current error handler
-var currentErrorHandler = defaultErrorHandler
-
-// SetErrorHandler sets a custom error handler for the iris logging system
-// This allows applications to customize how logging errors are handled
-func SetErrorHandler(handler ErrorHandler) {
-	if handler == nil {
-		currentErrorHandler = defaultErrorHandler
-		return
-	}
-	currentErrorHandler = handler
-}
-
-// GetErrorHandler returns the current error handler
-func GetErrorHandler() ErrorHandler {
-	return currentErrorHandler
-}
-
-// handleError processes an error using the current error handler
-func handleError(err *errors.Error) {
-	if err == nil {
-		return
-	}
-
-	// Add runtime context if not already present
-	if err.Context == nil {
-		err.Context = make(map[string]interface{})
-	}
-
-	// Add system information for debugging
-	err.Context["go_version"] = runtime.Version()
-	err.Context["goroutines"] = runtime.NumGoroutine()
-
-	// Call the error handler
-	currentErrorHandler(err)
-}
 
 // NewLoggerError creates a new logger-specific error with standard context
 func NewLoggerError(code errors.ErrorCode, message string) *errors.Error {
@@ -214,52 +169,5 @@ func RecoverWithError(code errors.ErrorCode) *errors.Error {
 	return nil
 }
 
-// SafeExecute executes a function safely, handling any panics
-func SafeExecute(fn func() error, operation string) error {
-	defer func() {
-		if err := RecoverWithError(ErrCodeLoggerExecution); err != nil {
-			_ = err.WithContext("operation", operation)
-			handleError(err)
-		}
-	}()
-
-	return fn()
-}
-
 // ErrCodeLoggerExecution represents the error code for logger execution failures
 const ErrCodeLoggerExecution errors.ErrorCode = "IRIS_LOGGER_EXECUTION"
-
-// validateErrorCodes ensures all error codes follow naming conventions
-func validateErrorCodes() {
-	// This function can be used during development to ensure error codes
-	// follow the IRIS_ prefix convention and are properly categorized
-
-	codes := []errors.ErrorCode{
-		ErrCodeLoggerCreation, ErrCodeLoggerNotFound, ErrCodeLoggerDisabled,
-		ErrCodeLoggerClosed, ErrCodeInvalidConfig, ErrCodeInvalidLevel,
-		ErrCodeInvalidFormat, ErrCodeInvalidOutput, ErrCodeInvalidField,
-		ErrCodeEncodingFailed, ErrCodeFieldTypeMismatch, ErrCodeBufferOverflow,
-		ErrCodeWriterNotAvailable, ErrCodeWriteFailed, ErrCodeFlushFailed,
-		ErrCodeSyncFailed, ErrCodeMemoryAllocation, ErrCodePoolExhausted,
-		ErrCodeTimeout, ErrCodeResourceLimit, ErrCodeRingInvalidCapacity,
-		ErrCodeRingInvalidBatchSize, ErrCodeRingMissingProcessor, ErrCodeRingClosed,
-		ErrCodeRingBuildFailed, ErrCodeHookExecution,
-		ErrCodeMiddlewareChain, ErrCodeFilterFailed, ErrCodeFileOpen,
-		ErrCodeFileWrite, ErrCodeFileRotation, ErrCodePermissionDenied,
-		ErrCodeLoggerExecution,
-	}
-
-	for _, code := range codes {
-		if len(string(code)) == 0 {
-			panic("Empty error code detected")
-		}
-		if string(code)[:5] != "IRIS_" {
-			panic(fmt.Sprintf("Error code %s does not follow IRIS_ prefix convention", code))
-		}
-	}
-}
-
-// init validates error codes during package initialization
-func init() {
-	validateErrorCodes()
-}

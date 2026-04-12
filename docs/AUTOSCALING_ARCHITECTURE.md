@@ -2,111 +2,99 @@
 
 ## Overview
 
-Iris implements an auto-scaling logging architecture inspired by Xantos Core autotuner. The system automatically transitions between SingleRing and MPSC modes based on real-time performance metrics to optimize throughput and latency under varying workload conditions.
+Iris implements a lazy dual-mode auto-scaling logger that automatically transitions between SingleRing and MPSC modes based on real-time goroutine contention. The system starts in the fastest mode (SingleRing) and lazily initializes the multi-producer path only when needed.
 
-## Architecture Overview
+Design philosophy:
+- Present: Optimal for agentic OS (single producer, low latency)
+- Future: Ready for robotics (multi-producer burst scenarios)
 
-### Dual Architecture System
+## Architecture
+
+### Types and Constants
 
 ```go
-type AutoScalingLogger struct {
-    // Current mode (atomic)
-    mode atomic.Uint32 // SingleRingMode or MPSCMode
-    
-    // Logger implementations
-    singleRingLogger *Logger // Ultra-fast single-threaded (~25ns/op)
-    mpscLogger       *Logger // Multi-producer high-contention (~35ns/op per thread)
-    
-    // Performance monitoring (inspired by Lethe)
-    metrics AutoScalingMetrics
-    config  AutoScalingConfig
-    
-    // Zero-loss transition control
-    transitionMu sync.RWMutex
+// ScalingMode represents the current scaling mode
+type ScalingMode uint32
+
+const (
+    SingleMode ScalingMode = iota // ~25ns/op single-producer
+    MultiMode                     // ~35ns/op multi-producer
+)
+```
+
+### ScalerConfig
+
+```go
+type ScalerConfig struct {
+    GoroutineThreshold uint32        // Concurrent goroutines to trigger scale-up
+    ScaleDownCooldown  time.Duration // Cooldown before scaling back down
+    BaseConfig         Config        // Base config for logger creation
+    Options            []Option      // Options for logger creation
+}
+```
+
+### AdaptiveLogger
+
+```go
+type AdaptiveLogger struct {
+    mode          atomic.Uint32            // Current ScalingMode
+    singleLogger  *Logger                  // Always exists
+    multiLogger   atomic.Pointer[Logger]   // Lazy-initialized via sync.Once
+    activeWriters atomic.Uint32            // Contention detection
+    lastMultiUse  atomic.Int64             // Timestamp for scale-down decision
+    config        ScalerConfig
+    // ... lifecycle (ctx, cancel, wg) and stats fields
 }
 ```
 
 ### Scaling Modes
 
-| Mode | Performance | Best For | Characteristics |
-|------|-------------|----------|-----------------|
-| **SingleRing** | ~25ns/op | Low contention, single producers | Ultra-fast, minimal overhead |
-| **MPSC** | ~35ns/op per thread | High contention, multiple goroutines | Scales with concurrent producers |
+| Mode | Performance | Best For | Initialization |
+|------|-------------|----------|----------------|
+| **SingleMode** | ~25ns/op | Low contention, single producers | Always active |
+| **MultiMode** | ~35ns/op per thread | High contention, multiple goroutines | Lazy (sync.Once) |
 
-## Performance Monitoring (Inspired by Lethe)
+## Scaling Behavior
 
-### Performance Monitoring
+**Scale up to MultiMode when:**
+- Active concurrent writers >= `GoroutineThreshold` (default: 2)
+- Multi-producer logger is lazily created on first scale-up via `sync.Once`
 
-```go
-type AutoScalingMetrics struct {
-    // Write frequency tracking
-    writeCount       atomic.Uint64 // Total write count
-    recentWriteCount atomic.Uint64 // Writes in measurement window
-    
-    // Contention metrics
-    contentionCount  atomic.Uint64 // Failed writes due to contention
-    contentionRatio  atomic.Uint32 // Contention percentage
-    
-    // Latency tracking
-    avgLatency       atomic.Uint64 // Average latency in nanoseconds
-    recentLatency    atomic.Uint64 // Recent latency window
-    
-    // Goroutine monitoring
-    activeGoroutines atomic.Uint32 // Current active writers
-}
-```
+**Scale down to SingleMode when:**
+- No multi-producer activity for `ScaleDownCooldown` (default: 5s)
+- Checked periodically by a background monitor goroutine
 
-### Scaling Triggers
-
-**Scale to MPSC when:**
-- Write frequency ≥ 1000 writes/sec
-- Contention ratio ≥ 10%
-- Average latency ≥ 1ms
-- Active goroutines ≥ 3
-
-**Scale to SingleRing when:**
-- Write frequency ≤ 100 writes/sec
-- Contention ratio ≤ 1%
-- Average latency ≤ 100µs
+Zero log loss during transitions: both loggers remain active, mode switch is atomic.
 
 ## Configuration
 
 ### Default Production Configuration
 
 ```go
-config := iris.DefaultAutoScalingConfig()
-// ScaleToMPSCWriteThreshold:    1000 writes/sec
-// ScaleToMPSCContentionRatio:   10% contention
-// ScaleToMPSCLatencyThreshold:  1ms latency
-// ScaleToMPSCGoroutineCount:    3 active goroutines
-// MeasurementWindow:            100ms
-// ScalingCooldown:              1s
-// StabilityRequirement:         3 consecutive measurements
+cfg := iris.Config{
+    Output:  iris.WrapWriter(os.Stdout),
+    Encoder: iris.NewJSONEncoder(),
+}
+
+scalerCfg := iris.DefaultScalerConfig(cfg)
+// GoroutineThreshold: 2       -- scale up when 2+ goroutines write concurrently
+// ScaleDownCooldown:  5s      -- stay in multi-mode for 5s after last concurrent use
 ```
 
 ### Custom Configuration
 
 ```go
-scalingConfig := iris.AutoScalingConfig{
-    // Aggressive scaling for high-throughput
-    ScaleToMPSCWriteThreshold:    500,  // Scale earlier
-    ScaleToMPSCContentionRatio:   5,    // More sensitive
-    ScaleToMPSCLatencyThreshold:  500 * time.Microsecond,
-    
-    // Conservative scale-down
-    ScaleToSingleWriteThreshold:  100,
-    ScaleToSingleContentionRatio: 1,
-    
-    // Fast adaptation
-    MeasurementWindow:    50 * time.Millisecond,
-    ScalingCooldown:      500 * time.Millisecond,
-    StabilityRequirement: 2,
+scalerCfg := iris.ScalerConfig{
+    GoroutineThreshold: 4,                    // More conservative scale-up
+    ScaleDownCooldown:  10 * time.Second,     // Longer cooldown
+    BaseConfig:         cfg,
+    Options:            opts,
 }
 ```
 
-## Usage Examples
+## Usage
 
-### Basic Auto-Scaling Logger
+### Creating and Using an AdaptiveLogger
 
 ```go
 package main
@@ -117,169 +105,102 @@ import (
 )
 
 func main() {
-    // Create Smart API logger (auto-scaling built-in)
-    logger, err := iris.New(iris.Config{})
+    cfg := iris.Config{
+        Output:  iris.WrapWriter(os.Stdout),
+        Encoder: iris.NewJSONEncoder(),
+        Level:   iris.Info,
+    }
+    scalerCfg := iris.DefaultScalerConfig(cfg)
+
+    al, err := iris.NewAdaptiveLogger(scalerCfg)
     if err != nil {
         panic(err)
     }
-    
-    // Smart API automatically enables auto-scaling:
-    // - Architecture: Detects optimal single/multi-threaded mode
-    // - Capacity: Scales based on CPU cores (8KB per core)
-    // - Encoder: JSON for structured production logs
-    // - Performance: Optimizes based on runtime load patterns
-    
-    // Start Smart API system (auto-scaling is transparent)
-    logger.Start()
-    defer logger.Close()
-    
-    // Use normally - auto-scaling happens automatically
-    logger.Info("Message will auto-scale based on load")
+
+    if err := al.Start(); err != nil {
+        panic(err)
+    }
+    defer al.Close()
+
+    // Use normally -- auto-scaling is transparent
+    al.Info("Single producer message", iris.Str("key", "value"))
 }
 ```
 
-### Multi-Goroutine High-Contention Example
+### Multi-Goroutine Usage
 
 ```go
-func highContentionLogging(autoLogger *iris.AutoScalingLogger) {
+func highContentionLogging(al *iris.AdaptiveLogger) {
     var wg sync.WaitGroup
-    
-    // Launch multiple goroutines (will trigger MPSC scaling)
+
+    // Launch multiple goroutines (triggers scale-up to MultiMode)
     for i := 0; i < 10; i++ {
         wg.Add(1)
         go func(id int) {
             defer wg.Done()
             for j := 0; j < 1000; j++ {
-                autoLogger.Info("High contention message",
+                al.Info("High contention message",
                     iris.Int("goroutine", id),
                     iris.Int("message", j),
                 )
             }
         }(i)
     }
-    
+
     wg.Wait()
-    
+
     // Check scaling results
-    stats := autoLogger.GetScalingStats()
-    fmt.Printf("Mode: %s, Scale operations: %d\n", 
-        stats.CurrentMode, stats.TotalScaleOperations)
+    stats := al.Stats()
+    fmt.Printf("Mode: %s, Scale-ups: %d, Total writes: %d\n",
+        stats.Mode, stats.ScaleUpCount, stats.TotalWrites)
 }
 ```
 
-## Performance Characteristics
+## Monitoring
 
-### Automatic Optimization
-
-1. **Low Load**: SingleRing mode (25ns/op) - optimal for single producers
-2. **High Load**: MPSC mode (35ns/op per thread) - scales with goroutines
-3. **Zero Loss**: Atomic transitions with no log message loss
-4. **Adaptive**: Real-time performance monitoring and adjustment
-
-## Monitoring and Statistics
-
-### Real-Time Statistics
+### AdaptiveStats
 
 ```go
-stats := autoLogger.GetScalingStats()
+stats := al.Stats()
 
-type AutoScalingStats struct {
-    CurrentMode          AutoScalingMode // Current scaling mode
-    TotalScaleOperations uint64         // Total scaling operations
-    ScaleToMPSCCount     uint64         // Scale to MPSC count
-    ScaleToSingleCount   uint64         // Scale to Single count
-    TotalWrites          uint64         // Total log writes
-    ContentionCount      uint64         // Contention events
-    ActiveGoroutines     uint32         // Current active goroutines
+type AdaptiveStats struct {
+    Mode           ScalingMode // Current scaling mode
+    ScaleUpCount   uint64      // Total scale-up operations
+    ScaleDownCount uint64      // Total scale-down operations
+    TotalWrites    uint64      // Total log writes
+    ActiveWriters  uint32      // Current active concurrent writers
 }
 ```
 
-### Monitoring Example
+### Available Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `Stats()` | `AdaptiveStats` | Scaling statistics snapshot |
+| `Mode()` | `ScalingMode` | Current mode (SingleMode or MultiMode) |
+| `Start()` | `error` | Begins logger and scale-down monitor |
+| `Close()` | `error` | Graceful shutdown of all loggers |
+
+### Log Methods
+
+`AdaptiveLogger` exposes `Debug`, `Info`, `Warn`, and `Error` methods with the same signature as `Logger`:
 
 ```go
-// Monitor scaling in real-time
-go func() {
-    ticker := time.NewTicker(100 * time.Millisecond)
-    defer ticker.Stop()
-    
-    for range ticker.C {
-        stats := autoLogger.GetScalingStats()
-        fmt.Printf("Mode: %s, Writes: %d, Goroutines: %d\n",
-            stats.CurrentMode, stats.TotalWrites, stats.ActiveGoroutines)
-    }
-}()
+al.Info(msg string, fields ...Field)
+al.Debug(msg string, fields ...Field)
+al.Warn(msg string, fields ...Field)
+al.Error(msg string, fields ...Field)
 ```
 
-## Technical Implementation
+## Internal Mechanics
 
-### Scaling Decision Logic
-
-```go
-// Scaling decision based on Lethe's shouldScaleToMPSC logic
-func (asl *AutoScalingLogger) determinePreferredMode(metrics scalingMetrics) AutoScalingMode {
-    // Scale up conditions
-    if metrics.writesPerSecond >= asl.config.ScaleToMPSCWriteThreshold ||
-       metrics.contentionRatio >= asl.config.ScaleToMPSCContentionRatio ||
-       metrics.avgLatency >= asl.config.ScaleToMPSCLatencyThreshold ||
-       metrics.activeGoroutines >= asl.config.ScaleToMPSCGoroutineCount {
-        return MPSCMode // Scale up similar to Lethe's buffer scaling
-    }
-    
-    // Scale down conditions
-    if metrics.writesPerSecond <= asl.config.ScaleToSingleWriteThreshold &&
-       metrics.contentionRatio <= asl.config.ScaleToSingleContentionRatio &&
-       metrics.avgLatency <= asl.config.ScaleToSingleLatencyMax {
-        return SingleRingMode
-    }
-    
-    return AutoScalingMode(asl.mode.Load()) // Maintain current mode
-}
-```
-
-### Atomic Transitions
-
-```go
-func (asl *AutoScalingLogger) performScaling(targetMode AutoScalingMode) {
-    // Lock for exclusive access during transition
-    asl.transitionMu.Lock()
-    defer asl.transitionMu.Unlock()
-    
-    // Atomic mode switch
-    asl.mode.Store(uint32(targetMode))
-    
-    // No log loss - both loggers remain active
-    // Only routing changes atomically
-}
-```
-
-## Architecture Characteristics
-
-### Key Features
-
-1. **Auto-Scaling Architecture**: Dynamic transitions between logging architectures based on workload
-2. **Metrics**: Adapts proven adaptive scaling patterns for logging systems
-3. **Zero Loss Transitions**: Guaranteed message delivery during scaling operations
-4. **Real-Time Adaptation**: Responds to workload changes with minimal latency
-5. **Performance Optimized**: Automatically selects optimal architecture for current load patterns
-
-### Benefits
-
-- **Adaptive Performance**: Transitions from static logging architectures to dynamic systems
-- **Optimal Throughput**: Performance optimization across varying workload patterns
-- **Operational Simplicity**: Self-tuning systems requiring minimal manual configuration
-- **Scalability**: Automatic adaptation to application growth and load changes
-
-## Future Development
-
-### Planned Features
-
-1. **Machine Learning Integration**: Predictive scaling based on historical workload patterns
-2. **Multi-Tier Scaling**: Additional intermediate modes for fine-grained performance optimization
-3. **Cross-Application Learning**: Shared scaling intelligence across multiple deployments
-4. **Hardware-Aware Scaling**: CPU core count and NUMA topology-aware optimization
-
-The auto-scaling architecture provides a foundation for advanced adaptive logging systems that optimize performance automatically based on runtime conditions.
+1. Each log call increments `activeWriters` atomically
+2. If `activeWriters >= GoroutineThreshold`, triggers scale-up
+3. Multi-producer logger is initialized once via `sync.Once` (capacity: 4096)
+4. Single-producer logger uses smaller capacity (1024)
+5. Scale-down monitor runs at `ScaleDownCooldown / 2` interval
+6. Scale-down occurs when `time.Since(lastMultiUse) > ScaleDownCooldown`
 
 ---
 
-Iris • an AGILira fragment
+Iris -- an AGILira fragment

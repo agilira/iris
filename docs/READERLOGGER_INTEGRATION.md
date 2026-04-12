@@ -2,25 +2,34 @@
 
 ## Overview
 
-The ReaderLogger extends the standard Iris Logger to process external log sources through SyncReader interfaces. This document provides technical guidance for integrating external logging systems with Iris's high-performance pipeline.
+The ReaderLogger extends the standard Iris Logger to process external log sources through SyncReader interfaces. External log records flow through the same Iris processing pipeline, gaining access to all features (encoding, sampling, backpressure, security).
 
-## ReaderLogger Architecture
-
-### Component Interaction
+## Architecture
 
 ```
-External Logger → SyncReader → ReaderLogger → Ring Buffer → Encoder → Output
-                     ↑              ↑             ↑
-                 Provider        Background     Features
-                 Module          Goroutine      (OTel, Loki, etc.)
+External Logger -> SyncReader -> ReaderLogger -> Ring Buffer -> Encoder -> Output
+                      |               |
+                  Provider         Background
+                  Module           Goroutine
 ```
 
 ### Processing Model
 
 1. **Source Independence**: Each SyncReader operates in a dedicated goroutine
 2. **Unified Pipeline**: All records flow through the same Iris processing pipeline
-3. **Feature Inheritance**: External logs automatically receive all Iris features
+3. **Feature Inheritance**: External logs receive all Iris features (encoding, sampling, security)
 4. **Performance Isolation**: Reader failures do not affect core logger performance
+
+## SyncReader Interface
+
+```go
+type SyncReader interface {
+    Read(ctx context.Context) (*Record, error)
+    Close() error
+}
+```
+
+Providers implement `SyncReader` to bridge external logging systems into Iris.
 
 ## Configuration
 
@@ -39,35 +48,38 @@ readers := []iris.SyncReader{
 }
 
 logger, err := iris.NewReaderLogger(config, readers)
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
-### Advanced Configuration
+### With Options
 
 ```go
 config := iris.Config{
-    Output: iris.MultiWriter(
-        iris.WrapWriter(os.Stdout),
-        iris.NewLokiWriter(iris.LokiConfig{
-            URL: "http://loki:3100",
-            Labels: map[string]string{
-                "service": "my-app",
-                "source":  "external-readers",
-            },
-        }),
-    ),
+    Output:    iris.WrapWriter(os.Stdout),
     Encoder:   iris.NewJSONEncoder(),
     Level:     iris.Debug,
     Capacity:  32768,
     BatchSize: 64,
 }
 
-options := []iris.Option{
-    iris.WithOTel(),
-    iris.WithCaller(),
-    iris.AddStacktrace(iris.Error),
+logger, err := iris.NewReaderLogger(config, readers)
+```
+
+### Multi-Output with MultiWriter
+
+```go
+config := iris.Config{
+    Output: iris.MultiWriter(
+        iris.WrapWriter(os.Stdout),
+        iris.WrapWriter(logFile),
+    ),
+    Encoder: iris.NewJSONEncoder(),
+    Level:   iris.Info,
 }
 
-logger, err := iris.NewReaderLogger(config, readers, options...)
+logger, err := iris.NewReaderLogger(config, readers)
 ```
 
 ## Lifecycle Management
@@ -75,7 +87,7 @@ logger, err := iris.NewReaderLogger(config, readers, options...)
 ### Initialization Sequence
 
 1. Create SyncReader instances with appropriate configuration
-2. Create ReaderLogger with config, readers, and options
+2. Create ReaderLogger with config and readers
 3. Call `Start()` to begin background processing
 4. Begin using external logging libraries
 
@@ -90,118 +102,57 @@ logger, err := iris.NewReaderLogger(config, readers, options...)
 
 ```go
 func main() {
-    // Setup
     reader := provider.New(provider.Config{})
     logger, err := iris.NewReaderLogger(config, []iris.SyncReader{reader})
     if err != nil {
         log.Fatal(err)
     }
-    
-    // Start processing
+
     logger.Start()
-    
-    // Ensure clean shutdown
     defer func() {
         if err := logger.Close(); err != nil {
             log.Printf("Logger close error: %v", err)
         }
     }()
-    
-    // Application logic
+
     runApplication(reader)
 }
 ```
 
 ## Performance Characteristics
 
-### Throughput Expectations
-
-| Component | Performance Target |
+| Component | Typical Performance |
 |-----------|-------------------|
-| Direct Iris logging | 31 ns/op |
-| SyncReader.Read() | 50-100 ns/op |
+| Direct Iris logging | ~31 ns/op |
+| SyncReader.Read() | 50-100 ns/op (provider-dependent) |
 | Record conversion | 500-1000 ns/op |
-| Overall throughput | 10-20x faster than direct external library |
 
 ### Memory Usage
 
-- **Buffer Overhead**: SyncReader buffer size × record size
+- **Buffer Overhead**: SyncReader buffer size x record size
 - **Processing Overhead**: Minimal additional allocation
 - **Feature Overhead**: Standard Iris feature memory usage
-
-### Latency Characteristics
-
-- **Processing Latency**: Sub-millisecond record processing
-- **Buffer Latency**: Dependent on buffer size and throughput
-- **Feature Latency**: Standard Iris feature processing time
 
 ## Error Handling
 
 ### Reader Errors
 
-Reader errors are handled gracefully:
+Reader errors are handled gracefully by the background goroutine:
 
-1. **Temporary Errors**: Logged and processing continues
+1. **Temporary Errors**: Logged via the main logger, processing continues
 2. **Context Cancellation**: Clean shutdown initiated
-3. **Reader Closure**: Reader goroutine terminates
-4. **Fatal Errors**: Reader marked as failed, processing continues with other readers
+3. **Fatal Errors**: Reader goroutine terminates, other readers continue
 
 ### Error Logging
 
 ```go
-// Reader errors are logged through the main logger
-logger.Error("Reader error", 
-    iris.String("reader", "slog-provider"),
-    iris.String("error", err.Error()))
+// Reader errors are logged through the main logger automatically
+// "Failed to close reader" with error string field
 ```
 
-### Recovery Mechanisms
+## Monitoring
 
-- **Automatic Retry**: Not implemented (readers should handle internally)
-- **Circuit Breaking**: Not implemented (providers should implement if needed)
-- **Failover**: Multiple readers provide natural redundancy
-
-## Feature Integration
-
-### OpenTelemetry Integration
-
-External log records automatically receive:
-
-- Trace ID extraction from context
-- Span ID correlation
-- Baggage propagation
-- Resource attribute injection
-
-### Loki Integration
-
-Records from external sources are:
-
-- Batched efficiently for Loki ingestion
-- Labeled with provider-specific labels
-- Formatted according to Loki requirements
-- Delivered with optimal performance characteristics
-
-### Security Features
-
-External records receive:
-
-- Automatic secret redaction
-- Log injection protection
-- Field sanitization
-- Security audit logging
-
-## Monitoring and Observability
-
-### Metrics Collection
-
-ReaderLogger provides metrics for:
-
-- Records processed per reader
-- Reader error rates
-- Buffer utilization
-- Processing latency
-
-### Health Monitoring
+### Statistics
 
 ```go
 stats := logger.Stats()
@@ -220,98 +171,55 @@ for key, value := range stats {
 
 Monitor for:
 
-- High reader error rates
-- Buffer overflow conditions
+- High reader error rates (visible in logger output)
+- Buffer overflow conditions (check `dropped` stat)
 - Processing latency increases
-- Reader goroutine failures
 
 ## Troubleshooting
 
-### Common Issues
+### High Memory Usage
 
-#### High Memory Usage
-
-**Symptoms**: Increasing memory consumption
-**Causes**: 
+**Causes:**
 - Oversized reader buffers
 - Slow record processing
 - External library memory leaks
 
-**Solutions**:
-- Reduce buffer sizes
+**Solutions:**
+- Reduce buffer sizes via Config.Capacity
 - Optimize record conversion
 - Profile external library usage
 
-#### Performance Degradation
+### Performance Degradation
 
-**Symptoms**: Increased logging latency
-**Causes**:
+**Causes:**
 - Reader conversion overhead
 - Buffer contention
-- Feature processing load
+- Large batch sizes
 
-**Solutions**:
+**Solutions:**
 - Optimize record conversion logic
-- Adjust buffer sizes
-- Profile feature usage
+- Adjust Capacity and BatchSize
+- Profile with `go test -bench`
 
-#### Missing Records
+### Missing Records
 
-**Symptoms**: Records not appearing in output
-**Causes**:
-- Reader buffer overflow
+**Causes:**
+- Reader buffer overflow (check `dropped` stat)
 - Context cancellation
 - Reader implementation errors
 
-**Solutions**:
-- Increase buffer sizes
+**Solutions:**
+- Increase Capacity
 - Check reader error logs
-- Validate reader implementation
-
-### Debugging Tools
-
-#### Reader Status
-
-```go
-// Check reader goroutine status
-stats := logger.Stats()
-if stats["reader_errors"] > 0 {
-    // Investigate reader issues
-}
-```
-
-#### Record Tracking
-
-```go
-// Enable debug logging to track record flow
-logger := iris.NewReaderLogger(config, readers, 
-    iris.Development(),
-    iris.WithCaller())
-```
+- Validate SyncReader implementation
 
 ## Best Practices
 
-### Configuration Guidelines
-
-1. **Buffer Sizing**: Start with 1000-10000 record buffers
-2. **Error Handling**: Always check ReaderLogger creation errors
-3. **Lifecycle Management**: Use defer for proper cleanup
-4. **Resource Limits**: Monitor memory usage in production
-
-### Performance Optimization
-
-1. **Efficient Conversion**: Minimize allocations in record conversion
-2. **Batch Processing**: Use appropriate batch sizes for output
-3. **Feature Selection**: Enable only required features
-4. **Buffer Tuning**: Adjust based on actual throughput requirements
-
-### Production Deployment
-
-1. **Health Checks**: Monitor reader status and error rates
-2. **Resource Monitoring**: Track memory and CPU usage
-3. **Error Alerting**: Alert on reader failures and high error rates
-4. **Performance Baseline**: Establish baseline metrics for comparison
+1. **Buffer Sizing**: Start with default capacity, increase only if `dropped > 0`
+2. **Error Handling**: Always check `NewReaderLogger` creation errors
+3. **Lifecycle Management**: Use defer for proper `Close()` cleanup
+4. **Resource Limits**: Monitor memory usage in production via `Stats()`
 
 ---
 
-Iris • an AGILira fragment
+Iris -- an AGILira fragment

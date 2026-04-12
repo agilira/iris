@@ -38,16 +38,22 @@ type ContextExtractor struct {
 	MaxDepth int
 }
 
-// DefaultContextExtractor provides sensible defaults for common use cases.
-var DefaultContextExtractor = &ContextExtractor{
-	Keys: map[ContextKey]string{
-		RequestIDKey: "request_id",
-		TraceIDKey:   "trace_id",
-		SpanIDKey:    "span_id",
-		UserIDKey:    "user_id",
-		SessionIDKey: "session_id",
-	},
-	MaxDepth: 10,
+// defaultContextExtractor returns a fresh extractor with the standard keys.
+// WHY a function instead of a package-level var: a var pointing to a mutable
+// struct violates INV-404 (zero package-level mutable variables). Any caller
+// could modify Keys, introducing a data race. A function returns a new
+// instance each time -- no shared mutable state.
+func defaultContextExtractor() *ContextExtractor {
+	return &ContextExtractor{
+		Keys: map[ContextKey]string{
+			RequestIDKey: "request_id",
+			TraceIDKey:   "trace_id",
+			SpanIDKey:    "span_id",
+			UserIDKey:    "user_id",
+			SessionIDKey: "session_id",
+		},
+		MaxDepth: 10,
+	}
 }
 
 // ContextLogger wraps a Logger with pre-extracted context fields.
@@ -116,7 +122,7 @@ func WithKey(key ContextKey, fieldName string) ContextOption {
 func (l *Logger) WithContext(ctx context.Context, opts ...ContextOption) *ContextLogger {
 	// Apply options
 	options := &contextOptions{
-		extractor: DefaultContextExtractor,
+		extractor: defaultContextExtractor(),
 	}
 	for _, opt := range opts {
 		opt(options)
@@ -223,66 +229,3 @@ func (cl *ContextLogger) WithAdditionalContext(ctx context.Context, opts ...Cont
 	// Combine existing fields with new context fields
 	return cl.With(newContextLogger.fields...)
 }
-
-// Performance optimization: Context field extraction helpers
-
-// WithRequestID extracts request ID with minimal allocations.
-// Optimized for the most common use case.
-func (l *Logger) WithRequestID(ctx context.Context) *ContextLogger {
-	return l.WithContext(ctx, WithKey(RequestIDKey, "request_id"))
-}
-
-// WithTraceID extracts trace ID for distributed tracing.
-func (l *Logger) WithTraceID(ctx context.Context) *ContextLogger {
-	return l.WithContext(ctx, WithKey(TraceIDKey, "trace_id"))
-}
-
-// WithUserID extracts user ID from context for user-specific logging.
-func (l *Logger) WithUserID(ctx context.Context) *ContextLogger {
-	return l.WithContext(ctx, WithKey(UserIDKey, "user_id"))
-}
-
-// ContextMiddleware creates a middleware pattern for HTTP handlers.
-// This demonstrates how to use context logging efficiently in web applications.
-//
-// Example usage:
-//   handler := ContextMiddleware(logger)(http.HandlerFunc(myHandler))
-//
-// func ContextMiddleware(logger *Logger) func(http.Handler) http.Handler {
-//     return func(next http.Handler) http.Handler {
-//         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-//             // Extract request ID from header or generate one
-//             requestID := r.Header.Get("X-Request-ID")
-//             if requestID == "" {
-//                 requestID = generateRequestID()
-//             }
-//
-//             // Create context logger with request fields
-//             contextLogger := logger.WithContext(r.Context()).With(
-//                 Str("request_id", requestID),
-//                 Str("method", r.Method),
-//                 Str("path", r.URL.Path),
-//             )
-//
-//             // Store in context for handlers
-//             ctx := context.WithValue(r.Context(), "logger", contextLogger)
-//             next.ServeHTTP(w, r.WithContext(ctx))
-//         })
-//     }
-// }
-//                 requestID = generateRequestID()
-//             }
-//
-//             // Add to context
-//             ctx := context.WithValue(r.Context(), RequestIDKey, requestID)
-//
-//             // Create context logger once per request
-//             contextLogger := logger.WithRequestID(ctx)
-//
-//             // Store in context for use by handlers
-//             ctx = context.WithValue(ctx, "logger", contextLogger)
-//
-//             next.ServeHTTP(w, r.WithContext(ctx))
-//         })
-//     }
-// }

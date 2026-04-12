@@ -50,14 +50,14 @@ func CIFriendlySleep(normalDuration time.Duration) {
 	}
 }
 
-// TestConfig returns a basic configuration optimized for testing across platforms
+// makeTestConfig returns a basic configuration optimized for testing across platforms
 //
 // This function provides a consistent base configuration that works reliably
 // on all platforms including macOS, which has different memory characteristics.
 //
 // Returns:
 //   - Config: Platform-optimized configuration for testing
-func TestConfig() Config {
+func makeTestConfig() Config {
 	var buf bytes.Buffer
 
 	config := Config{
@@ -76,27 +76,27 @@ func TestConfig() Config {
 	return config
 }
 
-// TestConfigWithOutput returns a test configuration with specified output
+// makeTestConfigWithOutput returns a test configuration with specified output
 //
 // Parameters:
 //   - output: Output destination for log messages
 //
 // Returns:
 //   - Config: Platform-optimized configuration with custom output
-func TestConfigWithOutput(output WriteSyncer) Config {
-	config := TestConfig()
+func makeTestConfigWithOutput(output WriteSyncer) Config {
+	config := makeTestConfig()
 	config.Output = output
 	return config
 }
 
-// TestConfigSmall returns a minimal configuration for unit tests
+// makeTestConfigSmall returns a minimal configuration for unit tests
 //
 // This configuration uses the smallest viable ring buffer size across
 // all platforms for tests that need minimal resource usage.
 //
 // Returns:
 //   - Config: Minimal configuration for resource-constrained tests
-func TestConfigSmall() Config {
+func makeTestConfigSmall() Config {
 	var buf bytes.Buffer
 
 	return Config{

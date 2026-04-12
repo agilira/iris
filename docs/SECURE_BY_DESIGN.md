@@ -434,40 +434,16 @@ config := Config{
 }
 ```
 
-### Custom Security Policies
+## 6. Monitoring
 
-Future versions will support custom security policies:
-
-```go
-// Future feature example
-securityPolicy := SecurityPolicy{
-    RedactionPattern: "[CLASSIFIED]",
-    AllowedChars:     "a-zA-Z0-9_-.",
-    MaxFieldLength:   1024,
-}
-
-config := Config{
-    Encoder:  NewJSONEncoder(),
-    Security: securityPolicy,
-}
-```
-
----
-
-## 6. Monitoring and Auditing
-
-### Security Metrics
-
-Iris provides metrics for security-related events:
+### Logger Statistics
 
 ```go
 stats := logger.Stats()
-fmt.Printf("Security events: %d redacted fields\n", stats.RedactedFields)
+// Returns: capacity, batch_size, size, processed, dropped
 ```
 
-### Audit Logging
-
-Security events can be logged separately:
+### Security-Relevant Logging
 
 ```go
 // Log security-relevant events
@@ -514,36 +490,4 @@ logger.Error("Error occurred",
 
 ---
 
-## 8. Future Enhancements
-
-### Planned Security Features
-
-1. **Advanced Redaction Patterns**: Regex-based sensitive data detection
-2. **Encryption at Rest**: Automatic log encryption
-3. **Digital Signatures**: Log integrity verification
-4. **Rate Limiting**: Protection against log flooding attacks
-5. **Anomaly Detection**: AI-powered suspicious activity detection
-
-### Community Contributions
-
-Security features are continuously improved through:
-- Regular security audits
-- Community vulnerability reports
-- Penetration testing
-- Compliance certification processes
-
----
-
-## 9. Conclusion
-
-The Iris logging library's security framework provides production-grade protection against data leakage and log injection attacks while maintaining ultra-high performance. The "secure by design" approach ensures that security is not an afterthought but a fundamental characteristic of the library.
-
-Key benefits:
-- **Zero-configuration security**: Protection enabled by default
-- **Performance-optimized**: Minimal overhead for maximum security
-- **Comprehensive coverage**: Protection against known and emerging threats
-- **Future-proof**: Extensible architecture for new security features
-
----
-
-Iris • an AGILira fragment
+Iris -- an AGILira fragment

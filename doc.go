@@ -1,148 +1,124 @@
 // Package iris provides a high-performance, structured logging library for Go applications.
 //
 // Iris is designed for production environments where performance, security, and reliability
-// are critical. It offers zero-allocation logging paths, automatic memory management,
-// and comprehensive security features including secure field handling and log injection prevention.
+// are critical. It achieves zero-allocation logging on hot paths through lock-free ring
+// buffers, buffer pooling, and type-safe field encoding.
 //
 // # Key Features
 //
 //   - Smart API with zero-configuration setup and automatic optimization
-//   - High-performance structured logging with zero-allocation fast paths
-//   - Automatic memory management with buffer pooling and ring buffer architecture
-//   - Comprehensive security features including field sanitization and injection prevention
-//   - Multiple output formats: JSON, text, and console with smart formatting
-//   - Dynamic configuration with hot-reload capabilities
-//   - Built-in caller information and stack trace support
-//   - Backpressure handling and automatic scaling
-//   - OpenTelemetry integration support
-//   - Extensive field types with type-safe APIs
+//   - Zero-allocation structured logging (~29 ns/op without fields, 0 allocs)
+//   - Lock-free MPSC ring buffer architecture (ZephyrosLite)
+//   - Built-in security: field sanitization, log injection prevention, secret redaction
+//   - JSON and text encoders with safe key/value escaping
+//   - Context-aware logging with context.Context integration
+//   - Dynamic level changes via atomic operations
+//   - Backpressure handling (drop-on-full or block-on-full policies)
+//   - Configurable idle strategies for CPU/latency trade-offs
+//   - Token-bucket sampling for high-volume scenarios
+//   - Intelligent auto-scaling between SingleRing and ThreadedRings architectures
+//   - SyncReader interface for integrating external log sources
+//   - Modular writer ecosystem via SyncWriter interface
 //
 // # Smart API - Zero Configuration
 //
-// The revolutionary Smart API automatically detects optimal settings for your environment:
-//
-//	// Smart API: Everything auto-configured
-//	logger, err := iris.New(iris.Config{})
-//	logger.Start()
-//	logger.Info("Hello world", iris.String("user", "alice"))
-//
-// Smart features include:
-//   - Architecture detection (SingleRing vs ThreadedRings based on CPU count)
-//   - Capacity optimization (8KB per CPU core, bounded 8KB-64KB)
-//   - Encoder selection (Text for development, JSON for production)
-//   - Level detection (from environment or development mode)
-//   - Time optimization (121x faster cached time)
-//
-// # Quick Start
-//
-// Basic usage with Smart API (recommended):
+// The Smart API automatically detects optimal settings for your environment:
 //
 //	logger, err := iris.New(iris.Config{})
 //	if err != nil {
-//		panic(err)
+//		// handle error
 //	}
 //	logger.Start()
 //	defer logger.Sync()
 //
-//	logger.Info("Application started", iris.String("version", "1.0.0"))
+//	logger.Info("Hello world", iris.String("user", "alice"))
 //
-// Development mode with debug logging:
-//
-//	logger, err := iris.New(iris.Config{}, iris.Development())
-//	logger.Start()
-//	logger.Debug("Debug information visible")
+// Smart features include:
+//   - Architecture detection (SingleRing vs ThreadedRings based on CPU count)
+//   - Capacity optimization (power-of-two sizing, bounded by maxCapacity)
+//   - Encoder selection (text for TTY, JSON otherwise)
+//   - Level detection from IRIS_LEVEL environment variable
+//   - Cached time source for high-frequency logging (go-timecache)
 //
 // # Configuration
 //
-// While Smart API handles most scenarios, you can override specific settings:
+// While Smart API handles most scenarios, any setting can be overridden:
 //
-//	// Override only what you need, rest is auto-detected
-//	config := iris.Config{
-//		Output: myCustomWriter,  // Custom output
-//		Level:  iris.ErrorLevel, // Error level only
-//		// Everything else: auto-optimized
-//	}
-//	logger, err := iris.New(config)
+//	logger, err := iris.New(iris.Config{
+//		Output: myCustomWriter,
+//		Level:  iris.Error,
+//	})
 //
-// Environment variable support:
+// Config is validated at construction time: New() calls Validate() internally,
+// rejecting invalid levels, out-of-range capacities, and mismatched batch sizes.
 //
-//	export IRIS_LEVEL=debug  # Automatically detected by Smart API
+// # Performance
 //
-// # Performance Optimizations
+// Benchmark results on AMD Ryzen 5 7520U (go test -bench=. -benchmem, SingleRing):
 //
-// Iris includes several performance optimizations automatically enabled by Smart API:
+//   - Message + 10 fields: ~34 ns/op, 0 allocs/op
+//   - Accumulated context: ~25 ns/op, 0 allocs/op
+//   - Adding 6 fields at call site: ~31 ns/op, 0 allocs/op
+//   - No fields: ~29 ns/op, 0 allocs/op
+//   - Disabled level (early exit): <1 ns/op, 0 allocs/op
 //
-//   - Time caching for high-frequency logging scenarios (121x faster than time.Now())
-//   - Buffer pooling to minimize garbage collection
-//   - Ring buffer architecture for lock-free writes
-//   - Smart idle strategies for CPU optimization
-//   - Zero-allocation fast paths for common operations
-//   - Architecture auto-detection based on system resources
+// # Security
 //
-// # Security Features
+// Security is built into every layer:
 //
-// Security is built into every aspect of Iris:
-//
-//   - Field sanitization prevents log injection attacks
-//   - Secret field redaction protects sensitive data
-//   - Caller verification prevents stack manipulation
-//   - Safe string handling prevents buffer overflows
+//   - Field key and value sanitization prevents log injection (CWE-93, CWE-116)
+//   - Secret field redaction protects sensitive data in output
+//   - Encoder escapes all keys through quoteString (no raw writes)
+//   - Input validation at construction (Capacity ceiling prevents CWE-400 OOM)
 //
 // # Field Types
 //
-// Iris supports a comprehensive set of field types with type-safe constructors:
+// Type-safe field constructors minimize allocation and prevent type confusion:
 //
-//	logger.Info("User operation",
-//		iris.String("user_id", "12345"),
-//		iris.Int64("timestamp", time.Now().Unix()),
-//		iris.Duration("elapsed", time.Since(start)),
-//		iris.Error("error", err),
-//		iris.Secret("password", "[REDACTED]"),
+//	logger.Info("Payment processed",
+//		iris.Str("tx_id", "tx-123456"),
+//		iris.Int64("amount_cents", 2499),
+//		iris.Dur("elapsed", time.Since(start)),
+//		iris.Secret("card", cardNumber),   // appears as [REDACTED] in output
 //	)
 //
-// # Advanced Usage
-//
-// For advanced scenarios, Iris provides:
-//
-//   - Custom encoders for specialized output formats
-//   - Hierarchical loggers with inherited fields
-//   - Sampling for high-volume scenarios
-//   - Integration with monitoring systems
-//   - Custom sink implementations
-//   - Manual configuration overrides when needed
+// Available constructors: Str, String, Int, Int8, Int16, Int32, Int64,
+// Uint, Uint8, Uint16, Uint32, Uint64, Float32, Float64, Bool,
+// Dur, TimeField, Time, Bytes, Binary, Secret, Err, Stringer, Object.
 //
 // # Error Handling
 //
-// Iris uses non-blocking error handling to maintain performance:
+// Logger creation returns errors for invalid configurations. Internal write
+// errors are routed to Config.ErrorHandler (or stderr if nil). Dropped messages
+// are tracked via logger.Stats()["dropped"].
 //
 //	logger, err := iris.New(iris.Config{})
 //	if err != nil {
-//		// Handle configuration errors
+//		// invalid config: handle or exit
 //	}
 //	logger.Start()
 //
-//	if dropped := logger.Dropped(); dropped > 0 {
-//		// Handle dropped log entries
-//	}
+// # Development Mode
 //
-// # Performance Comparison
+// Development mode enables debug level, caller info, and text encoding:
 //
-// Smart API delivers significant performance improvements:
-//   - Hot Path Allocations: 1-3 allocs/op (67% reduction)
-//   - Encoding Performance: 324-537 ns/op (40-60% improvement)
-//   - Memory per Record: 2.5KB (75% reduction)
-//   - Configuration: Zero lines vs 15-20 lines manually
+//	logger, err := iris.New(iris.Config{}, iris.Development())
+//
+// # Context Integration
+//
+// ContextLogger carries fields extracted from context.Context:
+//
+//	cl := logger.WithContext(ctx, iris.WithKeys(iris.TraceIDKey))
+//	cl.Info("request handled", iris.Int("status", 200))
 //
 // # Best Practices
 //
-//   - Use Smart API for all new projects (iris.New(iris.Config{}))
-//   - Prefer structured fields instead of formatted messages
-//   - Use typed field constructors (String, Int64, etc.)
-//   - Leverage environment variables for deployment configuration
-//   - Monitor dropped log entries in high-load scenarios
+//   - Use Smart API for all new projects: iris.New(iris.Config{})
+//   - Prefer typed field constructors over formatted messages
+//   - Use iris.Secret() for passwords, tokens, and PII
 //   - Use iris.Development() for local development
-//   - Use iris.Secret() for sensitive data fields
+//   - Monitor logger.Stats() in production for drop rate insight
+//   - Set IRIS_LEVEL environment variable for deployment tuning
 //
-// For comprehensive documentation and examples, see:
-// https://github.com/agilira/iris
+// For comprehensive documentation, see: https://github.com/agilira/iris
 package iris

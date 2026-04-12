@@ -20,6 +20,14 @@ import (
 	"github.com/agilira/iris/internal/zephyroslite"
 )
 
+// maxCapacity is the upper bound for the ring buffer capacity.
+// WHY this ceiling: without it a caller can pass Capacity = 1<<62, which is
+// a valid power-of-two and passes every lower-bound check, but triggers an
+// OOM allocation inside newRing (CWE-400, Uncontrolled Resource Consumption).
+// 1<<24 (16,777,216 slots) is already far beyond any legitimate logging need
+// while remaining well within normal host memory constraints.
+const maxCapacity int64 = 1 << 24
+
 // Architecture represents the ring buffer architecture type
 type Architecture int
 
@@ -134,6 +142,15 @@ type Config struct {
 	// Name provides a human-readable identifier for this logger instance
 	// Useful for debugging and metrics collection
 	Name string
+
+	// ErrorHandler is called when the logger encounters an internal error
+	// (encode failure, write failure). If nil, errors are written to stderr.
+	//
+	// WHY not global: a global error handler is a data race waiting to happen
+	// (CWE-362). Each Logger owns its handler, set at construction time,
+	// immutable after. Tests can inject a handler that captures errors
+	// without affecting other loggers.
+	ErrorHandler ErrorHandler
 }
 
 // stats represents internal logger statistics exposed via Logger.Stats().
@@ -257,6 +274,14 @@ func NewAtomicLevelFromConfig(config *Config) *atomicLevel {
 func (c *Config) Validate() error {
 	if c.Capacity <= 0 {
 		return NewLoggerErrorWithField(ErrCodeInvalidConfig, "capacity must be positive", "capacity", fmt.Sprintf("%d", c.Capacity))
+	}
+
+	// WHY upper bound: prevents CWE-400 (OOM) when an adversarial or
+	// misconfigured caller passes an astronomically large power-of-two
+	// that would pass the lower-bound check but exhaust host memory at
+	// allocation time in newRing.
+	if c.Capacity > maxCapacity {
+		return NewLoggerErrorWithField(ErrCodeInvalidConfig, "capacity exceeds maximum allowed value", "capacity", fmt.Sprintf("%d", c.Capacity))
 	}
 
 	if c.BatchSize < 0 {
