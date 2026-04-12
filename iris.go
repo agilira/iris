@@ -629,12 +629,14 @@ func (l *Logger) With(fields ...Field) *Logger {
 		r:       l.r,
 		out:     l.out,
 		enc:     l.enc,
-		level:   l.level,
 		clock:   l.clock,
 		sampler: l.sampler,
 		name:    l.name,
 		opts:    l.opts,
 	}
+	// WHY atomic accessor: same rationale as Named() -- avoids data
+	// race between struct copy of AtomicLevel and concurrent SetLevel.
+	clone.level.SetLevel(l.level.Level())
 	// Append new fields to existing base fields
 	clone.baseFields = make([]Field, len(l.baseFields)+len(fields))
 	copy(clone.baseFields, l.baseFields)
@@ -672,12 +674,16 @@ func (l *Logger) Named(name string) *Logger {
 		r:          l.r,
 		out:        l.out,
 		enc:        l.enc,
-		level:      l.level,
 		clock:      l.clock,
 		sampler:    l.sampler,
 		baseFields: l.baseFields,
 		opts:       l.opts,
 	}
+	// WHY atomic accessor: a plain struct copy of AtomicLevel reads
+	// the inner int32 non-atomically. If SetLevel writes concurrently
+	// via atomic.StoreInt32, the race detector (correctly) flags it.
+	// Using Level()/SetLevel() ensures both sides use atomic ops.
+	clone.level.SetLevel(l.level.Level())
 	if l.name == "" {
 		clone.name = name
 	} else {

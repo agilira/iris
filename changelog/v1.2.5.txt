@@ -1,0 +1,97 @@
+iris v1.2.5 -- Data Race Fix in Named() and With()
+===================================================
+
+Released: 2026-04-13
+Commit:   (see git log)
+Authors:  Antonio + AI pair
+
+STATUS: BUGFIX -- backward compatible, no API changes.
+
+SUMMARY
+-------
+Fixed a data race (CWE-362) in Logger.Named() and Logger.With().
+Both methods copied the AtomicLevel field via struct assignment,
+which performs a non-atomic read of the inner int32. If SetLevel()
+was called concurrently from another goroutine (via atomic.StoreInt32),
+the Go race detector correctly flagged this as a data race.
+
+The bug was discovered during security testing of the Metis project,
+where a triple-concurrency test (SetLevel + ComponentLogger + Write)
+triggered the race detector. The test was designed specifically to
+stress the concurrent access pattern that production systems exhibit
+during hot-reload of log levels.
+
+IMPACT: In practice, the worst case was reading a partially-updated
+int32 value for the level threshold. On x86-64 (aligned int32),
+this is unlikely to produce a torn read, but the behavior is
+undefined per the Go memory model. On ARM or other architectures,
+torn reads are a real possibility. The race detector correctly
+rejects this code regardless of architecture.
+
+
+BUGFIX: Logger.Named() -- atomic level copy
+--------------------------------------------
+
+Before (racy):
+
+  clone := &Logger{
+      ...
+      level: l.level,   // struct copy: non-atomic read of int32
+      ...
+  }
+
+After (correct):
+
+  clone := &Logger{
+      ...
+      // level field omitted from struct literal
+      ...
+  }
+  clone.level.SetLevel(l.level.Level())   // atomic Load + atomic Store
+
+The fix uses the public accessor Level() (which calls atomic.LoadInt32)
+to read the current level, and SetLevel() (which calls atomic.StoreInt32)
+to write it into the clone. Both operations are atomic, satisfying the
+Go memory model.
+
+
+BUGFIX: Logger.With() -- same fix
+----------------------------------
+
+Identical pattern: the struct literal copied `level: l.level` non-atomically.
+Fixed with the same atomic Load/Store approach.
+
+
+TEST: TestLoggerNamed_ConcurrentWithSetLevel
+--------------------------------------------
+
+New test in iris_test.go:
+  - 20 goroutines calling SetLevel() with rotating levels
+  - 20 goroutines calling Named() and writing through the child
+  - 20 goroutines calling With() and writing through the child
+  - Runs with -race flag
+  - Before the fix: FAIL (data race detected)
+  - After the fix: PASS
+
+
+DISCOVERY CONTEXT
+-----------------
+
+The bug was found by a Metis security test:
+TestSecurity_ConcurrentSetLevel_ComponentLogger_Write
+
+This test exercises the production pattern where argus config
+hot-reload changes the log level (via SetLevel) while multiple
+components create child loggers (via ComponentLogger -> Named())
+and other goroutines write log entries -- all concurrently.
+
+The race was NOT found by iris's own test suite because the
+existing TestLoggerNamed test is sequential (no concurrent SetLevel).
+This reinforces the principle: security tests must exercise real
+multi-goroutine access patterns, not just API correctness.
+
+
+FILES CHANGED
+-------------
+iris.go       -- Named() and With(): atomic level copy (2 hunks)
+iris_test.go  -- TestLoggerNamed_ConcurrentWithSetLevel (1 new test)

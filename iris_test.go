@@ -9,6 +9,7 @@ package iris
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -223,6 +224,58 @@ func TestLoggerNamed(t *testing.T) {
 	if !strings.Contains(output, `"logger":"test-component"`) {
 		t.Error("Logger name not found in output")
 	}
+}
+
+// TestLoggerNamed_ConcurrentWithSetLevel verifies no data race when
+// Named() and SetLevel() are called concurrently. Before the fix,
+// Named() copied AtomicLevel via struct assignment (non-atomic read)
+// while SetLevel() wrote via atomic.StoreInt32.
+func TestLoggerNamed_ConcurrentWithSetLevel(t *testing.T) {
+	buf := &bufferedSyncer{}
+	baseLogger, err := New(Config{
+		Level:   Info,
+		Encoder: NewJSONEncoder(),
+		Output:  buf,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create logger: %v", err)
+	}
+	defer safeCloseIrisLogger(t, baseLogger)
+	baseLogger.Start()
+
+	levels := []Level{Debug, Info, Warn, Error}
+	var wg sync.WaitGroup
+
+	// Group 1: SetLevel writers
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			baseLogger.SetLevel(levels[idx%len(levels)])
+		}(i)
+	}
+
+	// Group 2: Named() readers (clone the level field)
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			child := baseLogger.Named(fmt.Sprintf("comp_%d", idx))
+			child.Info("race_test", String("idx", fmt.Sprint(idx)))
+		}(i)
+	}
+
+	// Group 3: With() readers (also clone the level field)
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			child := baseLogger.With(String("idx", fmt.Sprint(idx)))
+			child.Info("with_race_test")
+		}(i)
+	}
+
+	wg.Wait()
 }
 
 // TestLoggerSetLevel verifies dynamic level changes
