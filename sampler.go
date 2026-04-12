@@ -66,6 +66,63 @@ func NewTokenBucketSampler(capacity, refill int64, every time.Duration) *TokenBu
 	return s
 }
 
+// SamplerLimit defines the rate limit parameters for a single log level.
+// Each level can have independent burst capacity and sustained rate.
+type SamplerLimit struct {
+	Capacity int64         // Maximum tokens (burst capacity)
+	Refill   int64         // Tokens added per refill period
+	Every    time.Duration // Refill period duration
+}
+
+// LevelAwareSampler applies independent rate limits per log level.
+// Levels without a configured limit pass unconditionally, which
+// ensures Error/Fatal are never silenced even under flood attacks.
+type LevelAwareSampler struct {
+	limits map[Level]*TokenBucketSampler
+}
+
+// NewLevelAwareSampler creates a sampler with per-level rate limits.
+// Levels not present in the map are never sampled (always allowed).
+// WHY: This is the firewall against log flood attacks (CWE-799).
+// An attacker flooding Debug cannot drown Error/Fatal signals because
+// each level draws from an independent token bucket.
+func NewLevelAwareSampler(limits map[Level]SamplerLimit) *LevelAwareSampler {
+	buckets := make(map[Level]*TokenBucketSampler, len(limits))
+	for lvl, lim := range limits {
+		buckets[lvl] = NewTokenBucketSampler(lim.Capacity, lim.Refill, lim.Every)
+	}
+	return &LevelAwareSampler{limits: buckets}
+}
+
+// DefaultLevelAwareSampler returns a production-ready configuration:
+//
+//	Error/Fatal: unlimited (no entry in map — always passes)
+//	Warn:        100/s burst, 100/s sustained
+//	Info:        50/s burst, 50/s sustained
+//	Debug:       10/s burst, 10/s sustained
+//
+// WHY: these defaults are tuned for a daemon that logs to disk.
+// High-severity levels must never be silenced; low-severity levels
+// are throttled to prevent disk saturation under load.
+func DefaultLevelAwareSampler() *LevelAwareSampler {
+	return NewLevelAwareSampler(map[Level]SamplerLimit{
+		Warn:  {Capacity: 100, Refill: 100, Every: time.Second},
+		Info:  {Capacity: 50, Refill: 50, Every: time.Second},
+		Debug: {Capacity: 10, Refill: 10, Every: time.Second},
+	})
+}
+
+// Allow implements Sampler. If no limit is configured for the given level,
+// the entry passes unconditionally. Otherwise it delegates to the
+// per-level TokenBucketSampler.
+func (s *LevelAwareSampler) Allow(level Level) bool {
+	bucket, ok := s.limits[level]
+	if !ok {
+		return true // unconfigured levels always pass
+	}
+	return bucket.Allow(level)
+}
+
 // Allow implements the Sampler interface using token bucket rate limiting.
 // Thread-safe implementation that refills tokens based on elapsed time
 // and consumes tokens for allowed log entries.

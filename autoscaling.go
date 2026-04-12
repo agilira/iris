@@ -251,6 +251,39 @@ func (al *AdaptiveLogger) Mode() ScalingMode {
 	return ScalingMode(al.mode.Load())
 }
 
+// SetLevel atomically changes the minimum logging level on both internal loggers.
+// WHY both: if multiLogger was lazily initialized, its level must stay in sync
+// with singleLogger. A SetLevel that only updates singleLogger would cause
+// filtered messages to reappear when the system scales up under contention.
+func (al *AdaptiveLogger) SetLevel(level Level) {
+	al.singleLogger.SetLevel(level)
+	if ml := al.multiLogger.Load(); ml != nil {
+		ml.SetLevel(level)
+	}
+}
+
+// Level returns the current minimum logging level.
+// Reads from singleLogger (always exists, always in sync with multiLogger).
+func (al *AdaptiveLogger) Level() Level {
+	return al.singleLogger.Level()
+}
+
+// Sync flushes both internal loggers' ring buffers and syncs the output.
+// WHY both: if multiLogger was initialized, it may have buffered records
+// that must reach the output before Sync returns.
+func (al *AdaptiveLogger) Sync() error {
+	var firstErr error
+	if err := al.singleLogger.Sync(); err != nil {
+		firstErr = err
+	}
+	if ml := al.multiLogger.Load(); ml != nil {
+		if err := ml.Sync(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 // Stats returns scaling statistics
 func (al *AdaptiveLogger) Stats() AdaptiveStats {
 	return AdaptiveStats{

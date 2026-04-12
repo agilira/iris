@@ -266,3 +266,141 @@ func TestAdaptiveLogger_Stats(t *testing.T) {
 		t.Errorf("Stats.TotalWrites = %d, want 1", stats.TotalWrites)
 	}
 }
+
+func TestAdaptiveLogger_SetLevel(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := Config{
+		Level:   Info,
+		Output:  WrapWriter(&buf),
+		Encoder: NewJSONEncoder(),
+	}
+
+	al, err := NewAdaptiveLogger(DefaultScalerConfig(cfg))
+	if err != nil {
+		t.Fatalf("NewAdaptiveLogger failed: %v", err)
+	}
+	defer safeCloseAdaptiveLogger(t, al)
+
+	if err := al.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	// Debug should be filtered at Info level
+	al.Debug("should not appear")
+	time.Sleep(20 * time.Millisecond)
+	if strings.Contains(buf.String(), "should not appear") {
+		t.Error("Debug message appeared at Info level")
+	}
+
+	// Change level to Debug
+	al.SetLevel(Debug)
+
+	al.Debug("should appear now")
+	time.Sleep(20 * time.Millisecond)
+	if !strings.Contains(buf.String(), "should appear now") {
+		t.Error("Debug message missing after SetLevel(Debug)")
+	}
+}
+
+func TestAdaptiveLogger_Level(t *testing.T) {
+	cfg := Config{
+		Level:   Warn,
+		Output:  WrapWriter(&bytes.Buffer{}),
+		Encoder: NewJSONEncoder(),
+	}
+
+	al, err := NewAdaptiveLogger(DefaultScalerConfig(cfg))
+	if err != nil {
+		t.Fatalf("NewAdaptiveLogger failed: %v", err)
+	}
+	defer safeCloseAdaptiveLogger(t, al)
+
+	if got := al.Level(); got != Warn {
+		t.Errorf("Level() = %v, want Warn", got)
+	}
+
+	al.SetLevel(Error)
+	if got := al.Level(); got != Error {
+		t.Errorf("Level() after SetLevel(Error) = %v, want Error", got)
+	}
+}
+
+func TestAdaptiveLogger_SetLevel_PropagatesBothLoggers(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := Config{
+		Level:   Debug,
+		Output:  WrapWriter(&buf),
+		Encoder: NewJSONEncoder(),
+	}
+
+	sc := DefaultScalerConfig(cfg)
+	sc.GoroutineThreshold = 2
+
+	al, err := NewAdaptiveLogger(sc)
+	if err != nil {
+		t.Fatalf("NewAdaptiveLogger failed: %v", err)
+	}
+	defer safeCloseAdaptiveLogger(t, al)
+
+	if err := al.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	// Trigger scale-up to initialize multiLogger
+	var wg sync.WaitGroup
+	for g := 0; g < 3; g++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < 10; i++ {
+				al.Info("burst", Int("g", id))
+			}
+		}(g)
+	}
+	wg.Wait()
+	time.Sleep(50 * time.Millisecond)
+
+	// Now set level to Error -- both loggers must respect it
+	al.SetLevel(Error)
+
+	buf.Reset()
+	al.Info("should be filtered")
+	time.Sleep(20 * time.Millisecond)
+
+	if strings.Contains(buf.String(), "should be filtered") {
+		t.Error("Info message appeared after SetLevel(Error) -- multiLogger not updated")
+	}
+}
+
+func TestAdaptiveLogger_Sync(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := Config{
+		Level:   Info,
+		Output:  WrapWriter(&buf),
+		Encoder: NewJSONEncoder(),
+	}
+
+	al, err := NewAdaptiveLogger(DefaultScalerConfig(cfg))
+	if err != nil {
+		t.Fatalf("NewAdaptiveLogger failed: %v", err)
+	}
+	defer safeCloseAdaptiveLogger(t, al)
+
+	if err := al.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	al.Info("sync test message")
+
+	// Sync must flush -- after Sync, the message is guaranteed in buffer
+	if err := al.Sync(); err != nil {
+		// WHY ignore stdout sync errors: /dev/stdout does not support fsync
+		if !strings.Contains(err.Error(), "sync /dev/stdout") {
+			t.Errorf("Sync() unexpected error: %v", err)
+		}
+	}
+
+	if !strings.Contains(buf.String(), "sync test message") {
+		t.Error("Message missing from output after Sync()")
+	}
+}

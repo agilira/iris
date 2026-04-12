@@ -1,0 +1,91 @@
+# Changelog - Version 1.2.1
+
+## Release Date
+2026-04-12
+
+## Overview
+Patch release completing the AdaptiveLogger API, fixing a known CWE-799
+defect in TokenBucketSampler, and adding the AdaptiveHandler slog bridge.
+These items were omitted from v1.2.0 and are required for Metis integration.
+
+---
+
+## #Fixed
+
+### CWE-799: TokenBucketSampler ignored level parameter
+`TokenBucketSampler.Allow(_ Level)` accepted a Level argument but silently
+discarded it, applying the same rate limit to every level. Under a log flood,
+Error and Fatal records were sampled at the same rate as Debug --- a critical
+failure signal could be dropped while the system drowned in debug noise.
+
+Introduced `LevelAwareSampler` to fix this class of attack:
+- `Error` and `Fatal`: never sampled (always pass)
+- `Warn`: 100/s burst, 100/s sustained
+- `Info`: 50/s burst, 50/s sustained
+- `Debug`: 10/s burst, 10/s sustained
+
+Each level draws from an independent `TokenBucketSampler`. Exhausting Debug
+tokens does not affect Error tokens (per-level isolation).
+
+`DefaultLevelAwareSampler()` returns the production-ready configuration above.
+`NewLevelAwareSampler(map[Level]SamplerLimit)` allows custom per-level limits.
+
+---
+
+## #New
+
+### AdaptiveLogger.SetLevel / Level / Sync
+Three methods missing from `AdaptiveLogger` that are required for hot-reload
+and graceful shutdown in downstream consumers:
+
+- `SetLevel(level Level)`: atomically sets the minimum log level on BOTH
+  internal loggers (singleLogger and multiLogger if initialized). A SetLevel
+  that only updated singleLogger would cause filtered messages to reappear
+  when the system scales up under contention.
+
+- `Level() Level`: returns the current minimum log level (reads from
+  singleLogger, always in sync with multiLogger).
+
+- `Sync() error`: flushes both internal loggers' ring buffers and syncs the
+  output. If multiLogger was initialized, it may have buffered records that
+  must reach the output before Sync returns.
+
+### slogprovider.AdaptiveHandler
+New `slog.Handler` implementation that writes directly into `AdaptiveLogger`,
+eliminating the channel-based indirection of the existing `Provider`.
+
+Pipeline: `slog.Info()` -> `AdaptiveHandler.Handle()` -> `AdaptiveLogger.Info/Debug/Warn/Error()`
+-> iris ring -> processor -> output
+
+No goroutine hop, no intermediate buffer. Each slog goroutine writes directly
+to the iris ring buffer. The ring's lock-free MPSC design handles concurrent
+producers natively.
+
+```go
+al, _ := iris.NewAdaptiveLogger(iris.DefaultScalerConfig(iris.Config{
+    Output:  letheWriter,
+    Encoder: iris.NewJSONEncoder(),
+    Sampler: iris.DefaultLevelAwareSampler(),
+}))
+al.Start()
+slog.SetDefault(slog.New(slogprovider.NewAdaptiveHandler(al)))
+```
+
+### slogprovider: package-level convertLevel / convertAttribute
+Extraction of `convertLevel` and `convertAttribute` from `*Provider` methods
+to package-level functions. Both `Provider` and `AdaptiveHandler` share the
+same conversion logic with zero duplication. No API change.
+
+---
+
+## #Tests
+- `autoscaling_new_test.go`: 4 new tests for SetLevel, Level, Sync
+  (TestAdaptiveLogger_SetLevel, Level, SetLevel_PropagatesBothLoggers, Sync)
+- `sampler_test.go`: 7 new tests for LevelAwareSampler
+  (New, ErrorNeverSampled, DebugRateLimited, UnconfiguredLevelAlwaysPasses,
+  DefaultLevelAwareSampler, ConcurrentAccess, IndependentLevels)
+- `slogprovider/adaptive_test.go`: 9 new tests for AdaptiveHandler
+  (New, Handle_BasicMessage, Handle_AllLevels, Handle_TypePreservation,
+  Enabled_AlwaysTrue, WithAttrs_PassThrough, WithGroup_PassThrough,
+  ConcurrentWrites, HandleError_NilContext)
+- All 4 packages PASS with -race detector. Zero regressions.

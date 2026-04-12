@@ -384,3 +384,133 @@ func TestTokenBucketSamplerBurstThenSustained(t *testing.T) {
 		t.Errorf("Sustained phase: expected 1-%d allowed, got %d", refillRate, sustainedAllowed)
 	}
 }
+
+// --- LevelAwareSampler tests ---
+
+func TestNewLevelAwareSampler(t *testing.T) {
+	s := NewLevelAwareSampler(map[Level]SamplerLimit{
+		Debug: {Capacity: 10, Refill: 10, Every: time.Second},
+		Info:  {Capacity: 50, Refill: 50, Every: time.Second},
+	})
+
+	if s == nil {
+		t.Fatal("NewLevelAwareSampler returned nil")
+	}
+}
+
+func TestLevelAwareSampler_ErrorNeverSampled(t *testing.T) {
+	// WHY: Error and Fatal must ALWAYS pass, even under extreme load.
+	// An attacker flooding Debug must not drown Error signals.
+	s := NewLevelAwareSampler(map[Level]SamplerLimit{
+		Debug: {Capacity: 1, Refill: 1, Every: time.Hour}, // nearly blocked
+	})
+
+	// Exhaust everything possible
+	for i := 0; i < 1000; i++ {
+		s.Allow(Debug)
+	}
+
+	// Error must still pass -- no limit configured, therefore no limit applied
+	for i := 0; i < 100; i++ {
+		if !s.Allow(Error) {
+			t.Fatalf("Error was sampled (dropped) at iteration %d", i)
+		}
+	}
+	for i := 0; i < 100; i++ {
+		if !s.Allow(Fatal) {
+			t.Fatalf("Fatal was sampled (dropped) at iteration %d", i)
+		}
+	}
+}
+
+func TestLevelAwareSampler_DebugRateLimited(t *testing.T) {
+	s := NewLevelAwareSampler(map[Level]SamplerLimit{
+		Debug: {Capacity: 5, Refill: 1, Every: time.Second},
+	})
+
+	allowed := 0
+	for i := 0; i < 100; i++ {
+		if s.Allow(Debug) {
+			allowed++
+		}
+	}
+
+	// Initial burst of 5 tokens, then nearly all blocked (refill 1/s)
+	if allowed < 5 || allowed > 10 {
+		t.Errorf("Debug allowed %d out of 100, expected ~5-10", allowed)
+	}
+}
+
+func TestLevelAwareSampler_UnconfiguredLevelAlwaysPasses(t *testing.T) {
+	// WHY: if no limit is set for a level, it passes unconditionally.
+	// This ensures Error/Fatal pass by default (defense in depth)
+	// and unconfigured levels are not accidentally blocked.
+	s := NewLevelAwareSampler(map[Level]SamplerLimit{
+		Debug: {Capacity: 1, Refill: 1, Every: time.Hour},
+	})
+
+	for i := 0; i < 100; i++ {
+		if !s.Allow(Warn) {
+			t.Fatal("Warn was sampled but has no limit configured")
+		}
+	}
+}
+
+func TestDefaultLevelAwareSampler(t *testing.T) {
+	s := DefaultLevelAwareSampler()
+	if s == nil {
+		t.Fatal("DefaultLevelAwareSampler returned nil")
+	}
+
+	// Error must always pass
+	for i := 0; i < 100; i++ {
+		if !s.Allow(Error) {
+			t.Fatal("Error was sampled in default config")
+		}
+	}
+}
+
+func TestLevelAwareSampler_ConcurrentAccess(t *testing.T) {
+	s := DefaultLevelAwareSampler()
+
+	var wg sync.WaitGroup
+	for g := 0; g < 50; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 100; i++ {
+				s.Allow(Debug)
+				s.Allow(Info)
+				s.Allow(Warn)
+				s.Allow(Error)
+			}
+		}()
+	}
+	wg.Wait()
+	// WHY: if we get here without -race detector complaint, it's thread-safe
+}
+
+func TestLevelAwareSampler_IndependentLevels(t *testing.T) {
+	// WHY: exhausting Debug tokens must not affect Info budget
+	s := NewLevelAwareSampler(map[Level]SamplerLimit{
+		Debug: {Capacity: 5, Refill: 1, Every: time.Hour},
+		Info:  {Capacity: 50, Refill: 1, Every: time.Hour},
+	})
+
+	// Exhaust Debug
+	for i := 0; i < 100; i++ {
+		s.Allow(Debug)
+	}
+
+	// Info should still have its full budget
+	infoAllowed := 0
+	for i := 0; i < 100; i++ {
+		if s.Allow(Info) {
+			infoAllowed++
+		}
+	}
+
+	if infoAllowed < 45 {
+		t.Errorf("Info allowed %d after Debug exhaustion, expected ~50", infoAllowed)
+	}
+}

@@ -166,10 +166,10 @@ func (p *Provider) Close() error {
 // WHY not batch: Iris processes records one at a time through the pipeline.
 // Batching at the conversion layer would add latency with no throughput gain.
 func (p *Provider) convertSlogRecord(slogRec slog.Record) *iris.Record {
-	record := iris.NewRecord(p.convertLevel(slogRec.Level), slogRec.Message)
+	record := iris.NewRecord(convertLevel(slogRec.Level), slogRec.Message)
 
 	slogRec.Attrs(func(attr slog.Attr) bool {
-		field := p.convertAttribute(attr)
+		field := convertAttribute(attr)
 		return record.AddField(field)
 	})
 
@@ -181,7 +181,10 @@ func (p *Provider) convertSlogRecord(slogRec slog.Record) *iris.Record {
 // WHY switch on ranges: slog levels are ints (Debug=-4, Info=0, Warn=4, Error=8).
 // Custom levels (e.g. slog.Level(2)) must map somewhere sensible.
 // Range checks ensure any custom level falls into the nearest iris bucket.
-func (p *Provider) convertLevel(slogLevel slog.Level) iris.Level {
+//
+// WHY package-level: shared by both Provider and AdaptiveHandler to avoid
+// duplicating conversion logic across two slog.Handler implementations.
+func convertLevel(slogLevel slog.Level) iris.Level {
 	switch {
 	case slogLevel <= slog.LevelDebug:
 		return iris.Debug
@@ -199,7 +202,9 @@ func (p *Provider) convertLevel(slogLevel slog.Level) iris.Level {
 // WHY type switch: slog stores values as slog.Value with a Kind discriminator.
 // Preserving the original type (Int64, Float64, Bool...) lets Iris encoders
 // emit correct JSON types instead of quoting everything as strings.
-func (p *Provider) convertAttribute(attr slog.Attr) iris.Field {
+//
+// WHY package-level: shared by both Provider and AdaptiveHandler.
+func convertAttribute(attr slog.Attr) iris.Field {
 	key := attr.Key
 	value := attr.Value
 
