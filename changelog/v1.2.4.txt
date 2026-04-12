@@ -1,0 +1,117 @@
+iris v1.2.4 -- AdaptiveLogger Context Propagation
+===================================================
+
+Released: 2026-04-12
+Commit:   (see git log)
+Authors:  Antonio + AI pair
+
+STATUS: STABLE -- backward compatible addition, no breaking changes.
+
+SUMMARY
+-------
+AdaptiveLogger now supports With() and Named() for structured context
+propagation. These methods create child loggers that carry persistent
+fields and hierarchical names across the dual-mode scaling boundary.
+
+The critical invariant: scaling up from SingleMode to MultiMode NEVER
+loses context fields or component identity. This is achieved by
+accumulating fields/name in the AdaptiveLogger struct and replaying
+them when the lazy multiLogger is created on first contention.
+
+
+FEATURE: AdaptiveLogger.With(fields ...Field) *AdaptiveLogger
+-------------------------------------------------------------
+
+Creates a child AdaptiveLogger with persistent structured fields.
+
+Design decisions:
+  - Accumulate-and-clone strategy: fields are stored in contextFields
+    slice and propagated to both singleLogger (immediately) and
+    multiLogger (lazily on creation, or immediately if already exists).
+  - Parent immutability: With() never mutates the parent. The child
+    gets an independent copy of the accumulated fields.
+  - Zero-field optimization: With() with no fields returns the receiver
+    (no allocation).
+  - Chaining: al.With(A).With(B) produces a logger with both A and B.
+
+Usage:
+  configLogger := al.With(iris.String("component", "config"))
+  configLogger.Info("loaded")  // every record includes component=config
+
+
+FEATURE: AdaptiveLogger.Named(name string) *AdaptiveLogger
+-----------------------------------------------------------
+
+Creates a child AdaptiveLogger with a hierarchical name.
+
+Design decisions:
+  - Dot-separated hierarchy: al.Named("app").Named("config") produces
+    the name "app.config", consistent with Logger.Named().
+  - Same accumulate-and-clone strategy as With().
+  - Empty name optimization: Named("") returns the receiver.
+
+Usage:
+  busLogger := al.Named("bus")
+  busLogger.Info("dispatched")  // records show logger name "bus"
+
+
+IMPLEMENTATION: ensureMultiLogger context replay
+-------------------------------------------------
+
+When multiLogger is lazily created under contention, it now inherits
+the full accumulated context:
+
+  1. Fields are applied via ml.With(al.contextFields...)
+  2. Name is applied via ml.Named(al.contextName)
+
+This happens inside ensureMultiLogger(), guarded by sync.Once, so the
+overhead is zero for subsequent calls.
+
+
+WHY THIS MATTERS FOR METIS
+--------------------------
+
+Metis uses AdaptiveLogger as its primary logging engine. Without
+With()/Named(), every component (config, bus, store, secrets) would
+log without identity. Now each subsystem can create a named child
+logger, and the context survives automatic scaling transitions.
+
+
+TEST COVERAGE
+-------------
+
+13 new tests in autoscaling_context_test.go:
+
+With() tests:
+  - TestAdaptiveLogger_With_EmptyReturnsReceiver
+  - TestAdaptiveLogger_With_FieldsAppearInOutput
+  - TestAdaptiveLogger_With_Chained
+  - TestAdaptiveLogger_With_ParentUnchanged
+  - TestAdaptiveLogger_With_PropagateToExistingMultiLogger
+
+Named() tests:
+  - TestAdaptiveLogger_Named_EmptyReturnsReceiver
+  - TestAdaptiveLogger_Named_AppearsInOutput
+  - TestAdaptiveLogger_Named_Hierarchical
+  - TestAdaptiveLogger_Named_PropagateToExistingMultiLogger
+
+Combined tests:
+  - TestAdaptiveLogger_With_Named_Combined
+
+Scaling invariant tests:
+  - TestAdaptiveLogger_With_ContextSurvivesScaleUp
+  - TestAdaptiveLogger_Named_ContextSurvivesScaleUp
+  - TestAdaptiveLogger_With_AllLevels
+
+All tests pass with -race flag. No regressions in existing test suite.
+
+
+QUALITY GATES
+-------------
+  gofmt:       PASS
+  go vet:      PASS
+  staticcheck: PASS
+  errcheck:    PASS (0 issues)
+  gosec:       PASS (0 issues)
+  gocyclo:     PASS (no new violations in autoscaling.go)
+  go test -race: PASS (full suite, all packages)

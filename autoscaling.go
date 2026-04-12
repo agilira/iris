@@ -79,6 +79,13 @@ type AdaptiveLogger struct {
 	// Configuration
 	config ScalerConfig
 
+	// Context fields accumulated via With()/Named() for propagation
+	// WHY: multiLogger is lazy-initialized. Fields and name must be
+	// accumulated here so that ensureMultiLogger can apply them when
+	// the multi-producer logger is created on first contention.
+	contextFields []Field
+	contextName   string
+
 	// Lifecycle
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -141,7 +148,11 @@ func (al *AdaptiveLogger) Close() error {
 	return err
 }
 
-// ensureMultiLogger lazily initializes multi-producer logger
+// ensureMultiLogger lazily initializes multi-producer logger.
+// WHY propagate context: With()/Named() accumulate fields and name in
+// the AdaptiveLogger. When multiLogger is created lazily on first
+// contention, it must inherit the same context so that scaling
+// up/down never loses structured fields or component identity.
 func (al *AdaptiveLogger) ensureMultiLogger() *Logger {
 	al.multiOnce.Do(func() {
 		multiCfg := al.config.BaseConfig
@@ -150,6 +161,15 @@ func (al *AdaptiveLogger) ensureMultiLogger() *Logger {
 		if err != nil {
 			return // Fall back to single logger
 		}
+
+		// Propagate accumulated context from With()/Named() calls
+		if len(al.contextFields) > 0 {
+			ml = ml.With(al.contextFields...)
+		}
+		if al.contextName != "" {
+			ml = ml.Named(al.contextName)
+		}
+
 		ml.Start()
 		al.multiLogger.Store(ml)
 	})
@@ -282,6 +302,90 @@ func (al *AdaptiveLogger) Sync() error {
 		}
 	}
 	return firstErr
+}
+
+// With creates a child AdaptiveLogger that includes the given fields in
+// every log record. The child shares the parent's ring buffers, output,
+// and scaling machinery -- only the per-record context differs.
+//
+// WHY accumulate-and-clone: multiLogger is lazy. If we only called
+// singleLogger.With() we would lose the fields when the system scales
+// up under contention and creates multiLogger. By storing contextFields
+// in the AdaptiveLogger struct, ensureMultiLogger can replay them.
+//
+// Thread Safety: safe to call from any goroutine. The returned child
+// is independent and can be used concurrently with the parent.
+func (al *AdaptiveLogger) With(fields ...Field) *AdaptiveLogger {
+	if len(fields) == 0 {
+		return al
+	}
+
+	// Build merged field slice: parent context + new fields
+	merged := make([]Field, len(al.contextFields)+len(fields))
+	copy(merged, al.contextFields)
+	copy(merged[len(al.contextFields):], fields)
+
+	child := &AdaptiveLogger{
+		singleLogger:  al.singleLogger.With(fields...),
+		config:        al.config,
+		ctx:           al.ctx,
+		cancel:        al.cancel,
+		contextFields: merged,
+		contextName:   al.contextName,
+	}
+
+	// Propagate to existing multiLogger if already initialized
+	if ml := al.multiLogger.Load(); ml != nil {
+		childMulti := ml.With(fields...)
+		child.multiLogger.Store(childMulti)
+	}
+	// WHY no multiOnce copy: child gets a fresh sync.Once so that if
+	// multiLogger was not yet initialized, ensureMultiLogger will create
+	// it with the full accumulated context on first contention.
+
+	// Share parent's scaling state (atomic counters are safe to share)
+	child.mode.Store(al.mode.Load())
+
+	return child
+}
+
+// Named creates a child AdaptiveLogger with a hierarchical name.
+// Names are dot-separated: parent.Named("db") on a logger named "app"
+// produces "app.db". The child shares scaling machinery with the parent.
+//
+// WHY accumulate: same reason as With() -- multiLogger is lazy and must
+// inherit the full name chain when it is eventually created.
+//
+// Thread Safety: safe to call from any goroutine.
+func (al *AdaptiveLogger) Named(name string) *AdaptiveLogger {
+	if name == "" {
+		return al
+	}
+
+	// Build hierarchical name
+	fullName := name
+	if al.contextName != "" {
+		fullName = al.contextName + "." + name
+	}
+
+	child := &AdaptiveLogger{
+		singleLogger:  al.singleLogger.Named(name),
+		config:        al.config,
+		ctx:           al.ctx,
+		cancel:        al.cancel,
+		contextFields: al.contextFields,
+		contextName:   fullName,
+	}
+
+	// Propagate to existing multiLogger if already initialized
+	if ml := al.multiLogger.Load(); ml != nil {
+		childMulti := ml.Named(name)
+		child.multiLogger.Store(childMulti)
+	}
+
+	child.mode.Store(al.mode.Load())
+
+	return child
 }
 
 // Stats returns scaling statistics
