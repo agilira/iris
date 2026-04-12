@@ -244,13 +244,11 @@ func TestProviderPerformanceBasic(t *testing.T) {
 	nsPerOp := duration.Nanoseconds() / int64(n)
 	t.Logf("Handle performance: %d ns/op (%d ops in %v)", nsPerOp, n, duration)
 
-	// WHY 1000ns threshold: slog default handlers run at ~1000+ ns/op.
-	// Our channel-based Handle is a select + channel send, so sub-200ns typical.
-	// With race detector overhead we allow 2x headroom.
-	maxNsPerOp := 1000
-	if testing.Short() {
-		maxNsPerOp = 2000
-	}
+	// WHY 5000ns threshold: the race detector adds 5-10x overhead, and CI runners
+	// have variable CPU performance under load. We assert a generous ceiling to
+	// catch regressions (e.g., accidental O(n^2)) without flaking on slow runners.
+	// Real performance is tracked via benchmarks, not unit tests.
+	const maxNsPerOp = 5000
 	if nsPerOp > int64(maxNsPerOp) {
 		t.Errorf("Handle too slow: %d ns/op (expected < %d)", nsPerOp, maxNsPerOp)
 	}
