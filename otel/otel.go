@@ -49,8 +49,8 @@ func WithTracing(logger *iris.Logger, ctx context.Context) *iris.ContextLogger {
 	// Create custom extractor for OpenTelemetry fields
 	extractor := createOTelExtractor()
 
-	// Use IRIS's existing context system
-	otelLogger := logger.WithContextExtractor(enrichedCtx, extractor)
+	// Use IRIS's unified context API with custom extractor
+	otelLogger := logger.WithContext(enrichedCtx, iris.WithExtractor(extractor))
 
 	// Add baggage fields
 	otelLogger = WithBaggage(otelLogger, ctx)

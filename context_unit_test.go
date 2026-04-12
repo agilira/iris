@@ -278,7 +278,7 @@ func TestLogger_WithContext(t *testing.T) {
 	}
 }
 
-// TestLogger_WithContextExtractor tests custom context extraction
+// TestLogger_WithContextExtractor tests custom context extraction using WithExtractor option
 func TestLogger_WithContextExtractor(t *testing.T) {
 	logger := setupContextTestLogger(t)
 	defer func() {
@@ -374,10 +374,10 @@ func TestLogger_WithContextExtractor(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cl := logger.WithContextExtractor(tt.ctx, tt.extractor)
+			cl := logger.WithContext(tt.ctx, WithExtractor(tt.extractor))
 
 			if cl == nil {
-				t.Fatal("WithContextExtractor returned nil")
+				t.Fatal("WithContext with WithExtractor returned nil")
 			}
 
 			if cl.logger != logger {
@@ -389,8 +389,8 @@ func TestLogger_WithContextExtractor(t *testing.T) {
 	}
 }
 
-// TestLogger_WithContextValue tests single value extraction optimization
-func TestLogger_WithContextValue(t *testing.T) {
+// TestLogger_WithContextKey tests single key extraction with custom field name
+func TestLogger_WithContextKey(t *testing.T) {
 	logger := setupContextTestLogger(t)
 	defer safeCloseContextLogger(t, logger)
 
@@ -482,10 +482,10 @@ func TestLogger_WithContextValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cl := logger.WithContextValue(tt.ctx, tt.key, tt.fieldName)
+			cl := logger.WithContext(tt.ctx, WithKey(tt.key, tt.fieldName))
 
 			if cl == nil {
-				t.Fatal("WithContextValue returned nil")
+				t.Fatal("WithContext with WithKey returned nil")
 			}
 
 			if cl.logger != logger {
@@ -722,8 +722,8 @@ func TestContextLogger_WithAdditionalContext(t *testing.T) {
 	// Create second context with user ID
 	ctx2 := context.WithValue(context.Background(), UserIDKey, "user-456")
 
-	// Merge contexts
-	cl2 := cl1.WithAdditionalContext(ctx2, DefaultContextExtractor)
+	// Merge contexts using the unified API
+	cl2 := cl1.WithAdditionalContext(ctx2)
 
 	if cl2 == nil {
 		t.Fatal("WithAdditionalContext returned nil")
@@ -1071,8 +1071,8 @@ func TestContextLogger_Fatal(t *testing.T) {
 	// If we reach here, the method exists and compiles correctly
 }
 
-// TestLogger_WithContextValueSingle tests WithContextValue method on Logger for single value
-func TestLogger_WithContextValueSingle(t *testing.T) {
+// TestLogger_WithContextKeySingle tests WithContext with WithKey option for single value
+func TestLogger_WithContextKeySingle(t *testing.T) {
 	buf := &bufferedTestSyncer{}
 	logger, err := New(Config{
 		Level:   Debug,
@@ -1088,8 +1088,8 @@ func TestLogger_WithContextValueSingle(t *testing.T) {
 	// Create context with UserID value
 	ctx := context.WithValue(context.Background(), UserIDKey, "user123")
 
-	// Create ContextLogger with UserID using WithContextValue
-	newCl := logger.WithContextValue(ctx, UserIDKey, "user_id")
+	// Create ContextLogger with UserID using WithContext with WithKey option
+	newCl := logger.WithContext(ctx, WithKey(UserIDKey, "user_id"))
 
 	// Log with the new context logger
 	newCl.Info("test message with user context")

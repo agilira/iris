@@ -147,8 +147,8 @@ func customExtractorExample(logger *iris.Logger) {
 		MaxDepth: 10, // Limit context traversal
 	}
 
-	// Use custom extractor
-	contextLogger := logger.WithContextExtractor(ctx, extractor)
+	// Use custom extractor with unified API
+	contextLogger := logger.WithContext(ctx, iris.WithExtractor(extractor))
 
 	contextLogger.Info("Multi-tenant operation executed")
 	contextLogger.Debug("Environment-specific logic applied")

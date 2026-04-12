@@ -99,8 +99,8 @@ extractor := &iris.ContextExtractor{
     MaxDepth: 10, // Limit context chain traversal
 }
 
-// Use custom extractor
-contextLogger := logger.WithContextExtractor(ctx, extractor)
+// Use custom extractor with unified API
+contextLogger := logger.WithContext(ctx, iris.WithExtractor(extractor))
 contextLogger.Info("Multi-tenant operation")
 // Output includes: req_id, organization, tenant
 ```
@@ -201,13 +201,13 @@ func ProcessJob(ctx context.Context, logger *iris.Logger, jobID string) {
     // Create job-specific context
     jobCtx := context.WithValue(ctx, iris.ContextKey("job_id"), jobID)
     
-    // Extract job context
-    jobLogger := logger.WithContextExtractor(jobCtx, &iris.ContextExtractor{
+    // Extract job context using unified API with custom extractor
+    jobLogger := logger.WithContext(jobCtx, iris.WithExtractor(&iris.ContextExtractor{
         Keys: map[iris.ContextKey]string{
             iris.ContextKey("job_id"): "job_id",
             iris.UserIDKey:            "user_id",
         },
-    })
+    }))
     
     jobLogger.Info("Job started")
     // Process job...
@@ -345,7 +345,7 @@ extractor := &iris.ContextExtractor{
     },
 }
 
-contextLogger := logger.WithContextExtractor(ctx, extractor)
+contextLogger := logger.WithContext(ctx, iris.WithExtractor(extractor))
 // Check if fields were extracted by logging immediately
 contextLogger.Debug("Context extraction test")
 ```

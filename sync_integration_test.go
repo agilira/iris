@@ -55,7 +55,7 @@ func TestLoggerSyncFlushesAllRecords(t *testing.T) {
 	// Write several log messages quickly
 	const messageCount = 5
 	for i := 0; i < messageCount; i++ {
-		logger.Infof("Test message %d", i)
+		logger.Info("Test message")
 	}
 
 	// At this point, messages might be in the ring buffer but not yet written
@@ -163,7 +163,7 @@ func TestLoggerSyncConcurrentWrites(t *testing.T) {
 		go func(writerID int) {
 			defer wg.Done()
 			for i := 0; i < messagesPerWriter; i++ {
-				logger.Infof("Writer %d message %d", writerID, i)
+				logger.InfoFields("Writer message", Int("writerID", writerID), Int("msgNum", i))
 			}
 		}(w)
 	}

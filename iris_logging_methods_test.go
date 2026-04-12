@@ -188,8 +188,8 @@ func TestLogger_Stats(t *testing.T) {
 	t.Logf("Stats returned: %+v", stats)
 }
 
-// TestLogger_FormattedMethods tests formatted logging methods
-func TestLogger_FormattedMethods(t *testing.T) {
+// TestLogger_StructuredMethods tests structured logging methods at all levels
+func TestLogger_StructuredMethods(t *testing.T) {
 	buf := &logTestSyncer{}
 
 	logger, err := New(Config{
@@ -209,23 +209,23 @@ func TestLogger_FormattedMethods(t *testing.T) {
 		expected []string // Multiple possible patterns
 	}{
 		{
-			name:     "Debugf",
-			logFunc:  func() { logger.Debugf("Debug: %s = %d", "count", 10) },
+			name:     "Debug",
+			logFunc:  func() { logger.Debug("Debug: count = 10") },
 			expected: []string{"Debug", "count", "10"},
 		},
 		{
-			name:     "Infof",
-			logFunc:  func() { logger.Infof("Info: %s at %v", "status", "ready") },
+			name:     "Info",
+			logFunc:  func() { logger.Info("Info: status at ready") },
 			expected: []string{"Info", "status", "ready"},
 		},
 		{
-			name:     "Warnf",
-			logFunc:  func() { logger.Warnf("Warning: %d errors found", 3) },
+			name:     "Warn",
+			logFunc:  func() { logger.Warn("Warning: 3 errors found") },
 			expected: []string{"Warning", "3", "errors"},
 		},
 		{
-			name:     "Errorf",
-			logFunc:  func() { logger.Errorf("Error: %s failed with code %d", "operation", 500) },
+			name:     "Error",
+			logFunc:  func() { logger.Error("Error: operation failed with code 500") },
 			expected: []string{"Error", "operation", "500"},
 		},
 	}
@@ -237,7 +237,7 @@ func TestLogger_FormattedMethods(t *testing.T) {
 			buf.buf.Reset()
 			buf.mu.Unlock()
 
-			// Call formatted logging method
+			// Call structured logging method
 			tt.logFunc()
 
 			time.Sleep(50 * time.Millisecond)
@@ -253,8 +253,8 @@ func TestLogger_FormattedMethods(t *testing.T) {
 	}
 }
 
-// TestLogger_FormattedMethods_LevelFiltering tests formatted methods with level filtering
-func TestLogger_FormattedMethods_LevelFiltering(t *testing.T) {
+// TestLogger_StructuredMethods_LevelFiltering tests structured methods with level filtering
+func TestLogger_StructuredMethods_LevelFiltering(t *testing.T) {
 	buf := &logTestSyncer{}
 
 	// Create logger with Error level (Debug, Info, Warn should be filtered)
@@ -270,12 +270,12 @@ func TestLogger_FormattedMethods_LevelFiltering(t *testing.T) {
 	defer safeCloseLoggingMethodsLogger(t, logger)
 
 	// These should be filtered out
-	logger.Debugf("Debug message %d", 1)
-	logger.Infof("Info message %d", 2)
-	logger.Warnf("Warn message %d", 3)
+	logger.Debug("Debug message 1")
+	logger.Info("Info message 2")
+	logger.Warn("Warn message 3")
 
 	// This should appear
-	logger.Errorf("Error message %d", 4)
+	logger.Error("Error message 4")
 
 	time.Sleep(50 * time.Millisecond)
 

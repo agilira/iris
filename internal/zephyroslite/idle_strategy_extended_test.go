@@ -332,15 +332,13 @@ func BenchmarkYieldingIdleStrategy(b *testing.B) {
 }
 
 func BenchmarkChannelIdleStrategy(b *testing.B) {
-	strategy := NewChannelIdleStrategy(0) // No timeout
-
-	// Pre-fill with signals to avoid blocking
-	for i := 0; i < b.N; i++ {
-		strategy.WakeUp()
-	}
+	// Use a small timeout to prevent deadlock - this measures wakeup path
+	strategy := NewChannelIdleStrategy(time.Microsecond)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		// Signal before idle to measure the wakeup path (not timeout path)
+		strategy.WakeUp()
 		strategy.Idle()
 	}
 }

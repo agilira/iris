@@ -12,6 +12,7 @@ package iris
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agilira/iris/internal/lethe"
+	"github.com/agilira/iris/lethebridge"
 )
 
 // windowsSafeClose ensures proper cleanup on Windows by forcing GC and longer delays
@@ -58,7 +59,7 @@ func TestCompleteMagicIntegration(t *testing.T) {
 	defer windowsSafeClose(t, logger)
 
 	// Verify we got Lethe optimizations
-	if !lethe.HasLetheCapabilities() {
+	if !lethebridge.HasLetheCapabilities() {
 		t.Error("Lethe capabilities should be registered")
 	}
 
@@ -131,7 +132,7 @@ func TestMagicAPI_E2E_BasicFlow(t *testing.T) {
 
 	// Test buffer size optimization
 	// Mock returns 16384, should be detected and used
-	provider, exists := lethe.GetLetheProvider()
+	provider, exists := lethebridge.GetLetheProvider()
 	if !exists {
 		t.Fatal("Lethe provider should be registered")
 	}
@@ -141,7 +142,7 @@ func TestMagicAPI_E2E_BasicFlow(t *testing.T) {
 		t.Fatalf("Failed to create optimized sink: %v", err)
 	}
 
-	letheWriter := lethe.DetectLetheCapabilities(sink)
+	letheWriter := lethebridge.DetectLetheCapabilities(sink)
 	if letheWriter == nil {
 		t.Fatal("Should detect Lethe capabilities")
 	}
@@ -191,13 +192,13 @@ func TestMagicFallbackBehavior(t *testing.T) {
 	logFile := filepath.Join(tempDir, "fallback_test.log")
 
 	// Register a provider that always fails
-	failingProvider := lethe.CapabilityProvider{
+	failingProvider := lethebridge.CapabilityProvider{
 		Name: "failing-lethe",
 		CreateOptimizedSink: func(filename string, args ...interface{}) (interface{}, error) {
 			return nil, os.ErrPermission // Always fail
 		},
 	}
-	lethe.RegisterCapability(failingProvider)
+	lethebridge.RegisterCapability(failingProvider)
 
 	logger, err = NewMagicLogger(logFile, Info)
 	if err != nil {
@@ -228,47 +229,49 @@ func TestMagicRegistrationLifecycle(t *testing.T) {
 	// Test the registration lifecycle (can't clear global registry)
 
 	// Verify capabilities are available (from previous tests)
-	if !lethe.HasLetheCapabilities() {
+	if !lethebridge.HasLetheCapabilities() {
 		t.Log("No capabilities initially - registering test provider")
 		registerMockLetheProvider()
 	}
 
-	if !lethe.HasLetheCapabilities() {
+	if !lethebridge.HasLetheCapabilities() {
 		t.Error("Should have capabilities after registration")
 	}
 
 	// Test multiple registrations work correctly
-	initialCount := len(lethe.GetRegisteredCapabilities())
+	initialCount := len(lethebridge.GetRegisteredCapabilities())
 
-	provider2 := lethe.CapabilityProvider{
-		Name: "lethe-v2",
+	// Use unique name to avoid collision with previous test runs (global registry)
+	uniqueName := fmt.Sprintf("lethe-v2-%d", time.Now().UnixNano())
+	provider2 := lethebridge.CapabilityProvider{
+		Name: uniqueName,
 		CreateOptimizedSink: func(filename string, args ...interface{}) (interface{}, error) {
 			return &enhancedMockLetheWriter{filename: filename}, nil
 		},
 	}
-	lethe.RegisterCapability(provider2)
+	lethebridge.RegisterCapability(provider2)
 
-	capabilities := lethe.GetRegisteredCapabilities()
+	capabilities := lethebridge.GetRegisteredCapabilities()
 	if len(capabilities) <= initialCount {
-		t.Errorf("Expected more than %d capabilities after adding provider, got %d", initialCount, len(capabilities))
+		t.Errorf("Expected more than %d capabilities after adding provider '%s', got %d", initialCount, uniqueName, len(capabilities))
 	}
 
 	// Test Lethe-specific lookup still works
-	_, exists := lethe.GetLetheProvider()
+	_, exists := lethebridge.GetLetheProvider()
 	if !exists {
 		t.Error("Should still find Lethe provider among multiple")
 	}
 
 	// Test provider overwrite behavior
-	newProvider := lethe.CapabilityProvider{
+	newProvider := lethebridge.CapabilityProvider{
 		Name: "lethe",
 		CreateOptimizedSink: func(filename string, args ...interface{}) (interface{}, error) {
 			return &enhancedMockLetheWriter{filename: filename + ".enhanced"}, nil
 		},
 	}
-	lethe.RegisterCapability(newProvider)
+	lethebridge.RegisterCapability(newProvider)
 
-	updatedProvider, exists := lethe.GetLetheProvider()
+	updatedProvider, exists := lethebridge.GetLetheProvider()
 	if !exists {
 		t.Error("Should still have Lethe provider after update")
 	}
@@ -284,7 +287,7 @@ func TestMagicRegistrationLifecycle(t *testing.T) {
 // Helper functions and mocks
 
 func registerMockLetheProvider() {
-	provider := lethe.CapabilityProvider{
+	provider := lethebridge.CapabilityProvider{
 		Name: "lethe",
 		CreateOptimizedSink: func(filename string, args ...interface{}) (interface{}, error) {
 			// Create actual file for realistic testing
@@ -303,7 +306,7 @@ func registerMockLetheProvider() {
 			return ok
 		},
 	}
-	lethe.RegisterCapability(provider)
+	lethebridge.RegisterCapability(provider)
 }
 
 // Enhanced mock that implements full LetheWriter interface

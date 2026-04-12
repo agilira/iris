@@ -82,9 +82,15 @@ const (
 //
 // This approach transforms logging from "configuration nightmare" to "it just works"
 func buildSmartConfig(cfg Config, opts ...Option) Config {
-	// Smart defaults that work for most scenarios
+	// Parse options once (not 6 times like before)
+	parsedOpts := newLoggerOptions()
+	for _, opt := range opts {
+		opt(&parsedOpts)
+	}
+
+	// Smart defaults based on environment detection
 	smartCfg := Config{
-		// Auto-detect optimal ring architecture based on environment
+		// Auto-detect optimal ring architecture based on CPU cores
 		Architecture: detectOptimalArchitecture(),
 
 		// Smart capacity: balance memory vs performance
@@ -100,27 +106,23 @@ func buildSmartConfig(cfg Config, opts ...Option) Config {
 		BackpressurePolicy: zephyroslite.DropOnFull, // Never block callers
 		IdleStrategy:       NewProgressiveIdleStrategy(),
 
-		// Output: smart detection from options, fallback to stdout
-		Output: detectOutputFromOptions(opts...),
+		// Output: use provided or fallback to stdout
+		Output: WrapWriter(os.Stdout),
 
-		// Encoder: smart detection from options, fallback to JSON
-		Encoder: detectEncoderFromOptions(opts...),
+		// Encoder: Text for development, JSON for production
+		Encoder: selectEncoder(parsedOpts.development),
 
-		// Level: smart detection from options or environment, fallback to Info
-		Level: detectLevelFromOptions(opts...),
+		// Level: Debug for development, check env, fallback to Info
+		Level: selectLevel(parsedOpts.development),
 
 		// Time: optimized with caching
-		TimeFn: timecache.CachedTime, // Use cached time for performance
+		TimeFn: timecache.CachedTime,
 
-		// Sampler: auto-enable for high-volume scenarios
-		Sampler: detectSamplerFromOptions(opts...),
-
-		// Name: extract from options if provided
-		Name: detectNameFromOptions(opts...),
+		// Sampler: from options if provided
+		Sampler: parsedOpts.sampler,
 	}
 
-	// Override with any explicit Config values that make sense
-	// (but ignore complex/confusing ones)
+	// Override with any explicit Config values
 	if cfg.Level != 0 {
 		smartCfg.Level = cfg.Level
 	}
@@ -152,7 +154,6 @@ func buildSmartConfig(cfg Config, opts ...Option) Config {
 // Smart detection functions for auto-configuration
 
 func detectOptimalArchitecture() Architecture {
-	// Auto-detect based on expected concurrency
 	if runtime.NumCPU() >= 4 {
 		return ThreadedRings // Better for production multi-core systems
 	}
@@ -160,16 +161,14 @@ func detectOptimalArchitecture() Architecture {
 }
 
 func detectOptimalCapacity() int64 {
-	// Smart capacity based on system resources with CI-friendly defaults
 	cpus := int64(runtime.NumCPU())
 
-	// Check if running in CI environment (limited resources)
+	// Use conservative capacity for CI environments
 	if os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" {
-		// Use conservative capacity for CI environments
-		return 4096 // Safe for all CI runners
+		return 4096
 	}
 
-	// 8KB per CPU core for production, minimum 8KB, maximum 64KB
+	// 8KB per CPU core, bounded [8KB, 64KB]
 	capacity := cpus * 8192
 	if capacity < 8192 {
 		capacity = 8192
@@ -181,7 +180,6 @@ func detectOptimalCapacity() int64 {
 }
 
 func detectOptimalRingCount() int {
-	// Optimal ring count based on CPU cores
 	cpus := runtime.NumCPU()
 	if cpus <= 2 {
 		return 2
@@ -192,87 +190,24 @@ func detectOptimalRingCount() int {
 	return cpus
 }
 
-func detectOutputFromOptions(opts ...Option) WriteSyncer {
-	// Apply options to a temporary loggerOptions to extract values
-	tempOpts := newLoggerOptions()
-	for _, opt := range opts {
-		opt(&tempOpts)
-	}
-
-	// Check if output was set (we'll need to add this capability to loggerOptions)
-	// For now, fallback to stdout
-	return WrapWriter(os.Stdout) // Smart default: stdout
-}
-
-func detectEncoderFromOptions(opts ...Option) Encoder {
-	// Apply options to detect development mode
-	tempOpts := newLoggerOptions()
-	for _, opt := range opts {
-		opt(&tempOpts)
-	}
-
-	// Smart encoder selection based on development mode
-	if tempOpts.development {
+func selectEncoder(development bool) Encoder {
+	if development {
 		return NewTextEncoder() // Human-readable for development
 	}
 	return NewJSONEncoder() // Structured for production
 }
 
-func detectLevelFromOptions(opts ...Option) Level {
-	// Apply options to temporary loggerOptions
-	tempOpts := newLoggerOptions()
-	for _, opt := range opts {
-		opt(&tempOpts)
+func selectLevel(development bool) Level {
+	if development {
+		return Debug
 	}
-
-	// Check if development mode (usually means debug level)
-	if tempOpts.development {
-		return Debug // Development mode = debug level
-	}
-
-	// Check environment variables
+	// Check environment variable
 	if envLevel := os.Getenv("IRIS_LEVEL"); envLevel != "" {
 		if level, err := ParseLevel(envLevel); err == nil {
 			return level
 		}
 	}
-
-	return Info // Smart default: Info level
-}
-
-func detectSamplerFromOptions(opts ...Option) Sampler {
-	// Apply options to check if sampling is requested
-	tempOpts := newLoggerOptions()
-	for _, opt := range opts {
-		opt(&tempOpts)
-	}
-
-	// Return sampler if configured through options
-	if tempOpts.sampler != nil {
-		return tempOpts.sampler
-	}
-
-	// Check if sampling is configured through options
-	// Future: Could auto-enable sampling for high-volume scenarios based on:
-	// - Environment variables (IRIS_SAMPLE_RATE)
-	// - System load detection
-	// - Application context hints
-
-	// For now, return nil (no sampling) unless explicitly configured
-	// This maintains backward compatibility while enabling future enhancements
-	return nil
-}
-
-func detectNameFromOptions(opts ...Option) string {
-	// Apply options to extract name if available
-	tempOpts := newLoggerOptions()
-	for _, opt := range opts {
-		opt(&tempOpts)
-	}
-
-	// Return name if set in options (we'll need to add this to loggerOptions)
-	// For now, return empty
-	return "" // No default name
+	return Info // Default
 }
 
 // Logger errors
@@ -987,44 +922,6 @@ func (l *Logger) Sync() error {
 	}
 
 	return nil
-}
-
-// Debugf logs a message at debug level using printf-style formatting
-func (l *Logger) Debugf(format string, args ...any) bool { return l.logf(Debug, format, args...) }
-
-// Infof logs a message at info level using printf-style formatting
-func (l *Logger) Infof(format string, args ...any) bool { return l.logf(Info, format, args...) }
-
-// Warnf logs a message at warn level using printf-style formatting
-func (l *Logger) Warnf(format string, args ...any) bool { return l.logf(Warn, format, args...) }
-
-// Errorf logs a message at error level using printf-style formatting
-func (l *Logger) Errorf(format string, args ...any) bool { return l.logf(Error, format, args...) }
-
-// logf is the internal implementation for printf-style logging.
-//
-// This method handles string formatting using fmt.Sprintf and then
-// delegates to the structured logging path. It's provided for convenience
-// but sacrifices the zero-allocation guarantee of structured logging.
-//
-// Parameters:
-//   - level: Log level for this message
-//   - format: Printf-style format string
-//   - args: Arguments for format string
-//
-// Returns:
-//   - bool: true if successfully logged, false if dropped or filtered
-//
-// Performance Note: Uses strings.Builder for efficient string construction
-// but still allocates memory for the final formatted string.
-func (l *Logger) logf(level Level, format string, args ...any) bool {
-	if !l.shouldLog(level) {
-		return true
-	}
-	var sb strings.Builder
-	sb.Grow(len(format) + 32)
-	sb.WriteString(fmt.Sprintf(format, args...))
-	return l.log(level, sb.String())
 }
 
 // Stats returns comprehensive performance statistics for monitoring.

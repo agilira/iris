@@ -57,55 +57,104 @@ type ContextLogger struct {
 	fields []Field // Pre-extracted context fields
 }
 
-// WithContext creates a new ContextLogger with fields extracted from context.
-// This is the recommended way to use context integration - extract once,
-// log many times with the same context.
-//
-// Performance: O(k) where k is number of configured keys, not context depth.
-func (l *Logger) WithContext(ctx context.Context) *ContextLogger {
-	return l.WithContextExtractor(ctx, DefaultContextExtractor)
+// contextOptions holds configuration for WithContext
+type contextOptions struct {
+	extractor *ContextExtractor
+	keys      []ContextKey // Specific keys to extract (overrides extractor)
+	fieldName string       // Custom field name (used with single key)
 }
 
-// WithContextExtractor creates a ContextLogger with custom extraction rules.
-func (l *Logger) WithContextExtractor(ctx context.Context, extractor *ContextExtractor) *ContextLogger {
-	var fields []Field
+// ContextOption configures context extraction behavior
+type ContextOption func(*contextOptions)
 
-	// Pre-allocate for common case
-	if len(extractor.Keys) > 0 {
-		fields = make([]Field, 0, len(extractor.Keys))
+// WithExtractor uses a custom ContextExtractor for field extraction.
+// Use this when you need full control over which keys are extracted
+// and how they map to field names.
+func WithExtractor(extractor *ContextExtractor) ContextOption {
+	return func(opts *contextOptions) {
+		opts.extractor = extractor
+	}
+}
+
+// WithKeys extracts only the specified keys using their default field names.
+// This is more efficient than using the full DefaultContextExtractor
+// when you only need specific fields.
+func WithKeys(keys ...ContextKey) ContextOption {
+	return func(opts *contextOptions) {
+		opts.keys = keys
+	}
+}
+
+// WithKey extracts a single key with a custom field name.
+// Optimized for the common case of extracting just one context value.
+func WithKey(key ContextKey, fieldName string) ContextOption {
+	return func(opts *contextOptions) {
+		opts.keys = []ContextKey{key}
+		opts.fieldName = fieldName
+	}
+}
+
+// WithContext creates a new ContextLogger with fields extracted from context.
+// This is the unified way to use context integration - extract once,
+// log many times with the same context.
+//
+// Usage:
+//
+//	// Default extraction (all standard keys)
+//	ctxLogger := logger.WithContext(ctx)
+//
+//	// Custom extractor
+//	ctxLogger := logger.WithContext(ctx, WithExtractor(myExtractor))
+//
+//	// Specific keys only
+//	ctxLogger := logger.WithContext(ctx, WithKeys(RequestIDKey, TraceIDKey))
+//
+//	// Single key with custom field name
+//	ctxLogger := logger.WithContext(ctx, WithKey(RequestIDKey, "req_id"))
+//
+// Performance: O(k) where k is number of configured keys, not context depth.
+func (l *Logger) WithContext(ctx context.Context, opts ...ContextOption) *ContextLogger {
+	// Apply options
+	options := &contextOptions{
+		extractor: DefaultContextExtractor,
+	}
+	for _, opt := range opts {
+		opt(options)
 	}
 
-	// Extract configured keys only (not all context values)
-	for contextKey, fieldName := range extractor.Keys {
-		if value := ctx.Value(contextKey); value != nil {
-			// Type assertion to string (most common case)
-			if strValue, ok := value.(string); ok && strValue != "" {
-				fields = append(fields, Str(fieldName, strValue))
+	var fields []Field
+
+	// Handle specific keys mode (more efficient)
+	if len(options.keys) > 0 {
+		fields = make([]Field, 0, len(options.keys))
+		for _, key := range options.keys {
+			if value := ctx.Value(key); value != nil {
+				if strValue, ok := value.(string); ok && strValue != "" {
+					// Use custom field name if single key with custom name
+					fieldName := string(key)
+					if options.fieldName != "" && len(options.keys) == 1 {
+						fieldName = options.fieldName
+					}
+					fields = append(fields, Str(fieldName, strValue))
+				}
+			}
+		}
+		return &ContextLogger{logger: l, fields: fields}
+	}
+
+	// Handle extractor mode
+	if options.extractor != nil && len(options.extractor.Keys) > 0 {
+		fields = make([]Field, 0, len(options.extractor.Keys))
+		for contextKey, fieldName := range options.extractor.Keys {
+			if value := ctx.Value(contextKey); value != nil {
+				if strValue, ok := value.(string); ok && strValue != "" {
+					fields = append(fields, Str(fieldName, strValue))
+				}
 			}
 		}
 	}
 
-	return &ContextLogger{
-		logger: l,
-		fields: fields,
-	}
-}
-
-// WithContextValue creates a ContextLogger with a single context value.
-// Optimized for cases where you only need one context field.
-func (l *Logger) WithContextValue(ctx context.Context, key ContextKey, fieldName string) *ContextLogger {
-	var fields []Field
-
-	if value := ctx.Value(key); value != nil {
-		if strValue, ok := value.(string); ok && strValue != "" {
-			fields = []Field{Str(fieldName, strValue)}
-		}
-	}
-
-	return &ContextLogger{
-		logger: l,
-		fields: fields,
-	}
+	return &ContextLogger{logger: l, fields: fields}
 }
 
 // Logging methods for ContextLogger - all delegate to underlying logger
@@ -167,9 +216,9 @@ func (cl *ContextLogger) With(fields ...Field) *ContextLogger {
 }
 
 // WithAdditionalContext extracts additional context values without losing existing ones.
-func (cl *ContextLogger) WithAdditionalContext(ctx context.Context, extractor *ContextExtractor) *ContextLogger {
-	// Extract new context fields
-	newContextLogger := cl.logger.WithContextExtractor(ctx, extractor)
+func (cl *ContextLogger) WithAdditionalContext(ctx context.Context, opts ...ContextOption) *ContextLogger {
+	// Extract new context fields using the unified API
+	newContextLogger := cl.logger.WithContext(ctx, opts...)
 
 	// Combine existing fields with new context fields
 	return cl.With(newContextLogger.fields...)
@@ -180,17 +229,17 @@ func (cl *ContextLogger) WithAdditionalContext(ctx context.Context, extractor *C
 // WithRequestID extracts request ID with minimal allocations.
 // Optimized for the most common use case.
 func (l *Logger) WithRequestID(ctx context.Context) *ContextLogger {
-	return l.WithContextValue(ctx, RequestIDKey, "request_id")
+	return l.WithContext(ctx, WithKey(RequestIDKey, "request_id"))
 }
 
 // WithTraceID extracts trace ID for distributed tracing.
 func (l *Logger) WithTraceID(ctx context.Context) *ContextLogger {
-	return l.WithContextValue(ctx, TraceIDKey, "trace_id")
+	return l.WithContext(ctx, WithKey(TraceIDKey, "trace_id"))
 }
 
 // WithUserID extracts user ID from context for user-specific logging.
 func (l *Logger) WithUserID(ctx context.Context) *ContextLogger {
-	return l.WithContextValue(ctx, UserIDKey, "user_id")
+	return l.WithContext(ctx, WithKey(UserIDKey, "user_id"))
 }
 
 // ContextMiddleware creates a middleware pattern for HTTP handlers.

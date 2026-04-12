@@ -3,14 +3,19 @@
 // This file provides the seamless automatic integration when both Iris and
 // Lethe are imported together. Zero configuration, maximum performance.
 //
-// Usage:
-//   import (
-//       "github.com/agilira/iris"
-//       "github.com/agilira/lethe"
-//   )
+// Usage (H1 style - zero config):
 //
-//   // Magic happens automatically!
-//   logger := iris.NewMagicLogger("app.log", iris.Info)
+//	import (
+//	    "github.com/agilira/iris"
+//	    _ "github.com/agilira/lethe" // Import for side effects
+//	)
+//
+//	// Just works!
+//	logger := iris.Magic("app.log")
+//
+// Usage (with options):
+//
+//	logger := iris.Magic("app.log", iris.MagicLevel(iris.Debug))
 //
 // Copyright (c) 2025 AGILira
 // Series: an AGILira fragment
@@ -24,10 +29,55 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/agilira/iris/internal/lethe"
+	"github.com/agilira/iris/lethebridge"
 )
 
-// NewMagicLogger creates a logger with automatic Lethe optimization when available
+// MagicOption configures the Magic logger
+type MagicOption func(*magicConfig)
+
+type magicConfig struct {
+	level Level
+}
+
+// MagicLevel sets the log level for the Magic logger
+func MagicLevel(level Level) MagicOption {
+	return func(c *magicConfig) {
+		c.level = level
+	}
+}
+
+// Magic creates a production-ready logger with zero configuration.
+// This is the H1 chip pattern - import both Iris and Lethe, and it just works.
+//
+// When Lethe is imported:
+//   - Automatic log rotation (100MB default)
+//   - Compression enabled
+//   - Zero-copy optimization
+//   - Hot-reload ready
+//
+// When Lethe is not imported:
+//   - Standard file logging
+//   - Same API, graceful fallback
+//
+// Panics on error (use NewMagicLogger for error handling).
+func Magic(filename string, opts ...MagicOption) *Logger {
+	cfg := &magicConfig{
+		level: Info, // Production default
+	}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	logger, err := NewMagicLogger(filename, cfg.level)
+	if err != nil {
+		panic(fmt.Sprintf("iris.Magic: failed to create logger: %v", err))
+	}
+
+	logger.Start()
+	return logger
+}
+
+// NewMagicLogger creates a logger with automatic Lethe optimization when available.
 // This is the Magic API that provides seamless integration between Iris and Lethe.
 //
 // When Lethe is imported:
@@ -48,7 +98,7 @@ import (
 // Returns a fully configured Logger ready for high-performance logging.
 func NewMagicLogger(filename string, level Level, opts ...Option) (*Logger, error) {
 	// Check if Lethe capabilities are registered (runtime detection)
-	if lethe.HasLetheCapabilities() {
+	if lethebridge.HasLetheCapabilities() {
 		return createMagicLetheLogger(filename, level, opts...)
 	}
 
@@ -58,7 +108,7 @@ func NewMagicLogger(filename string, level Level, opts ...Option) (*Logger, erro
 
 // createMagicLetheLogger creates an optimized logger using Lethe capabilities
 func createMagicLetheLogger(filename string, level Level, opts ...Option) (*Logger, error) {
-	provider, exists := lethe.GetLetheProvider()
+	provider, exists := lethebridge.GetLetheProvider()
 	if !exists {
 		return createStandardFileLogger(filename, level, opts...)
 	}
@@ -75,7 +125,7 @@ func createMagicLetheLogger(filename string, level Level, opts ...Option) (*Logg
 	}
 
 	// Detect if sink supports Lethe optimizations
-	letheWriter := lethe.DetectLetheCapabilities(sink)
+	letheWriter := lethebridge.DetectLetheCapabilities(sink)
 	if letheWriter == nil {
 		return createStandardFileLogger(filename, level, opts...)
 	}

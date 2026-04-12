@@ -49,6 +49,14 @@ Thumbs.db
 /build/
 /dist/
 
+# Local planning and discussion docs (not part of the public repo)
+DISCUSSION_REFACTORING.md
+PRIORITY_AIRSTREET.md
+
+# Generated audit and coverage artifacts
+coverage.html
+iris-config-audit.jsonl
+
 # Vendor directory (if using dep)
 vendor/
 
