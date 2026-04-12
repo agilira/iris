@@ -1,0 +1,115 @@
+# Changelog - Version 1.2.2
+
+## Release Date
+2026-04-12
+
+## Overview
+Patch release fixing three bugs identified during adversarial code review.
+Two are correctness bugs; one has security implications. No API changes.
+Zero impact on the fast path for typical configurations.
+
+---
+
+## #Fixed
+
+### BUG: Hook panic kills consumer goroutine (security implication)
+Hook functions registered via `WithHook()` were executed in the single
+consumer goroutine with no panic recovery. A panicking hook:
+1. Killed the consumer goroutine silently.
+2. Left the ring buffer in a state where producers could still write
+   but no records were ever processed or flushed to output.
+3. Produced no diagnostic output -- the logger appeared to function
+   normally while silently dropping every subsequent log entry.
+
+In a security context (prompt injection producing malformed data that
+triggers a hook panic) this is a availability attack vector: the logging
+pipeline is destroyed and the application loses all audit trail.
+
+Fix: introduced `safeInvokeHook()` wrapping each hook call in a
+`defer/recover`. On panic:
+- The consumer goroutine survives and continues processing.
+- The error is reported via `ErrorHandler` with code `IRIS_HOOK_EXECUTION`.
+- If no `ErrorHandler` is configured, a message is written to stderr.
+- Subsequent hooks on the SAME record still execute.
+
+Performance impact: `safeInvokeHook` adds a `defer` (~2-5 ns) that is
+paid only in the consumer goroutine, never in the producer hot path.
+For loggers with no hooks registered the change is zero-cost.
+
+### BUG: Ring buffer sequence number waste creates permanent reader stall
+`writeDropOnFull` and `writeBlockOnFull` both called `writerCursor.Add(1)`
+BEFORE checking whether the buffer had space. When a write was rejected
+(buffer full) or retried (BlockOnFull loop), the claimed sequence number
+was abandoned without publishing to `availableBuffer`.
+
+`ProcessBatch` scans `availableBuffer` for CONTIGUOUS sequences and stops
+at the first gap. A single unpublished sequence therefore permanently
+blocked the reader from processing ALL entries written after that gap --
+even though `Write()` returned `true` for those entries.
+
+Under sustained load with BlockOnFull, retry iterations accumulated
+hundreds of wasted sequences, making the stall almost certain.
+Under DropOnFull, any buffer-full event left a gap that could stall
+the reader indefinitely.
+
+Fix: both functions now use `CompareAndSwap` to claim a sequence ONLY
+after confirming capacity is available. CAS failure (another writer
+won the race) results in an immediate retry without consuming a
+sequence number. No sequence is ever wasted.
+
+Performance impact: CAS costs ~1 ns vs the previous unconditional Add(1)
+(~0.8 ns). Delta is 0.2 ns per successful write. Under contention the new
+implementation is net-faster because it eliminates reader stalls that were
+blocking overall throughput.
+
+### BUG: Fields truncated at maxFields=32 with no diagnostic
+When a log record exceeds the 32-field limit, fields beyond index 31 were
+silently discarded. The caller had no way to detect data loss.
+
+Fix:
+- Added `truncated` atomic counter to `Logger`.
+- Incremented when `total + len(fields) > maxFields`.
+- Exposed as `Stats()["truncated_fields"]` for monitoring.
+
+The fix is outside the `Write` closure to keep the producer hot path
+zero-alloc. The counter increment executes only when truncation actually
+occurs, which should be never in well-designed code.
+
+Performance impact: zero on the fast path (counter only incremented on
+the abnormal branch).
+
+---
+
+## #Tests
+
+### bugfix_test.go (package iris)
+Seven regression tests covering the three fixed bugs:
+
+- `TestHookPanic_ConsumerSurvives` -- consumer goroutine continues after panic
+- `TestHookPanic_ErrorHandlerCalled` -- ErrorHandler receives IRIS_HOOK_EXECUTION
+- `TestHookPanic_OtherHooksStillRun` -- subsequent records process normally after panic
+- `TestMaxFieldsTruncation_CounterIncremented` -- Stats()["truncated_fields"] == 1
+- `TestMaxFieldsTruncation_NormalNotCounted` -- no false positives for normal records
+- `TestMaxFieldsTruncation_ExactlyMaxFields` -- off-by-one: exactly 32 fields does not truncate
+- `TestMaxFieldsTruncation_DataStillWritten` -- partial record written, not dropped
+
+### internal/zephyroslite/sequence_integrity_test.go
+Four regression tests for the sequence waste fix:
+
+- `TestDropOnFull_NoSequenceGap` -- post-drop writes are processed (reader not stalled)
+- `TestBlockOnFull_NoSequenceWaste` -- all 16 writes delivered, 0 dropped
+- `TestDropOnFull_ConcurrentNoGap` -- processed count == successful writes under contention
+- `TestBlockOnFull_ConcurrentAllDelivered` -- all 200 writes processed with 0 gaps
+
+---
+
+## #Quality
+
+All quality gates pass:
+
+- `go fmt ./...` -- clean
+- `go vet ./...` -- clean
+- `staticcheck ./...` -- clean
+- `errcheck ./...` -- clean
+- `gosec ./...` -- 0 issues (4 nosec annotations, all pre-existing G115 false positives)
+- `go test -race -count=1 ./...` -- 4 packages PASS

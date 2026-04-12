@@ -278,60 +278,69 @@ func (z *ZephyrosLight[T]) Write(writerFunc func(*T)) bool {
 
 // writeDropOnFull implements the original non-blocking behavior
 func (z *ZephyrosLight[T]) writeDropOnFull(writerFunc func(*T)) bool {
-	// MPSC: Claim sequence number atomically
-	sequence := z.writerCursor.Add(1) - 1
+	// WHY CAS loop instead of unconditional Add(1):
+	// The original used writerCursor.Add(1) unconditionally, which claims
+	// a sequence number even when the buffer is full. A dropped sequence
+	// creates a permanent gap in availableBuffer. The reader (ProcessBatch)
+	// scans for contiguous sequences and stops at the first gap, so all
+	// entries written AFTER the gap are permanently stuck and never processed.
+	// CAS-based claiming ensures no sequence is wasted: we only advance
+	// writerCursor when the buffer has room AND we win the CAS race.
+	for {
+		current := z.writerCursor.Load()
 
-	// Check if we're about to lap the reader (buffer full check)
-	if sequence >= z.readerCursor.Load()+z.capacity {
-		// Buffer full - drop the message
-		z.dropped.Add(1)
-		return false
+		if current >= z.readerCursor.Load()+z.capacity {
+			z.dropped.Add(1)
+			return false
+		}
+
+		// CAS: only one goroutine wins this sequence number
+		if z.writerCursor.CompareAndSwap(current, current+1) {
+			slot := &z.buffer[current&z.mask]
+			writerFunc(slot)
+			z.availableBuffer[current&z.mask].Store(current)
+			return true
+		}
+		// CAS failed: another writer claimed this slot, retry immediately
 	}
-
-	// Write to allocated slot
-	slot := &z.buffer[sequence&z.mask]
-	writerFunc(slot)
-
-	// Mark slot as available for reading
-	z.availableBuffer[sequence&z.mask].Store(sequence)
-
-	return true
 }
 
 // writeBlockOnFull implements blocking behavior for guaranteed delivery
 func (z *ZephyrosLight[T]) writeBlockOnFull(writerFunc func(*T)) bool {
-	// Block until we can successfully write or the ring is closed
+	// WHY CAS loop instead of unconditional Add(1) per retry:
+	// The original claimed a sequence number (writerCursor.Add(1)) on every
+	// retry iteration. If the buffer stayed full for N iterations, N sequence
+	// numbers were permanently wasted. Each wasted sequence leaves a gap in
+	// availableBuffer that the reader (ProcessBatch) cannot skip, blocking
+	// all subsequent entries from ever being processed.
+	// CAS-based claiming checks capacity BEFORE claiming a sequence, and
+	// only one goroutine wins each CAS race. No wasted sequences.
 	for {
-		// Check if closed before each attempt
 		if z.closed.Load() != 0 {
 			z.dropped.Add(1)
 			return false
 		}
 
-		// MPSC: Claim sequence number atomically
-		sequence := z.writerCursor.Add(1) - 1
+		current := z.writerCursor.Load()
 
-		// Check if we're about to lap the reader (buffer full check)
-		currentReader := z.readerCursor.Load()
-		if sequence < currentReader+z.capacity {
-			// Space available - write the message
-			slot := &z.buffer[sequence&z.mask]
-			writerFunc(slot)
-
-			// Mark slot as available for reading
-			z.availableBuffer[sequence&z.mask].Store(sequence)
-
-			return true
+		if current >= z.readerCursor.Load()+z.capacity {
+			// Buffer full: yield CPU and retry
+			runtime.Gosched()
+			time.Sleep(time.Microsecond)
+			continue
 		}
 
-		// Buffer full - yield and retry
-		// We need to "rollback" the sequence claim since we can't use it
-		// Note: This is a simplification - a full implementation would use
-		// more sophisticated coordination to avoid sequence number waste
-		runtime.Gosched()
+		// CAS: only one goroutine wins this sequence number
+		if !z.writerCursor.CompareAndSwap(current, current+1) {
+			// Another writer claimed this slot, retry without sleeping
+			runtime.Gosched()
+			continue
+		}
 
-		// Small delay to prevent tight spinning
-		time.Sleep(time.Microsecond)
+		slot := &z.buffer[current&z.mask]
+		writerFunc(slot)
+		z.availableBuffer[current&z.mask].Store(current)
+		return true
 	}
 }
 

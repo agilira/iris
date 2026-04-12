@@ -264,8 +264,9 @@ type Logger struct {
 	name       string        // Logger name for hierarchical organization
 
 	// Performance counters
-	dropped atomic.Int64 // Number of dropped records due to ring buffer full
-	started atomic.Int32 // Logger start state (0=stopped, 1=started)
+	dropped   atomic.Int64 // Number of dropped records due to ring buffer full
+	truncated atomic.Int64 // Number of records with fields truncated at maxFields limit
+	started   atomic.Int32 // Logger start state (0=stopped, 1=started)
 }
 
 // New creates a new high-performance logger with the specified configuration and options.
@@ -360,9 +361,19 @@ func New(cfg Config, opts ...Option) (*Logger, error) {
 			}
 		}
 
-		// Hooks nel consumer (niente contend)
+		// WHY safeInvokeHook: hooks run in the single consumer goroutine.
+		// A panicking hook kills the consumer, the ring stops draining,
+		// and all subsequent log entries are silently lost. Recovery
+		// isolates the blast radius to the single faulty hook.
 		for _, h := range l.opts.hooks {
-			h(rec)
+			if hookErr := safeInvokeHook(h, rec); hookErr != nil {
+				l.dropped.Add(1)
+				if errorHandler != nil {
+					errorHandler(hookErr)
+				} else {
+					fmt.Fprintf(os.Stderr, "iris: hook panic: %v\n", hookErr)
+				}
+			}
 		}
 		rec.resetForWrite()
 	}
@@ -784,7 +795,7 @@ func (l *Logger) log(level Level, msg string, fields ...Field) bool {
 		st := fastStacktrace(3 + l.opts.callerSkip) // Skip logging infrastructure frames
 		stackField = String("stack", st)
 		hasStackField = true
-		// Note: total++ removed as assignment was ineffectual (staticcheck)
+		total++ // WHY: used below in truncation detection (total+len(fields) > maxFields)
 	}
 
 	ok := l.r.Write(func(slot *Record) {
@@ -819,6 +830,16 @@ func (l *Logger) log(level Level, msg string, fields ...Field) bool {
 	if !ok {
 		l.dropped.Add(1)
 	}
+
+	// WHY detect truncation outside the Write closure: the closure runs in
+	// the producer hot path and must stay zero-alloc. Truncation is abnormal
+	// (caller has >32 fields), so the atomic increment + error report is
+	// acceptable overhead only when it actually happens.
+	// #nosec G115 - len(fields) bounded by variadic args, maxFields=32 ensures no overflow
+	if total+int32(len(fields)) > maxFields {
+		l.truncated.Add(1)
+	}
+
 	return ok
 }
 
@@ -994,13 +1015,35 @@ func (l *Logger) Sync() error {
 func (l *Logger) Stats() map[string]int64 {
 	ringStats := l.r.Stats()
 	return map[string]int64{
-		"capacity":     ringStats["capacity"],
-		"batch_size":   ringStats["batch_size"],
-		"size":         ringStats["items_buffered"],
-		"processed":    ringStats["items_processed"],
-		"ring_dropped": ringStats["items_dropped"],
-		"dropped":      l.dropped.Load(),
+		"capacity":         ringStats["capacity"],
+		"batch_size":       ringStats["batch_size"],
+		"size":             ringStats["items_buffered"],
+		"processed":        ringStats["items_processed"],
+		"ring_dropped":     ringStats["items_dropped"],
+		"dropped":          l.dropped.Load(),
+		"truncated_fields": l.truncated.Load(),
 	}
+}
+
+// safeInvokeHook executes a hook with panic recovery.
+//
+// WHY: a panicking hook runs in the single consumer goroutine. Without
+// recovery, the panic kills the consumer, the ring buffer stops draining,
+// and all subsequent log entries are silently lost forever. Recovery
+// isolates the blast radius to the single faulty hook while the consumer
+// continues processing the rest of the queue.
+func safeInvokeHook(h Hook, rec *Record) (hookErr *errors.Error) {
+	defer func() {
+		if r := recover(); r != nil {
+			hookErr = WrapLoggerError(
+				fmt.Errorf("hook panicked: %v", r),
+				ErrCodeHookExecution,
+				"hook panic recovered in consumer goroutine",
+			)
+		}
+	}()
+	h(rec)
+	return nil
 }
 
 // ==== Helper caller ==========================================================
