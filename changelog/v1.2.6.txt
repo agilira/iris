@@ -1,0 +1,135 @@
+iris v1.2.6 -- ConsoleEncoder: colorized TTY encoder with ANSI-injection protection
+====================================================================================
+
+Released: 2026-04-19
+Commit:   (see git log)
+Authors:  Antonio Giordano
+
+STATUS: STABLE -- backward compatible addition, no breaking changes.
+
+SUMMARY
+-------
+Added ConsoleEncoder, a compact colorized encoder designed for interactive
+terminal sessions and local development. It is not intended to replace
+JSONEncoder or TextEncoder in production pipelines — it is purpose-built
+for human-readable output on a real TTY.
+
+Color output is automatically disabled when stdout is redirected to a file
+or pipe (isTTY detection at construction time), so binaries using
+ConsoleEncoder behave correctly in both interactive and non-interactive
+contexts without any configuration.
+
+All user-controlled content (message text, field keys, string values) is
+sanitized to strip control characters including ESC (0x1B), closing the
+ANSI injection attack vector (CWE-116) before it reaches the terminal.
+
+
+FEATURE: ConsoleEncoder
+-----------------------
+
+Output format:
+
+  15:04:05.000  INFO   logger-name  message text  key=value key2=value2
+
+Design decisions:
+  - Fixed-width level labels (DEBUG/INFO /WARN /ERROR/FATAL) keep columns
+    visually aligned without padding math at the call site.
+  - Space-separated key=value fields: values are quoted only when they
+    contain spaces, '=', '"', or are empty strings; bare values for simple
+    identifiers keep the output readable.
+  - TTY auto-detection via os.File.Stat() and os.ModeCharDevice, using
+    only stdlib — no golang.org/x/term dependency added.
+  - Two constructors:
+      NewConsoleEncoder()                   -- auto-detects TTY
+      NewConsoleEncoderWithColorize(bool)   -- explicit control (for tests)
+
+Color map:
+  DEBUG  gray    (\033[90m)
+  INFO   cyan    (\033[36m)
+  WARN   yellow  (\033[33m)
+  ERROR  red     (\033[31m)
+  FATAL  purple  (\033[35m)
+
+Usage:
+  logger := iris.New(iris.WithEncoder(iris.NewConsoleEncoder()))
+  logger.Info("server started", iris.String("addr", ":8080"))
+  // Output: 15:04:05.000  INFO   server started  addr=:8080
+
+
+SECURITY: ANSI injection prevention (CWE-116)
+---------------------------------------------
+
+Any byte < 0x20 or == 0x7F in user-controlled content is replaced with '_'.
+This covers ESC (0x1B), CR (\r), LF (\n), NUL (\0), and all other C0
+control characters.
+
+Attack vector neutralized:
+  Input:  "\033[31mERROR\033[0m injected"
+  Output: "_[31mERROR_[0m injected"
+
+  The terminal never receives a valid CSI sequence, so no color override,
+  cursor move, or title-bar manipulation is possible.
+
+The same sanitization applies to field keys, string values, error strings,
+and Stringer output — any path that produces a string in the log line.
+
+Secret fields (iris.Secret) are always rendered as [REDACTED], consistent
+with all other encoders.
+
+
+SECURITY: log injection prevention (CWE-93)
+-------------------------------------------
+
+Newline characters (\n, \r) are control bytes and are replaced by '_',
+preventing a single log call from forging multiple lines that could
+confuse SIEM parsers or log aggregation pipelines.
+
+
+FIELD TYPE COVERAGE
+-------------------
+
+All field types supported by iris.Field are rendered:
+  String    -- sanitized, quoted if needed
+  Secret    -- [REDACTED]
+  Int64     -- decimal
+  Uint64    -- decimal
+  Float64   -- %g (shortest representation)
+  Bool      -- true / false
+  Duration  -- Go duration string (e.g. 1.5s)
+  Time      -- 15:04:05.000 UTC
+  Bytes     -- 0x hex string
+  Error     -- sanitized error string
+  Stringer  -- sanitized String() result
+  Any/Obj   -- fmt.Sprintf("%v") fallback, sanitized
+
+
+TEST COVERAGE
+-------------
+
+New test files added:
+  encoder-console_test.go          -- functional tests (all field types,
+                                      TTY detection, format contract)
+  encoder_console_security_test.go -- security suite:
+                                        CWE-116 ANSI injection in msg, keys, values
+                                        CWE-93  log injection via \n and \r
+                                        CWE-20  null byte, tab, backspace
+                                        CWE-200 secret field redaction
+                                        combined multi-vector payload
+  encoder_console_fuzz_test.go     -- go test -fuzz corpus for message and
+                                      field value sanitization paths
+
+
+FILES ADDED
+-----------
+  encoder-console.go               -- ConsoleEncoder implementation
+  encoder-console_test.go          -- functional test suite
+  encoder_console_security_test.go -- security test suite
+  encoder_console_fuzz_test.go     -- fuzz harness
+
+
+COMPATIBILITY
+-------------
+  - No existing API changed.
+  - No new dependencies. isTTY() uses os.File.Stat() from stdlib only.
+  - go.mod unchanged.
+  - Fully compatible with iris.WithEncoder() option.
