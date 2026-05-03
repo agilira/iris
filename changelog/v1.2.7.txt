@@ -1,0 +1,13 @@
+iris v1.2.7 -- Go 1.25.9 toolchain bump
+========================================
+
+Released: 2026-05-03
+Commit:   (see git log)
+Authors:  Antonio Giordano
+
+STATUS: STABLE -- maintenance update, no API changes.
+
+SUMMARY
+-------
+Bumped minimum Go toolchain requirement from 1.24.5 to 1.25.9.
+No behavioral changes, no new API surface.

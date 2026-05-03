@@ -1,6 +1,6 @@
 module github.com/agilira/iris
 
-go 1.24.5
+go 1.25.9
 
 require (
 	github.com/agilira/go-errors v1.1.1
