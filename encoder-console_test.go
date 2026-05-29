@@ -184,7 +184,11 @@ func TestIsTTY_RegularFileIsNotTTY(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	t.Cleanup(func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("failed to close temp file: %v", err)
+		}
+	})
 	if isTTY(f) {
 		t.Error("expected isTTY=false for a regular file")
 	}

@@ -32,6 +32,24 @@ type IdleStrategy interface {
 	String() string
 }
 
+// Waker is implemented by idle strategies whose consumer parks in a way that
+// only a producer-side signal can release (e.g. a blocking channel receive).
+//
+// WHY a separate optional interface, not a method on IdleStrategy: the spin /
+// yield / sleep strategies need nothing on the producer fast path — a wakeup
+// call for them is dead weight on a ~15ns/op hot path. Only ChannelIdleStrategy
+// genuinely parks until signalled. The producer (Write) does a single cached
+// nil-check and calls WakeUp only when the strategy provides it, so strategies
+// that don't implement Waker pay zero cost.
+//
+// Contract: WakeUp MUST be safe to call concurrently from multiple producers
+// and MUST NOT block (a full wakeup buffer is a no-op — the pending signal
+// already guarantees the consumer will re-check the ring).
+type Waker interface {
+	// WakeUp signals a parked consumer that work may be available.
+	WakeUp()
+}
+
 // SpinningIdleStrategy provides ultra-low latency with maximum CPU usage.
 // This strategy never yields the CPU and continuously checks for work.
 // Best for: Ultra-low latency requirements where CPU consumption is not a concern.

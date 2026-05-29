@@ -99,6 +99,11 @@ type ZephyrosLight[T any] struct {
 	backpressurePolicy BackpressurePolicy
 	idleStrategy       IdleStrategy
 
+	// waker is idleStrategy asserted to Waker at construction (nil when the
+	// strategy does not need producer-side wakeups). Cached so the Write hot
+	// path does a single nil-check instead of a per-call type assertion.
+	waker Waker
+
 	// Control
 	closed AtomicPaddedInt64 // 0 = open, 1 = closed
 
@@ -223,7 +228,10 @@ func (b *Builder[T]) Build() (*ZephyrosLight[T], error) {
 		idleStrategy = NewProgressiveIdleStrategy() // Balanced default
 	}
 
-	// Create ring buffer
+	// Create ring buffer. waker is the idle strategy asserted to Waker once
+	// here (nil for strategies that do not park on a signal) so Write avoids a
+	// per-call type assertion.
+	waker, _ := idleStrategy.(Waker)
 	z := &ZephyrosLight[T]{
 		buffer:             make([]T, b.capacity),
 		capacity:           b.capacity,
@@ -233,6 +241,7 @@ func (b *Builder[T]) Build() (*ZephyrosLight[T], error) {
 		batchSize:          b.batchSize,
 		backpressurePolicy: b.backpressurePolicy,
 		idleStrategy:       idleStrategy,
+		waker:              waker,
 	}
 
 	// Initialize availability markers to invalid sequence
@@ -299,9 +308,19 @@ func (z *ZephyrosLight[T]) writeDropOnFull(writerFunc func(*T)) bool {
 			slot := &z.buffer[current&z.mask]
 			writerFunc(slot)
 			z.availableBuffer[current&z.mask].Store(current)
+			z.wake()
 			return true
 		}
 		// CAS failed: another writer claimed this slot, retry immediately
+	}
+}
+
+// wake releases a consumer parked in a signal-based idle strategy. It is a
+// single nil-check on the cached Waker for every other strategy, so the cost
+// on the Write hot path is ~1ns when wakeups are not needed.
+func (z *ZephyrosLight[T]) wake() {
+	if z.waker != nil {
+		z.waker.WakeUp()
 	}
 }
 
@@ -340,6 +359,7 @@ func (z *ZephyrosLight[T]) writeBlockOnFull(writerFunc func(*T)) bool {
 		slot := &z.buffer[current&z.mask]
 		writerFunc(slot)
 		z.availableBuffer[current&z.mask].Store(current)
+		z.wake()
 		return true
 	}
 }

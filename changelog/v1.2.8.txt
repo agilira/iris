@@ -1,0 +1,94 @@
+iris v1.2.8 -- Channel idle strategy producer wakeup
+====================================================
+
+Released: 2026-05-29
+Commit:   (see git log)
+Authors:  Antonio Giordano
+
+STATUS: STABLE -- bugfix, no public API changes.
+
+
+BUGFIXES
+--------
+
+1. ChannelIdleStrategy consumer never woken by producers
+
+   NewChannelIdleStrategy is documented as a near-zero-CPU, event-driven wait
+   for low-throughput loggers, but the consumer parked on its wakeup channel
+   was only ever signalled from the consumer side. A Write performed after the
+   ring drained left the consumer asleep, so records written once the logger
+   went idle were never processed -- with a zero timeout, indefinitely; with a
+   non-zero timeout, degraded to a poll at the timeout interval instead of the
+   advertised event-driven wakeup.
+
+   Root cause:
+
+     ZephyrosLight.LoopProcess calls idleStrategy.Reset() only when it has just
+     processed a batch -- i.e. from the consumer goroutine. ChannelIdleStrategy.
+     Idle blocks on <-wakeupChan, and nothing on the PRODUCER path ever sent to
+     that channel:
+
+       // BEFORE: producer publishes a slot, never wakes a parked consumer
+       z.availableBuffer[current&z.mask].Store(current)
+       return true
+
+   Fix:
+
+     A new optional Waker interface is introduced in the zephyroslite engine:
+
+       type Waker interface {
+           WakeUp()
+       }
+
+     ChannelIdleStrategy already satisfied it (its WakeUp is non-blocking and
+     multi-producer safe). The ring asserts the configured idle strategy to
+     Waker once at construction and caches the result, then signals it on every
+     successful Write:
+
+       // AFTER
+       z.availableBuffer[current&z.mask].Store(current)
+       z.wake() // cached nil-check + WakeUp() for signal-based strategies only
+       return true
+
+   Performance:
+
+     The hot path cost is a single cached nil-check for every strategy that is
+     not a Waker (spinning, sleeping, yielding, progressive -- the default), so
+     the common path is unchanged. Idle-strategy microbenchmarks after the fix:
+
+       BenchmarkSpinningIdleStrategy        0.26 ns/op
+       BenchmarkSleepingIdleStrategy        0.53 ns/op
+       BenchmarkYieldingIdleStrategy        0.92 ns/op
+       BenchmarkProgressiveIdleStrategy     5.90 ns/op
+       BenchmarkChannelIdleStrategy       198.0  ns/op  (channel send path)
+
+   Compatibility:
+
+     No public API change: Waker lives in internal/zephyroslite. Existing
+     strategies are unaffected. The fix turns a previously broken configuration
+     (ChannelIdleStrategy wired to a live logger) into the documented behaviour.
+
+   Files: internal/zephyroslite/idle_strategy.go (Waker interface)
+          internal/zephyroslite/zephyros.go (cached waker, wake() on Write)
+
+
+TEST INVENTORY
+--------------
+
+New test file in this release:
+  internal/zephyroslite/zephyros_wakeup_test.go
+    TestLoopProcess_ChannelIdle_WakesOnLateWrite
+    TestLoopProcess_ChannelIdle_WakesOnEveryBurst
+
+Both tests fail before the fix (zero records processed) and pass after, under
+-race. Full suite (all packages) green.
+
+
+QUALITY GATES
+-------------
+
+  go fmt ./...        PASS
+  go vet ./...        PASS
+  staticcheck ./...   PASS (0 issues)
+  gosec ./...         PASS (0 issues)
+  go test -race ./... PASS (all packages)

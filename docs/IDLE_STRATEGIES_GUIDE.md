@@ -59,17 +59,28 @@ iris.NewYieldingIdleStrategy(10000)
 
 ### 4. ChannelIdleStrategy
 - **Latency**: ~microseconds (channel wake-up time)
-- **CPU Usage**: Near 0% when idle
-- **Best for**: Minimum CPU usage, low-throughput scenarios
-- **Parameters**: `timeout` (max wait before checking shutdown)
+- **CPU Usage**: Near 0% when idle (no polling)
+- **Best for**: Minimum CPU usage, low-throughput scenarios, daemons
+- **Parameters**: `timeout` (max wait before re-checking; 0 = block until woken)
 
 ```go
-// No timeout - maximum efficiency
+// No timeout - true event-driven: park at ~0% CPU until a producer writes
 iris.NewChannelIdleStrategy(0)
 
-// With timeout for responsive shutdown
+// With timeout - producer wakeup plus a periodic re-check (e.g. for shutdown)
 iris.NewChannelIdleStrategy(100*time.Millisecond)
 ```
+
+The consumer is woken by the producer on every `Write`, so a `0` timeout is
+genuinely event-driven (not a poll): the consumer sleeps at near-zero CPU and
+is released the moment a record arrives. A non-zero timeout layers a periodic
+re-check on top, useful only when the loop must observe external state (such as
+shutdown) without a new record.
+
+> **Producer wakeup was added in v1.2.8.** In earlier versions the consumer was
+> only signalled from the consumer side, so a `Write` after the ring drained was
+> not processed until the next timeout fired — and a `0` timeout stalled
+> indefinitely. Use v1.2.8+ when configuring this strategy on a live logger.
 
 ### 5. ProgressiveIdleStrategy (Default)
 - **Latency**: Adaptive (starts minimum, increases when idle)
