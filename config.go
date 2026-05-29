@@ -116,6 +116,24 @@ type Config struct {
 	// - ProgressiveIdleStrategy: Adaptive strategy for variable workloads (default)
 	IdleStrategy zephyroslite.IdleStrategy
 
+	// IdleStrategyFactory, when non-nil, is called once per ring to construct
+	// that ring's idle strategy, giving each ring its OWN instance.
+	//
+	// WHY: a stateful idle strategy must NOT be shared across rings. The
+	// AdaptiveLogger runs two rings (a single-producer ring always, plus a
+	// multi-producer ring after it scales up under contention). With a
+	// channel-based strategy the wakeup channel has a buffer of one, so a
+	// single shared instance lets one ring's consumer steal the wakeup meant
+	// for the other — stranding records. Pass a factory (e.g.
+	// `func() IdleStrategy { return NewChannelIdleStrategy(0) }`) so each ring
+	// gets an isolated strategy.
+	//
+	// Precedence: if IdleStrategyFactory is set it wins over IdleStrategy.
+	// Spinning / sleeping / yielding / progressive strategies are stateless
+	// enough to share, so the plain IdleStrategy field remains fine for them
+	// and for single-ring (non-adaptive) use.
+	IdleStrategyFactory func() zephyroslite.IdleStrategy
+
 	// Output and formatting configuration
 	// Output specifies where log entries are written. Must implement WriteSyncer
 	// for proper synchronization guarantees.

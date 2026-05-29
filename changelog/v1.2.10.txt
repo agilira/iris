@@ -1,0 +1,91 @@
+iris v1.2.10 -- Per-ring idle strategy (AdaptiveLogger isolation)
+================================================================
+
+Released: 2026-05-30
+Commit:   (see git log)
+Authors:  Antonio Giordano
+
+STATUS: STABLE -- additive API, no breaking changes.
+
+Completes the ChannelIdleStrategy line started in v1.2.8 / v1.2.9.
+
+
+BUGFIXES
+--------
+
+1. AdaptiveLogger shared one idle-strategy instance across its two rings
+
+   AdaptiveLogger runs two rings: a single-producer ring (always) and a
+   multi-producer ring created on scale-up under contention. Both were built
+   from the same BaseConfig, so a stateful Config.IdleStrategy instance was
+   SHARED between them.
+
+   For ChannelIdleStrategy this is a correctness bug. Its wakeup channel is a
+   buffer of one; with one shared instance the two ring consumers park on the
+   same channel, and a Write to one ring can wake the OTHER ring's consumer
+   instead -- the intended consumer stays asleep and the record is stranded
+   until the next wakeup happens to land on it. Reproduced: writing only to the
+   multi ring after scale-up intermittently stranded records as the single
+   ring's consumer stole the wakeup.
+
+   (Spinning / sleeping / yielding / progressive strategies do not hand off via
+   a shared channel, so sharing them was inefficient at worst, never lossy.)
+
+
+NEW
+---
+
+2. Config.IdleStrategyFactory -- per-ring idle strategy construction
+
+       IdleStrategyFactory func() zephyroslite.IdleStrategy
+
+   When set, the factory is invoked once per ring (single ring at
+   construction, multi ring on scale-up), so each ring gets its OWN isolated
+   strategy instance. This is the correct way to use a channel-based strategy
+   with the AdaptiveLogger:
+
+       scaler := iris.DefaultScalerConfig(iris.Config{
+           Name:                component,
+           Level:               level,
+           Encoder:             enc,
+           Output:              iris.WrapWriter(out),
+           IdleStrategyFactory: func() iris.IdleStrategy {
+               return iris.NewChannelIdleStrategy(0)
+           },
+       })
+
+   Precedence: IdleStrategyFactory wins over the plain IdleStrategy field.
+   The IdleStrategy field is unchanged and remains correct for single-ring
+   (non-adaptive) loggers and for stateless strategies.
+
+   Implementation: buildSmartConfig invokes the factory for the ring it is
+   resolving, so every New() call (and therefore every ring) receives a fresh
+   instance. No change to the hot path.
+
+
+TEST INVENTORY
+--------------
+
+New test file in this release:
+  autoscaling_idlefactory_test.go
+    TestAdaptiveLogger_IdleStrategyFactory_DistinctPerRing
+      Forces a deterministic scale-up and asserts the factory is invoked once
+      per ring with a distinct instance each time. Fails before the field
+      exists; passes after.
+
+
+COMPATIBILITY
+-------------
+
+Additive: a new optional Config field. Existing configurations -- including
+those passing IdleStrategy directly -- behave exactly as before.
+
+
+QUALITY GATES
+-------------
+
+  go fmt ./...        PASS
+  go vet ./...        PASS
+  staticcheck ./...   PASS (0 issues)
+  gosec ./...         PASS (0 issues)
+  go test -race ./... PASS (all packages)

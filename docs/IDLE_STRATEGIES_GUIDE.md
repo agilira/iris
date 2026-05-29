@@ -84,6 +84,31 @@ shutdown) without a new record.
 > so a `0`-timeout consumer shuts down cleanly instead of leaking its goroutine.
 > Use v1.2.9+ when configuring this strategy on a live logger.
 
+#### Using a channel strategy with AdaptiveLogger (v1.2.10+)
+
+`AdaptiveLogger` runs two rings (a single-producer ring, plus a multi-producer
+ring after it scales up under contention). A channel strategy is **stateful** —
+its wakeup channel is a buffer of one — so the two rings must not share one
+instance, or a `Write` to one ring can wake the other ring's consumer and
+strand the record. Pass a **factory** so each ring gets its own instance:
+
+```go
+scaler := iris.DefaultScalerConfig(iris.Config{
+    Name:                component,
+    Level:               level,
+    Encoder:             enc,
+    Output:              iris.WrapWriter(out),
+    IdleStrategyFactory: func() iris.IdleStrategy {
+        return iris.NewChannelIdleStrategy(0)
+    },
+})
+logger, _ := iris.NewAdaptiveLogger(scaler)
+```
+
+`IdleStrategyFactory` takes precedence over the plain `IdleStrategy` field. The
+stateless strategies (spinning / sleeping / yielding / progressive) are safe to
+pass directly via `IdleStrategy`.
+
 ### 5. ProgressiveIdleStrategy (Default)
 - **Latency**: Adaptive (starts minimum, increases when idle)
 - **CPU Usage**: Adaptive (starts high, reduces over time)

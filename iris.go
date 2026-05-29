@@ -144,6 +144,16 @@ func buildSmartConfig(cfg Config, opts ...Option) Config {
 	if cfg.IdleStrategy != nil {
 		smartCfg.IdleStrategy = cfg.IdleStrategy
 	}
+	// IdleStrategyFactory wins over a shared IdleStrategy: invoke it here so
+	// THIS ring (each New() call — single ring, then the multi ring on
+	// scale-up) receives its own isolated instance. See Config.IdleStrategyFactory
+	// for why sharing a channel-based strategy across rings strands records.
+	if cfg.IdleStrategyFactory != nil {
+		smartCfg.IdleStrategyFactory = cfg.IdleStrategyFactory
+		if s := cfg.IdleStrategyFactory(); s != nil {
+			smartCfg.IdleStrategy = s
+		}
+	}
 	if cfg.Sampler != nil {
 		smartCfg.Sampler = cfg.Sampler
 	}
