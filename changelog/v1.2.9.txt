@@ -1,0 +1,74 @@
+iris v1.2.9 -- Close releases a channel-parked consumer
+=======================================================
+
+Released: 2026-05-29
+Commit:   (see git log)
+Authors:  Antonio Giordano
+
+STATUS: STABLE -- bugfix, no public API changes.
+
+Follow-up to v1.2.8 (producer wakeup for ChannelIdleStrategy).
+
+
+BUGFIXES
+--------
+
+1. Close() did not wake a consumer parked in ChannelIdleStrategy
+
+   v1.2.8 made producers wake a signal-based idle strategy on Write, so
+   ChannelIdleStrategy became usable on a live logger. But shutdown had the
+   mirror of the same gap: ZephyrosLight.Close() only set the closed flag and
+   never signalled the idle strategy.
+
+   With NewChannelIdleStrategy(0) the consumer blocks on <-wakeupChan with no
+   timeout. After Close() set closed=1, nothing woke the consumer, so
+   LoopProcess never re-evaluated the flag and the consumer goroutine parked
+   forever -- a goroutine leak on every logger shutdown. (With a non-zero
+   timeout the loop exited only after the next timeout fired.)
+
+   Root cause:
+
+       // BEFORE: marks closed but leaves a channel-parked consumer asleep
+       func (z *ZephyrosLight[T]) Close() {
+           z.closed.Store(1)
+       }
+
+   Fix:
+
+       // AFTER: wake the consumer so LoopProcess re-checks closed and returns
+       func (z *ZephyrosLight[T]) Close() {
+           z.closed.Store(1)
+           z.wake()
+       }
+
+   z.wake() (introduced in v1.2.8) is a cached nil-check for every strategy
+   that is not a Waker, so the change is free for spinning / sleeping /
+   yielding / progressive and only sends the wakeup for ChannelIdleStrategy.
+
+   Compatibility:
+
+     No public API change. Behaviour change is strictly a fix: a previously
+     leaked consumer goroutine now exits on Close().
+
+   Files: internal/zephyroslite/zephyros.go (Close wakes the idle strategy)
+
+
+TEST INVENTORY
+--------------
+
+New test file in this release:
+  internal/zephyroslite/zephyros_closeleak_test.go
+    TestLoopProcess_ChannelIdle_CloseReleasesParkedConsumer
+
+Fails before the fix (LoopProcess never returns after Close) and passes after,
+under -race. Full suite (all packages) green.
+
+
+QUALITY GATES
+-------------
+
+  go fmt ./...        PASS
+  go vet ./...        PASS
+  staticcheck ./...   PASS (0 issues)
+  gosec ./...         PASS (0 issues, 25 files, 2 #nosec)
+  go test -race ./... PASS (all packages, 3x)

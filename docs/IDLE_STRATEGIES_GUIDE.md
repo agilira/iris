@@ -77,10 +77,12 @@ is released the moment a record arrives. A non-zero timeout layers a periodic
 re-check on top, useful only when the loop must observe external state (such as
 shutdown) without a new record.
 
-> **Producer wakeup was added in v1.2.8.** In earlier versions the consumer was
-> only signalled from the consumer side, so a `Write` after the ring drained was
-> not processed until the next timeout fired — and a `0` timeout stalled
-> indefinitely. Use v1.2.8+ when configuring this strategy on a live logger.
+> **Producer wakeup was added in v1.2.8; Close wakeup in v1.2.9.** Before
+> v1.2.8 the consumer was only signalled from the consumer side, so a `Write`
+> after the ring drained was not processed until the next timeout fired — and a
+> `0` timeout stalled indefinitely. v1.2.9 also wakes the consumer on `Close()`,
+> so a `0`-timeout consumer shuts down cleanly instead of leaking its goroutine.
+> Use v1.2.9+ when configuring this strategy on a live logger.
 
 ### 5. ProgressiveIdleStrategy (Default)
 - **Latency**: Adaptive (starts minimum, increases when idle)

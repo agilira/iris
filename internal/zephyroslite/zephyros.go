@@ -446,8 +446,15 @@ func (z *ZephyrosLight[T]) LoopProcess() {
 //
 // The method is idempotent and thread-safe. After Close() is called,
 // all Write() operations will return false and no new items will be processed.
+//
+// A signal-based idle strategy (ChannelIdleStrategy) parks the consumer on a
+// blocking receive that only a wakeup releases. Close must therefore wake it,
+// otherwise LoopProcess never re-checks the closed flag and the consumer
+// goroutine leaks (with a zero-timeout strategy, forever). wake() is a cached
+// nil-check for every other strategy, so this is free for them.
 func (z *ZephyrosLight[T]) Close() {
 	z.closed.Store(1)
+	z.wake()
 }
 
 // Loop is an alias for LoopProcess for backward compatibility
